@@ -377,6 +377,7 @@ fn event(provider: &str, kind: &str, cwd: &str, message: &str, session: &str) ->
 
 /// This hook's parent processes, nearest first, up to init: the AI, its shell, and the terminal or
 /// editor whose window it runs in.
+#[cfg(unix)]
 fn ancestors() -> Vec<u32> {
     let mut pids = Vec::new();
     let mut pid = std::os::unix::process::parent_id();
@@ -393,7 +394,13 @@ fn ancestors() -> Vec<u32> {
     pids
 }
 
+#[cfg(not(unix))]
+fn ancestors() -> Vec<u32> {
+    Vec::new()
+}
+
 /// The parent's pid in a /proc/<pid>/stat line; the command name in brackets may hold spaces or ')'.
+#[cfg(any(unix, test))]
 fn parent_of(stat: &str) -> Option<u32> {
     stat.rsplit_once(')')?
         .1
@@ -426,6 +433,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn finds_its_parents() {
         let pids = ancestors();
         assert_eq!(pids.first(), Some(&std::os::unix::process::parent_id()));

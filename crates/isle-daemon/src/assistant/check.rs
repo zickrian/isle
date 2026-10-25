@@ -1045,6 +1045,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn runs_a_check_and_says_what_is_missing() {
         let said = run("uname -s").await;
         assert!(

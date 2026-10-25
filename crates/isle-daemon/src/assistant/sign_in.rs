@@ -6,8 +6,20 @@
 
 use std::fs;
 use std::io::Write;
+#[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
+
+fn make_symlink(real: &Path, linked: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(real, linked)
+    }
+    #[cfg(windows)]
+    {
+        std::os::windows::fs::symlink_file(real, linked).or_else(|_| fs::copy(real, linked).map(drop))
+    }
+}
 
 /// Makes `linked` (Isle's) a link to `real` (the user's), first handing a renewed sign-in back.
 pub fn share(real: &Path, linked: &Path) {
@@ -36,7 +48,7 @@ pub fn share(real: &Path, linked: &Path) {
             Err(err) if err.kind() != std::io::ErrorKind::NotFound => Err(err),
             _ => Ok(()),
         })
-        .and_then(|()| std::os::unix::fs::symlink(real, linked));
+        .and_then(|()| make_symlink(real, linked));
     if let Err(err) = relinked {
         log::warn!("could not share the sign-in at {}: {err}", real.display());
     }
@@ -65,19 +77,20 @@ fn copy_back(from: &Path, to: &Path) -> std::io::Result<()> {
     let bytes = fs::read(from)?;
     let temp = to.with_extension("isle-tmp");
     {
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&temp)?;
+        let mut opts = fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        opts.mode(0o600);
+        let mut file = opts.open(&temp)?;
         file.write_all(&bytes)?;
         file.sync_all()?;
     }
+    #[cfg(windows)]
+    let _ = fs::remove_file(to);
     fs::rename(temp, to)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use std::time::{Duration, SystemTime};
 
@@ -90,6 +103,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_renewed_sign_in_goes_back_and_an_old_copy_is_replaced() {
         let root = std::env::temp_dir().join(format!("isle-sign-in-{}", std::process::id()));
         let (real, linked) = (root.join("user/auth.json"), root.join("isle/auth.json"));

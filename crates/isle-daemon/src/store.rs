@@ -5,6 +5,7 @@
 use std::fs;
 use std::io::{self, Write};
 use std::marker::PhantomData;
+#[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
@@ -186,12 +187,20 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 /// Creates `dir` (and its parents) readable by the user alone: the clipboard
 /// history can hold things worth keeping private.
 pub fn create_private_dir(dir: &Path) -> io::Result<()> {
-    fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(dir)?;
-    // Created by an older version with the default mode.
-    fs::set_permissions(dir, fs::Permissions::from_mode(0o700))
+    #[cfg(unix)]
+    {
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(dir)?;
+        fs::set_permissions(dir, fs::Permissions::from_mode(0o700))
+    }
+    #[cfg(not(unix))]
+    {
+        fs::DirBuilder::new()
+            .recursive(true)
+            .create(dir)
+    }
 }
 
 /// Writes a file only the user can read.
@@ -200,12 +209,11 @@ pub fn write_private(path: &Path, bytes: &[u8]) -> io::Result<()> {
 }
 
 fn private_file(path: &Path) -> io::Result<fs::File> {
-    fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(path)
+    let mut opts = fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    opts.mode(0o600);
+    opts.open(path)
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
@@ -216,6 +224,8 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let mut file = private_file(&temp)?;
     file.write_all(bytes)?;
     file.sync_all()?;
+    #[cfg(windows)]
+    let _ = fs::remove_file(path);
     fs::rename(temp, path)?;
     // Flush the rename itself too, so the new file survives a power cut.
     if let Some(parent) = path.parent() {
@@ -258,13 +268,14 @@ pub fn prune_newest(dir: &Path, keep: usize) {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
     use super::*;
 
     #[test]
     fn keeps_only_the_newest_files() {
-        let dir = std::env::temp_dir().join(format!("isle-prune-{}", std::process::id()));
+        let dir = scratch("prune");
         fs::create_dir_all(dir.join("folder")).unwrap();
         for i in 0..5 {
             fs::write(dir.join(format!("{i}")), "x").unwrap();
@@ -346,6 +357,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn unreadable_files_are_never_overwritten() {
         let dir = scratch("unreadable");
         let path = dir.join("list.json");

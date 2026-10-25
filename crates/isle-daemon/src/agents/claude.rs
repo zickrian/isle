@@ -70,7 +70,10 @@ mod tests {
     use crate::agents::json_hooks::{add_hooks, remove_hooks};
 
     // A program that is there, as an installed isled would be (a hook to a missing one counts as out).
+    #[cfg(unix)]
     const COMMAND: &str = "/bin/sh --agent-hook claude";
+    #[cfg(not(unix))]
+    const COMMAND: &str = "C:\\Windows\\System32\\cmd.exe --agent-hook claude";
 
     #[test]
     fn hooks_go_in_beside_the_users_own() {

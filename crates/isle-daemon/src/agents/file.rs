@@ -6,6 +6,7 @@
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Write};
+#[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
@@ -41,18 +42,22 @@ pub fn write_atomic(path: &Path, text: &str) -> io::Result<()> {
     if let Some(dir) = target.parent() {
         fs::create_dir_all(dir)?;
     }
+    #[cfg(unix)]
     let mode = fs::metadata(&target).map_or(0o600, |meta| meta.permissions().mode() & 0o7777);
     let temp = sibling(&target, ".isle-tmp");
     let _ = fs::remove_file(&temp);
     let written = (|| {
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&temp)?;
+        let mut opts = fs::OpenOptions::new();
+        opts.write(true).create_new(true);
+        #[cfg(unix)]
+        opts.mode(0o600);
+        let mut file = opts.open(&temp)?;
         file.write_all(text.as_bytes())?;
+        #[cfg(unix)]
         file.set_permissions(fs::Permissions::from_mode(mode))?;
         file.sync_all()?;
+        #[cfg(windows)]
+        let _ = fs::remove_file(&target);
         fs::rename(&temp, &target)
     })();
     if written.is_err() {
@@ -74,6 +79,7 @@ pub mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn writes_keep_the_mode_and_follow_links() {
         let dir = scratch("write");
         let real = dir.join("real.json");

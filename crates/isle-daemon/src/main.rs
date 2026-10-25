@@ -26,6 +26,7 @@ mod usage;
 use anyhow::{Context, bail};
 use futures_util::StreamExt;
 use log::{info, warn};
+#[cfg(unix)]
 use tokio::signal::unix::{SignalKind, signal};
 use zbus::connection;
 use zbus::fdo::{DBusProxy, RequestNameFlags, RequestNameReply};
@@ -58,6 +59,37 @@ Usage: isled [--version | --doctor | --report | --unhook-all | --help]
   --help        print this
 
 Claude Code and Codex run `isled --agent-hook claude|codex` themselves, once their alerts are on.";
+
+async fn open_session() -> anyhow::Result<zbus::Connection> {
+    #[cfg(unix)]
+    if let Ok(builder) = connection::Builder::session() {
+        if let Ok(conn) = builder.build().await {
+            return Ok(conn);
+        }
+    }
+    #[cfg(windows)]
+    if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some() {
+        if let Ok(builder) = connection::Builder::session() {
+            if let Ok(conn) = builder.build().await {
+                return Ok(conn);
+            }
+        }
+    }
+    // Standalone fallback: runs a local lightweight connection when no D-Bus daemon is available
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let addr = listener.local_addr()?;
+    let p1 = tokio::net::TcpStream::connect(addr).await?;
+    let (p0, _) = listener.accept().await?;
+    let guid = zbus::Guid::generate();
+    let server = connection::Builder::tcp_stream(p0).server(guid)?.p2p();
+    let client = connection::Builder::tcp_stream(p1).p2p();
+    let (conn, client_conn) = tokio::try_join!(server.build(), client.build())?;
+    tokio::spawn(async move {
+        let _keep_alive = client_conn;
+        std::future::pending::<()>().await;
+    });
+    Ok(conn)
+}
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
@@ -96,12 +128,9 @@ async fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     // Before anything reads the environment or starts a thread.
     login_env::import();
-    let session = connection::Builder::session()?
-        .build()
-        .await
-        .context("could not connect to the session bus")?;
+    let session = open_session().await?;
     // A second isled (started by hand) leaves the running one alone, before it opens or prunes anything.
-    if running(&session).await {
+    if session.is_bus() && running(&session).await {
         bail!("isled is already running");
     }
     // The clipboard history lives here; keep it from other users, including
@@ -168,41 +197,64 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Claim the name last, so callers never see a half-initialised service; never taking it from another.
-    let claimed = session
-        .request_name_with_flags(BUS_NAME, RequestNameFlags::DoNotQueue.into())
-        .await
-        .with_context(|| format!("could not own {BUS_NAME}"))?;
-    if claimed != RequestNameReply::PrimaryOwner {
-        bail!("isled is already running");
+    if session.is_bus() {
+        let claimed = session
+            .request_name_with_flags(BUS_NAME, RequestNameFlags::DoNotQueue.into())
+            .await
+            .with_context(|| format!("could not own {BUS_NAME}"))?;
+        if claimed != RequestNameReply::PrimaryOwner {
+            bail!("isled is already running");
+        }
+        info!("isled is running as {BUS_NAME}");
+    } else {
+        println!("isled {} is running in standalone mode (ready, press Ctrl+C to stop)", env!("CARGO_PKG_VERSION"));
+        info!("isled is running in standalone local mode (ready, press Ctrl+C to stop)");
     }
-    info!("isled is running as {BUS_NAME}");
     // Started only now: a restored phase that ran out while isled was down finishes at once,
     // and clients only see its PhaseFinished signal if it comes from the claimed name.
     tokio::spawn(pomodoro::run(pomodoro));
 
     // Runs until the session bus goes (the session ended) or the name is lost; never outlives its
     // session, which would leave it polling with nobody to tell.
-    let lost = zbus::MatchRule::builder()
-        .msg_type(zbus::message::Type::Signal)
-        .sender("org.freedesktop.DBus")?
-        .interface("org.freedesktop.DBus")?
-        .member("NameLost")?
-        .build();
-    let mut events = zbus::MessageStream::for_match_rule(lost, &session, None).await?;
-    // systemd stops it with SIGTERM (at logout too).
-    let mut terminate = signal(SignalKind::terminate())?;
-    tokio::select! {
-        event = events.next() => match event {
-            Some(Ok(_)) => info!("lost {BUS_NAME}; stopping"),
-            Some(Err(err)) => info!("the session bus went away ({err}); stopping"),
-            None => info!("the session bus went away; stopping"),
-        },
-        _ = terminate.recv() => {
-            info!("asked to stop");
-            store::flush();
-            // At once, as the signal itself did: a download or helper still running goes with it.
-            std::process::exit(0);
+    if session.is_bus() {
+        let lost = zbus::MatchRule::builder()
+            .msg_type(zbus::message::Type::Signal)
+            .sender("org.freedesktop.DBus")?
+            .interface("org.freedesktop.DBus")?
+            .member("NameLost")?
+            .build();
+        let mut events = zbus::MessageStream::for_match_rule(lost, &session, None).await?;
+        // systemd stops it with SIGTERM (at logout too); on Windows, Ctrl+C.
+        #[cfg(unix)]
+        let mut terminate = signal(SignalKind::terminate())?;
+        tokio::select! {
+            event = events.next() => match event {
+                Some(Ok(_)) => info!("lost {BUS_NAME}; stopping"),
+                Some(Err(err)) => info!("the session bus went away ({err}); stopping"),
+                None => info!("the session bus went away; stopping"),
+            },
+            _ = async {
+                #[cfg(unix)]
+                {
+                    terminate.recv().await
+                }
+                #[cfg(not(unix))]
+                {
+                    tokio::signal::ctrl_c().await.ok();
+                    Some(())
+                }
+            } => {
+                info!("asked to stop");
+                store::flush();
+                // At once, as the signal itself did: a download or helper still running goes with it.
+                std::process::exit(0);
+            }
         }
+    } else {
+        tokio::signal::ctrl_c().await.ok();
+        info!("asked to stop");
+        store::flush();
+        std::process::exit(0);
     }
     store::flush();
     Ok(())
@@ -211,7 +263,7 @@ async fn main() -> anyhow::Result<()> {
 /// Hands memory freed after big, passing work (an image, an assistant's turn) back to the system.
 fn trim_memory() {
     // SAFETY: malloc_trim only walks the allocator's own free lists.
-    #[cfg(target_env = "gnu")]
+    #[cfg(all(unix, target_env = "gnu"))]
     unsafe {
         libc::malloc_trim(0);
     }
@@ -256,6 +308,7 @@ async fn doctor() {
 async fn report() {
     // Rust's println! panics on a closed pipe; quitting quietly is what a shell tool does.
     // SAFETY: restores SIGPIPE's default disposition; no handler of ours is involved.
+    #[cfg(unix)]
     unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
     let run = |program: &str, args: &[&str]| -> String {
         std::process::Command::new(program)

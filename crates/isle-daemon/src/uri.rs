@@ -2,7 +2,7 @@
 
 //! The local path a `file://` URI names (RFC 8089), its `%XX` escapes decoded.
 
-use std::ffi::OsString;
+#[cfg(unix)]
 use std::os::unix::ffi::OsStringExt;
 use std::path::PathBuf;
 
@@ -31,7 +31,20 @@ pub fn to_path(uri: &str) -> Option<PathBuf> {
     if bytes.contains(&0) {
         return None;
     }
-    Some(PathBuf::from(OsString::from_vec(bytes)))
+    #[cfg(unix)]
+    {
+        Some(PathBuf::from(std::ffi::OsString::from_vec(bytes)))
+    }
+    #[cfg(not(unix))]
+    {
+        let s = String::from_utf8(bytes).ok()?;
+        let s = if s.len() >= 3 && s.starts_with('/') && s.as_bytes()[2] == b':' {
+            &s[1..]
+        } else {
+            &s
+        };
+        Some(PathBuf::from(s))
+    }
 }
 
 /// Decodes `%XX` escapes into bytes; invalid escapes are kept as they are.
@@ -113,6 +126,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn keeps_bytes_that_are_not_utf8() {
         let raw = to_path("file:///tmp/%FF").unwrap();
         assert_eq!(raw.into_os_string().into_vec(), b"/tmp/\xff");

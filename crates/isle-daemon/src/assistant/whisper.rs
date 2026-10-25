@@ -298,6 +298,7 @@ mod tests {
     }
 
     /// A stand-in for `isle-whisper` that crashes on the GPU, as a broken driver makes it.
+    #[cfg(unix)]
     fn crashing_helper() -> (PathBuf, PathBuf) {
         let dir = folder(&["tiny"]);
         let script = dir.join("isle-whisper");
@@ -315,6 +316,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn falls_back_to_the_processor_when_the_gpu_crashes() {
         let (dir, script) = crashing_helper();
         let mut whisper = Whisper::start_with(script, "tiny", "id", false).unwrap();

@@ -4,14 +4,23 @@
 //! their programs are (nvm, Homebrew, a custom npm prefix…), and what their AI CLIs read (another config
 //! folder, an API key, a proxy). Asked once at start, as code editors do; what systemd already sets wins.
 
-use std::ffi::OsString;
-use std::io::Read;
-use std::os::unix::ffi::OsStringExt;
-use std::os::unix::process::CommandExt;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::mpsc;
-use std::time::{Duration, Instant};
+#[cfg(not(unix))]
+pub fn import() {}
+
+#[cfg(unix)]
+pub use unix::import;
+
+#[cfg(unix)]
+mod unix {
+    use std::ffi::OsString;
+    use std::io::Read;
+    use std::os::unix::ffi::OsStringExt;
+    use std::os::unix::process::CommandExt;
+    use std::path::{Path, PathBuf};
+    use std::process::{Command, Stdio};
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+
 
 /// A shell slower than this (a prompt, a network mount) is left behind.
 const TIMEOUT: Duration = Duration::from_secs(3);
@@ -191,10 +200,12 @@ fn user_shell() -> Option<PathBuf> {
     (shell.is_absolute() && shell.is_file() && !matches!(name.as_str(), "nologin" | "false"))
         .then_some(shell)
 }
+}
 
-#[cfg(test)]
+#[cfg(all(unix, test))]
 mod tests {
-    use super::*;
+    use super::unix::*;
+
 
     #[test]
     fn reads_the_environment_after_the_mark() {

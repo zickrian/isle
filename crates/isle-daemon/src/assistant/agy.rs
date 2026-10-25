@@ -303,6 +303,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(unix)]
     fn prunes_whole_conversations_last_used_before_today() {
         let store = std::env::temp_dir().join(format!("isle-prune-{}", std::process::id()));
         let today = Local::now().date_naive();
@@ -343,6 +344,7 @@ mod tests {
     /// agy signed out prints its reason and quits before reading the request; the island must say
     /// to sign in, not that agy stopped.
     #[tokio::test]
+    #[cfg(unix)]
     async fn a_signed_out_agy_asks_to_sign_in() {
         let root = std::env::temp_dir().join(format!("isle-signed-out-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
@@ -376,6 +378,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn shares_the_users_sign_in() {
         let root = std::env::temp_dir().join(format!("isle-agy-login-{}", std::process::id()));
         let (user, isle) = (root.join("user"), root.join("isle"));
@@ -423,6 +426,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn schema_and_hooks_are_valid_json() {
         serde_json::from_str::<Value>(SCHEMA).unwrap();
         let hooks: Value = serde_json::from_str(HOOKS).unwrap();

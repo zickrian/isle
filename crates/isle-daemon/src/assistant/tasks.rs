@@ -54,6 +54,17 @@ pub struct Task {
     pub started: i64,
 }
 
+fn current_uid_gid() -> (u32, u32) {
+    #[cfg(unix)]
+    unsafe {
+        (libc::getuid(), libc::getgid())
+    }
+    #[cfg(not(unix))]
+    {
+        (1000, 1000)
+    }
+}
+
 impl Task {
     pub fn unit(&self) -> String {
         format!("isle-run-{}", self.id)
@@ -101,8 +112,7 @@ impl Task {
         ]);
         argv.push(self.command.clone());
         if self.scope == Scope::System {
-            // SAFETY: getuid and getgid cannot fail.
-            let (uid, gid) = unsafe { (libc::getuid(), libc::getgid()) };
+            let (uid, gid) = current_uid_gid();
             argv.extend([uid.to_string(), gid.to_string(), log.to_string()]);
         }
         argv
@@ -745,7 +755,7 @@ mod tests {
         );
         // Root opens no file of the user's: its output goes to them through `tee`, run as them.
         assert!(!argv.iter().any(|arg| arg.contains("append:")));
-        let (uid, gid) = unsafe { (libc::getuid(), libc::getgid()) };
+        let (uid, gid) = current_uid_gid();
         assert_eq!(
             &argv[argv.len() - 8..],
             [
@@ -796,6 +806,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn follows_a_command_to_its_end() {
         // As systemd would, with the wrapper: the log fills, then the exit line. "two" comes well after a
         // poll (POLL), even on a slow CI runner, so "one" is seen on its own first.

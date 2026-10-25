@@ -10,6 +10,7 @@ use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::{Child, Command};
 
 /// How much they give way to the desktop (see nice(1)).
+#[cfg(unix)]
 const NICENESS: libc::c_int = 10;
 /// A line of an AI CLI's output longer than this (a whole file it read, say) is skipped, never kept.
 const MAX_LINE: usize = 8 * 1024 * 1024;
@@ -22,24 +23,32 @@ pub struct Group(Child);
 pub fn spawn(command: &mut Command) -> std::io::Result<Group> {
     let program = std::path::PathBuf::from(command.as_std().get_program());
     let path = path_for(&program);
-    // It never gains privileges (no setuid sudo or pkexec), unless it runs from a snap, whose launcher
-    // needs them.
-    if !from_snap(&program, path.as_deref()) {
-        // SAFETY: prctl is async-signal-safe and only reads its integer arguments.
-        unsafe {
-            command.pre_exec(|| {
-                if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == 0 {
-                    Ok(())
-                } else {
-                    Err(std::io::Error::last_os_error())
-                }
-            });
+    #[cfg(unix)]
+    {
+        // It never gains privileges (no setuid sudo or pkexec), unless it runs from a snap, whose launcher
+        // needs them.
+        if !from_snap(&program, path.as_deref()) {
+            // SAFETY: prctl is async-signal-safe and only reads its integer arguments.
+            unsafe {
+                command.pre_exec(|| {
+                    if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == 0 {
+                        Ok(())
+                    } else {
+                        Err(std::io::Error::last_os_error())
+                    }
+                });
+            }
         }
     }
     if let Some(path) = path {
         command.env("PATH", path);
     }
+    #[cfg(unix)]
     let child = command.process_group(0).kill_on_drop(true).spawn()?;
+    #[cfg(not(unix))]
+    let child = command.kill_on_drop(true).spawn()?;
+
+    #[cfg(unix)]
     if let Some(pid) = child.id() {
         // SAFETY: setpriority only reads its plain integer arguments.
         unsafe { libc::setpriority(libc::PRIO_PGRP, pid, NICENESS) };
@@ -48,6 +57,7 @@ pub fn spawn(command: &mut Command) -> std::io::Result<Group> {
 }
 
 /// Whether `program`, or the Node it would run on, is a snap's.
+#[cfg(unix)]
 fn from_snap(program: &std::path::Path, path: Option<&std::ffi::OsStr>) -> bool {
     let snap = |path: &std::path::Path| {
         std::fs::canonicalize(path)
@@ -75,10 +85,13 @@ pub fn path_for(program: &std::path::Path) -> Option<std::ffi::OsString> {
 
 impl Drop for Group {
     fn drop(&mut self) {
-        // Its group, led by it: the node workers or servers an AI CLI starts go with it.
-        if let Some(pid) = self.0.id().and_then(|pid| libc::pid_t::try_from(pid).ok()) {
-            // SAFETY: killpg only reads its plain integer arguments.
-            unsafe { libc::killpg(pid, libc::SIGKILL) };
+        #[cfg(unix)]
+        {
+            // Its group, led by it: the node workers or servers an AI CLI starts go with it.
+            if let Some(pid) = self.0.id().and_then(|pid| libc::pid_t::try_from(pid).ok()) {
+                // SAFETY: killpg only reads its plain integer arguments.
+                unsafe { libc::killpg(pid, libc::SIGKILL) };
+            }
         }
     }
 }
@@ -196,6 +209,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn takes_its_whole_group_along() {
         // A shell that leaves a grandchild running, as an AI CLI's node workers would.
         let mut command = Command::new("sh");

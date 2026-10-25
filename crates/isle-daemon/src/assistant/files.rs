@@ -215,8 +215,8 @@ pub fn find(terms: &[String], root: &Path, kind: Kind, home: &Path) -> String {
 fn shorten(path: &Path, home: &Path) -> String {
     match path.strip_prefix(home) {
         Ok(rest) if rest.as_os_str().is_empty() => "~".into(),
-        Ok(rest) => format!("~/{}", rest.display()),
-        Err(_) => path.display().to_string(),
+        Ok(rest) => format!("~/{}", rest.to_string_lossy().replace('\\', "/")),
+        Err(_) => path.to_string_lossy().replace('\\', "/"),
     }
 }
 
@@ -456,6 +456,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_link_is_judged_by_where_it_leads() {
         let home = std::env::temp_dir().join(format!("isle-links-{}", std::process::id()));
         fs::create_dir_all(home.join(".ssh")).unwrap();

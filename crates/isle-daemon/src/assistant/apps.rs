@@ -228,6 +228,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn measures_the_busiest_apps() {
         let text = top_processes();
         assert!(

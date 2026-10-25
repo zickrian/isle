@@ -343,6 +343,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(unix)]
     fn its_sign_in_is_the_users_alone() {
         use std::os::unix::fs::PermissionsExt;
         let dir = std::env::temp_dir().join(format!("isle-claude-{}", std::process::id()));
@@ -388,9 +389,13 @@ mod tests {
         assert!(dir.starts_with(dirs::home_dir().unwrap().join(".claude/projects")));
         // Named after Isle's own workspace, wherever its data folder is (XDG_DATA_HOME moves it).
         let workspace = crate::store::data_dir().join("assistant");
+        let slug: String = workspace
+            .to_string_lossy()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect();
         assert!(
-            dir.to_string_lossy()
-                .ends_with(&*workspace.to_string_lossy().replace(['/', '.'], "-")),
+            dir.to_string_lossy().ends_with(&slug),
             "{}",
             dir.display()
         );

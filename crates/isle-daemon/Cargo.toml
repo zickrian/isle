@@ -21,7 +21,6 @@ dirs.workspace = true
 env_logger.workspace = true
 futures-util.workspace = true
 image.workspace = true
-inotify.workspace = true
 libc.workspace = true
 log.workspace = true
 serde.workspace = true
@@ -31,3 +30,6 @@ tokio.workspace = true
 toml_edit.workspace = true
 ureq.workspace = true
 zbus.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+inotify.workspace = true

@@ -979,6 +979,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn checks_run_at_once_and_only_look() {
         let mut brain = Scripted::new([
             json!({"say": "", "done": false, "actions": [{"type": "check", "command": "uname -s"},
@@ -999,6 +1000,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn an_answer_that_will_not_look_is_told_it_can() {
         let mut brain = Scripted::new([
             json!({"say": "Bluetooth checks aren’t available to me right now.", "actions": []}),

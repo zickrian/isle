@@ -148,6 +148,10 @@ struct Watcher {
 
 /// Runs forever, keeping `iface` in sync with the active player.
 pub async fn watch(conn: Connection, iface: InterfaceRef<MediaService>) -> anyhow::Result<()> {
+    if !conn.is_bus() {
+        std::future::pending::<()>().await;
+        return Ok(());
+    }
     let dbus = DBusProxy::new(&conn).await?;
     // Subscribe before listing, so no player can slip in between; only players' names, not every app's.
     let owners_rule = MatchRule::builder()

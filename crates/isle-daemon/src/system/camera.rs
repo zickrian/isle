@@ -3,28 +3,44 @@
 //! Whether a camera is in use, counted from inotify opens and closes of `/dev/video*`.
 //! A change only counts after [`SETTLE`], to ignore quick probes by udev or PipeWire.
 
-use std::collections::HashMap;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::time::Duration;
-
-use futures_util::StreamExt;
-use inotify::{EventMask, Inotify, WatchDescriptor, WatchMask, Watches};
-use log::debug;
-use tokio::time::{Instant, sleep_until};
 use zbus::object_server::InterfaceRef;
 
-use super::{SystemService, publish};
+use super::SystemService;
 
-const DEVICES: &str = "/dev";
-const SETTLE: Duration = Duration::from_millis(1500);
-
-/// A watched `/dev/video*` node.
-struct Camera {
-    path: PathBuf,
-    /// Handles currently held on it.
-    open: usize,
+#[cfg(not(target_os = "linux"))]
+pub async fn watch(_iface: InterfaceRef<SystemService>) -> anyhow::Result<()> {
+    std::future::pending::<()>().await;
+    Ok(())
 }
+
+#[cfg(target_os = "linux")]
+use linux::*;
+
+#[cfg(target_os = "linux")]
+mod linux {
+    use std::collections::HashMap;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::Duration;
+
+    use futures_util::StreamExt;
+    use inotify::{EventMask, Inotify, WatchDescriptor, WatchMask, Watches};
+    use log::debug;
+    use tokio::time::{Instant, sleep_until};
+    use zbus::object_server::InterfaceRef;
+
+    use super::super::{SystemService, publish};
+
+    const DEVICES: &str = "/dev";
+    const SETTLE: Duration = Duration::from_millis(1500);
+
+    /// A watched `/dev/video*` node.
+    struct Camera {
+        path: PathBuf,
+        /// Handles currently held on it.
+        open: usize,
+    }
+
 
 pub async fn watch(iface: InterfaceRef<SystemService>) -> anyhow::Result<()> {
     let inotify = Inotify::init()?;
@@ -165,4 +181,5 @@ fn holders(devices: &[PathBuf]) -> HashMap<PathBuf, usize> {
         }
     }
     open
+}
 }

@@ -8,3 +8,7 @@ GGML_AVX2 = "ON"
 GGML_FMA = "ON"
 GGML_F16C = "ON"
 GGML_BMI2 = "ON"
+
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-C", "linker=rust-lld.exe"]
+

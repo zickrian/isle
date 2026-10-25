@@ -14,11 +14,13 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::Context;
-use futures_util::StreamExt;
+#[cfg(target_os = "linux")]
 use inotify::{EventMask, Inotify, WatchMask};
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
-use tokio::time::{Instant, sleep_until};
+use tokio::time::Instant;
+#[cfg(target_os = "linux")]
+use tokio::time::sleep_until;
 use zbus::object_server::{InterfaceRef, SignalEmitter};
 use zbus::{fdo, interface};
 
@@ -44,6 +46,7 @@ const STILL_ASKING: Duration = Duration::from_secs(2);
 const MAX_INPUT: usize = 300;
 const MAX_TOOL: usize = 60;
 /// A config file is looked at again once it has been quiet this long.
+#[cfg(target_os = "linux")]
 const SETTLE: Duration = Duration::from_millis(250);
 
 const KINDS: [&str; 3] = ["permission", "waiting", "done"];
@@ -478,10 +481,30 @@ pub async fn watch(iface: InterfaceRef<AgentsService>) {
 }
 
 /// Returns when a config folder came or went, to watch afresh.
+#[cfg(not(target_os = "linux"))]
 async fn watch_configs(
     iface: &InterfaceRef<AgentsService>,
     published: &mut Agents,
 ) -> anyhow::Result<()> {
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    let now = Agents::read();
+    if now != *published {
+        *published = now;
+        let service = iface.get().await;
+        if let Err(err) = service.agents_changed(iface.signal_emitter()).await {
+            warn!("could not publish the AI alerts: {err}");
+        }
+    }
+    Ok(())
+}
+
+/// Returns when a config folder came or went, to watch afresh.
+#[cfg(target_os = "linux")]
+async fn watch_configs(
+    iface: &InterfaceRef<AgentsService>,
+    published: &mut Agents,
+) -> anyhow::Result<()> {
+    use futures_util::StreamExt;
     let inotify = Inotify::init()?;
     let mut watches = inotify.watches();
     let files: Vec<PathBuf> = Ai::ALL
