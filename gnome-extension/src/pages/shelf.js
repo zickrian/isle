@@ -8,7 +8,7 @@ import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 
-import {onUiScale} from '../compat.js';
+import {iconSize, onUiScale} from '../compat.js';
 import {DropLight} from '../dropLight.js';
 import {Thumbnails} from '../thumbnails.js';
 import {icon, iconButton, label, pillButton, setEnabled} from '../widgets.js';
@@ -144,7 +144,7 @@ export const ShelfPage = GObject.registerClass({
         for (const filter of FILTERS) {
             const button = new St.Button({
                 style_class: 'isle-segment',
-                child: new St.Icon({gicon: icon(filter.icon), icon_size: 13}),
+                child: new St.Icon({gicon: icon(filter.icon), icon_size: iconSize(13)}),
                 accessible_name: `Only ${filter.name.toLowerCase()}`,
                 can_focus: true,
             });
@@ -155,7 +155,7 @@ export const ShelfPage = GObject.registerClass({
         this._clipboardControls.add_child(filters);
 
         this._search = new St.Entry({style_class: 'isle-entry isle-shelf-field', hint_text: 'Search', can_focus: true, x_expand: true});
-        this._search.set_primary_icon(new St.Icon({gicon: icon('isle-search'), icon_size: 12, style_class: 'isle-shelf-field-icon'}));
+        this._search.set_primary_icon(new St.Icon({gicon: icon('isle-search'), icon_size: iconSize(12), style_class: 'isle-shelf-field-icon'}));
         const text = this._search.clutter_text;
         // Ask for the keyboard before the field takes focus: the grab moves focus itself.
         text.connect('button-press-event', () => {

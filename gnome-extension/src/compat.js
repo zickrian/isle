@@ -5,6 +5,7 @@
 // code reads the same on all of them.
 
 import Clutter from 'gi://Clutter';
+import Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
 import St from 'gi://St';
 
@@ -66,34 +67,66 @@ export function isWayland() {
     return Meta.is_wayland_compositor?.() ?? true;
 }
 
-/** Stage pixels per CSS pixel: 2 on a 200% display GNOME 46 to 49 lay out in physical pixels, else 1.
- * St scales what CSS sizes, never what code sets: that takes `px`. */
-export function uiScale() {
+let interfaceSettings = null;
+
+/** GNOME desktop interface settings (`org.gnome.desktop.interface`). */
+export function getInterfaceSettings() {
+    try {
+        interfaceSettings ??= new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
+        return interfaceSettings;
+    } catch {
+        return null;
+    }
+}
+
+/** The text/font scaling factor from GNOME Tweaks or Accessibility (e.g. 0.7, 1.0, 1.25). */
+export function textScale() {
+    return getInterfaceSettings()?.get_double('text-scaling-factor') || 1.0;
+}
+
+/** Stage pixels per CSS pixel for St's CSS engine (1 on 100%, 2 on 200%). Used for CSS style conversions. */
+export function stageScale() {
     return St.ThemeContext.get_for_stage(global.stage).scale_factor;
 }
 
-/** `n` CSS pixels in stage pixels, for a size, place or distance set from code (never an icon's `icon_size`). */
+/** Stage pixels per CSS pixel: 2 on a 200% display GNOME 46 to 49 lay out in physical pixels, else 1.
+ * St scales what CSS sizes, never what code sets: that takes `px`. */
+export function uiScale() {
+    return stageScale();
+}
+
+/** `n` CSS pixels in stage pixels, taking into account display scale. */
 export function px(n) {
-    return n * uiScale();
+    return Math.round(n * uiScale());
+}
+
+/** An icon size (in CSS pixels for St.Icon.icon_size) scaled by GNOME's text/desktop scaling factor. */
+export function iconSize(n) {
+    return Math.max(1, Math.round(n * textScale()));
 }
 
 /** Calls `apply(scale)` now (unless `now` is false) and whenever `uiScale` changes, while `actor` lives:
  * before the next frame, once St restyled for the new scale, so what is measured then is right. */
 export function onUiScale(actor, apply, {now = true} = {}) {
     const context = St.ThemeContext.get_for_stage(global.stage);
+    const settings = getInterfaceSettings();
     if (now)
-        apply(context.scale_factor);
+        apply(uiScale());
     const laters = global.compositor.get_laters();
     let later = 0;
-    const id = context.connect('notify::scale-factor', () => {
+    const notify = () => {
         later ||= laters.add(Meta.LaterType.BEFORE_REDRAW, () => {
             later = 0;
-            apply(context.scale_factor);
+            apply(uiScale());
             return false;
         });
-    });
+    };
+    const contextId = context.connect('notify::scale-factor', notify);
+    const settingsId = settings?.connect('changed::text-scaling-factor', notify);
     actor.connect('destroy', () => {
-        context.disconnect(id);
+        context.disconnect(contextId);
+        if (settingsId && settings)
+            settings.disconnect(settingsId);
         if (later)
             laters.remove(later);
     });

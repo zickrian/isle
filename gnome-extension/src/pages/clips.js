@@ -12,7 +12,7 @@ import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
-import {VERTICAL} from '../compat.js';
+import {VERTICAL, iconSize} from '../compat.js';
 import * as Format from '../format.js';
 import {icon, iconButton, label, wrapLines} from '../widgets.js';
 import {SHELF_CAPACITY} from './files.js';
@@ -103,7 +103,7 @@ export const ClipsView = GObject.registerClass({
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
         });
-        this._emptyIcon = new St.Icon({icon_size: 24, style_class: 'isle-empty-icon'});
+        this._emptyIcon = new St.Icon({icon_size: iconSize(24), style_class: 'isle-empty-icon'});
         this._emptyTitle = label('', 'isle-empty-title', {x_align: Clutter.ActorAlign.CENTER});
         this._emptyHint = label('', 'isle-empty-hint', {x_align: Clutter.ActorAlign.CENTER});
         this._empty.add_child(this._emptyIcon);
@@ -396,7 +396,7 @@ export const ClipsView = GObject.registerClass({
             visible: false,
         });
         const feedbackBox = new St.BoxLayout({...VERTICAL, x_expand: true, x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
-        card._feedbackIcon = new St.Icon({icon_size: 18, x_align: Clutter.ActorAlign.CENTER});
+        card._feedbackIcon = new St.Icon({icon_size: iconSize(18), x_align: Clutter.ActorAlign.CENTER});
         card._feedbackLabel = label('', 'isle-clip-feedback-label', {x_align: Clutter.ActorAlign.CENTER});
         feedbackBox.add_child(card._feedbackIcon);
         feedbackBox.add_child(card._feedbackLabel);
@@ -460,9 +460,9 @@ export const ClipsView = GObject.registerClass({
         });
         const app = appFor(item.app_id);
         if (item.pinned)
-            header.add_child(new St.Icon({gicon: icon('isle-pin-fill'), icon_size: 11, style_class: 'isle-clip-pin', y_align: Clutter.ActorAlign.CENTER}));
+            header.add_child(new St.Icon({gicon: icon('isle-pin-fill'), icon_size: iconSize(11), style_class: 'isle-clip-pin', y_align: Clutter.ActorAlign.CENTER}));
         if (app)
-            header.add_child(new St.Icon({gicon: app.get_icon(), icon_size: 13, y_align: Clutter.ActorAlign.CENTER}));
+            header.add_child(new St.Icon({gicon: app.get_icon(), icon_size: iconSize(13), y_align: Clutter.ActorAlign.CENTER}));
         const age = GLib.DateTime.new_from_unix_local(Math.floor(item.at_ms / 1000));
         const ageLabel = label(Format.ago(age), 'isle-clip-age', {y_align: Clutter.ActorAlign.CENTER});
         card._age = [ageLabel, age];
@@ -495,7 +495,7 @@ export const ClipsView = GObject.registerClass({
             const box = new St.BoxLayout({...VERTICAL, style_class: 'isle-clip-body', x_expand: true, y_expand: true});
             const names = item.preview.split('\n');
             const [type] = Gio.content_type_guess(names[0], null);
-            box.add_child(new St.Icon({gicon: Gio.content_type_get_icon(type), icon_size: 28, style_class: 'isle-clip-file-icon', x_align: Clutter.ActorAlign.START}));
+            box.add_child(new St.Icon({gicon: Gio.content_type_get_icon(type), icon_size: iconSize(28), style_class: 'isle-clip-file-icon', x_align: Clutter.ActorAlign.START}));
             const name = label(names[0], 'isle-clip-file-name');
             name.clutter_text.ellipsize = Pango.EllipsizeMode.MIDDLE;
             box.add_child(name);

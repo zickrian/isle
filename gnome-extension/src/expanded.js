@@ -10,7 +10,7 @@ import GObject from 'gi://GObject';
 import St from 'gi://St';
 
 import {timerColor} from './compact.js';
-import {VERTICAL, onUiScale, px, uiScale} from './compat.js';
+import {VERTICAL, iconSize, onUiScale, px, uiScale} from './compat.js';
 import * as Format from './format.js';
 import * as Playback from './playback.js';
 import {watchClock} from './wallClock.js';
@@ -204,7 +204,7 @@ export const ExpandedView = GObject.registerClass({
         this._tabs = this._pages.map((page, index) => {
             const {icon: iconName, label: text} = TABS[page.name];
             const glyph = new St.Widget({layout_manager: new Clutter.BinLayout(), y_align: Clutter.ActorAlign.CENTER});
-            const tabIcon = new St.Icon({gicon: icon(iconName), icon_size: 15});
+            const tabIcon = new St.Icon({gicon: icon(iconName), icon_size: iconSize(15)});
             glyph.add_child(tabIcon);
             // Something new waits on this page (unseen notifications).
             const badge = new St.Widget({

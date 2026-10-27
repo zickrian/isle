@@ -11,7 +11,7 @@ import Gio from 'gi://Gio';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
-import {onUiScale, px, uiScale} from './compat.js';
+import {iconSize, onUiScale, px, uiScale} from './compat.js';
 
 let iconDir = null;
 /** Icons by name, made once: a GIcon never changes, and looking for the file is a disk access. */
@@ -143,7 +143,7 @@ export function fence(box) {
 export function iconButton(iconName, styleClass, onClick, {size = 16, accessibleName = ''} = {}) {
     const button = new St.Button({
         style_class: `isle-button ${styleClass}`,
-        child: new St.Icon({gicon: icon(iconName), icon_size: size}),
+        child: new St.Icon({gicon: icon(iconName), icon_size: iconSize(size)}),
         can_focus: true,
         accessible_name: accessibleName,
         y_align: Clutter.ActorAlign.CENTER,
@@ -688,7 +688,7 @@ export const Art = GObject.registerClass({
         this._showsIcon = false;
         this._placeholder = new St.Icon({
             gicon: icon('isle-music'),
-            icon_size: Math.round(size * 0.42),
+            icon_size: iconSize(Math.round(size * 0.42)),
             style_class: 'isle-art-placeholder',
         });
         this.setPath('');
@@ -705,7 +705,7 @@ export const Art = GObject.registerClass({
     resize(size, radius) {
         this._size = size;
         this.set_size(px(size), px(size));
-        this._placeholder.icon_size = Math.round(size * 0.42);
+        this._placeholder.icon_size = iconSize(Math.round(size * 0.42));
         this._radius = radius;
         this._key = null;
         this.setPath(this._path);
@@ -875,7 +875,7 @@ class VolumeGlyph extends St.Widget {
     /** The speaker, its slashed form and three waves, stacked; `size` in CSS pixels. */
     _init({size = 16} = {}) {
         super._init({layout_manager: new Clutter.BinLayout(), x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
-        const part = name => new St.Icon({gicon: icon(name), icon_size: size});
+        const part = name => new St.Icon({gicon: icon(name), icon_size: iconSize(size)});
         this._body = part('isle-speaker-0-symbolic');
         this._off = part('isle-speaker-off-symbolic');
         this._off.opacity = 0;

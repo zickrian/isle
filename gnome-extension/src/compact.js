@@ -11,7 +11,7 @@ import St from 'gi://St';
 
 import {paletteFor} from './bot.js';
 import {BotIcon} from './botIcon.js';
-import {onUiScale, px, uiScale} from './compat.js';
+import {iconSize, onUiScale, px, stageScale, textScale, uiScale} from './compat.js';
 import * as Format from './format.js';
 import * as Palette from './palette.js';
 import * as Playback from './playback.js';
@@ -65,10 +65,10 @@ export const CompactView = GObject.registerClass({
         this._dot = new St.Widget({style_class: 'isle-unseen-dot', y_align: Clutter.ActorAlign.CENTER});
         this._recordingDot = new RecordingDot();
         // A call: a green phone, and on the right a red microphone while it is muted.
-        this._phone = new St.Icon({gicon: icon('isle-phone-symbolic'), icon_size: 15, style_class: 'isle-call-icon', y_align: Clutter.ActorAlign.CENTER});
-        this._micOff = new St.Icon({gicon: icon('isle-mic-off-symbolic'), icon_size: 15, style_class: 'isle-call-muted', y_align: Clutter.ActorAlign.CENTER});
+        this._phone = new St.Icon({gicon: icon('isle-phone-symbolic'), icon_size: iconSize(15), style_class: 'isle-call-icon', y_align: Clutter.ActorAlign.CENTER});
+        this._micOff = new St.Icon({gicon: icon('isle-mic-off-symbolic'), icon_size: iconSize(15), style_class: 'isle-call-muted', y_align: Clutter.ActorAlign.CENTER});
         // isled is not running: what needs it cannot work (see the controller's service watch).
-        this._serviceDown = new St.Icon({gicon: icon('dialog-warning-symbolic'), icon_size: 15, style_class: 'isle-compact-warning', y_align: Clutter.ActorAlign.CENTER});
+        this._serviceDown = new St.Icon({gicon: icon('dialog-warning-symbolic'), icon_size: iconSize(15), style_class: 'isle-compact-warning', y_align: Clutter.ActorAlign.CENTER});
         // The assistant at work with the island closed: still, but for a blink and a glance every few seconds.
         this._assistant = new BotIcon(ASSISTANT_SIZE, this._botLook());
         this._assistant.y_align = Clutter.ActorAlign.CENTER;
@@ -86,7 +86,7 @@ export const CompactView = GObject.registerClass({
         times.add_child(this._elapsed);
         times.add_child(this._callTime);
         // Do Not Disturb: a moon before the time (or what takes its place), as iOS shows a Focus, whatever the sides hold.
-        this._moon = new St.Icon({gicon: icon('isle-moon'), icon_size: 14, style_class: 'isle-dnd-moon', y_align: Clutter.ActorAlign.CENTER, visible: false});
+        this._moon = new St.Icon({gicon: icon('isle-moon'), icon_size: iconSize(14), style_class: 'isle-dnd-moon', y_align: Clutter.ActorAlign.CENTER, visible: false});
         const centerRow = new St.BoxLayout({style_class: 'isle-compact-clock-box', x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
         centerRow.add_child(this._moon);
         centerRow.add_child(times);
@@ -98,7 +98,7 @@ export const CompactView = GObject.registerClass({
         // time left (beside the song's bars while one plays), or a call's phone and length.
         this._secondBars = new Bars({height: 16});
         this._secondTimer = this._secondPart(this._secondBars, 'isle-compact-second');
-        this._secondPhone = new St.Icon({gicon: icon('isle-phone-symbolic'), icon_size: 15, y_align: Clutter.ActorAlign.CENTER});
+        this._secondPhone = new St.Icon({gicon: icon('isle-phone-symbolic'), icon_size: iconSize(15), y_align: Clutter.ActorAlign.CENTER});
         this._secondCall = this._secondPart(this._secondPhone, 'isle-compact-second isle-compact-second-call');
         /** How much wider the right side is than a slot, while it holds a second time (balanced on the left). */
         this._secondExtra = 0;
@@ -144,18 +144,23 @@ export const CompactView = GObject.registerClass({
         this._tickClock();
         this._stopClock = watchClock(() => this._tickClock());
         this._refresh();
-        // Another scale: the sides are measured again.
-        onUiScale(this, () => this._refresh(), {now: false});
+        // Another scale: the sides and icons are resized and measured again.
+        onUiScale(this, () => {
+            this._syncSizes();
+            this._refresh();
+        }, {now: false});
         this.connect('destroy', () => this._onDestroy());
     }
 
     /** The width the island should have to fit what is shown. */
     get preferredWidth() {
         const size = SIZES[this._inBar ? 'inBar' : 'hanging'];
+        const fontScale = this._inBar ? textScale() : 1.0;
         const privacy = this._privacyWidth();
         // With nothing beside the clock, the island widens for the moon; beside an activity there is room.
-        const moon = this._moon.visible ? size.moon + MOON_GAP : 0;
-        return px(this._left.child || this._right.child ? size.activities : size.clock + moon) + privacy + 2 * this._secondExtra;
+        const moon = this._moon.visible ? (size.moon + MOON_GAP) * fontScale : 0;
+        const base = this._left.child || this._right.child ? size.activities : size.clock;
+        return px(Math.round(base * fontScale + moon)) + privacy + 2 * this._secondExtra;
     }
 
     /** A sign with a time label beside it, for the right side's second activity. */
@@ -222,17 +227,23 @@ export const CompactView = GObject.registerClass({
         this._refresh();
     }
 
+    /** Sizes widgets according to whether the island is in the top bar and the current scale. */
+    _syncSizes() {
+        const size = SIZES[this._inBar ? 'inBar' : 'hanging'];
+        this._art.resize(size.art, size.artRadius);
+        this._ring.resize(size.ring);
+        this._bars.maxHeight = this._secondBars.maxHeight = size.bars;
+        this._moon.icon_size = iconSize(size.moon);
+        this._phone.icon_size = this._micOff.icon_size = this._secondPhone.icon_size = iconSize(size.call);
+        this._serviceDown.icon_size = iconSize(size.call);
+    }
+
     /** Fits the view inside the top bar, like a notch, or below it. */
     set inBar(inBar) {
         if (inBar === this._inBar)
             return;
         this._inBar = inBar;
-        const size = SIZES[inBar ? 'inBar' : 'hanging'];
-        this._art.resize(size.art, size.artRadius);
-        this._ring.resize(size.ring);
-        this._bars.maxHeight = this._secondBars.maxHeight = size.bars;
-        this._moon.icon_size = size.moon;
-        this._phone.icon_size = this._micOff.icon_size = this._secondPhone.icon_size = size.call;
+        this._syncSizes();
         if (inBar)
             this.add_style_class_name('isle-compact-in-bar');
         else
@@ -369,7 +380,7 @@ export const CompactView = GObject.registerClass({
         const spacing = width ? this._row.get_theme_node().get_length('spacing') : 0;
         this._secondExtra = width ? Math.max(0, width - slot) : 0;
         // CSS, which St scales: measured in stage pixels, it is set in CSS ones.
-        this._right.style = width ? `width: ${width / uiScale()}px;` : null;
+        this._right.style = width ? `width: ${width / stageScale()}px;` : null;
         this._secondBalance.visible = this._secondExtra > spacing;
         this._secondBalance.width = Math.max(0, this._secondExtra - spacing);
     }

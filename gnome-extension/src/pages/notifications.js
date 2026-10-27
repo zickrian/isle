@@ -9,7 +9,7 @@ import GObject from 'gi://GObject';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
-import {VERTICAL} from '../compat.js';
+import {VERTICAL, iconSize} from '../compat.js';
 import * as Format from '../format.js';
 import {notificationIcon, plainBody} from '../notifications.js';
 import {icon, iconButton, isSymbolic, label, ownIcon, pillButton, setButtonIcon} from '../widgets.js';
@@ -22,10 +22,10 @@ const MAX_ACTIONS = 3;
 function notificationBadge(gicon) {
     gicon = gicon ? ownIcon(gicon) : icon('dialog-information-symbolic');
     if (!isSymbolic(gicon))
-        return new St.Icon({gicon, icon_size: 20, y_align: Clutter.ActorAlign.CENTER});
+        return new St.Icon({gicon, icon_size: iconSize(20), y_align: Clutter.ActorAlign.CENTER});
     return new St.Bin({
         style_class: 'isle-notification-glyph',
-        child: new St.Icon({gicon, icon_size: 12}),
+        child: new St.Icon({gicon, icon_size: iconSize(12)}),
         y_align: Clutter.ActorAlign.CENTER,
     });
 }
@@ -92,7 +92,7 @@ class NotificationsPage extends Page {
     _buildDndNote() {
         this._dndNote = new St.BoxLayout({style_class: 'isle-notifications-dnd-note', visible: false});
         // Dimmed as the line beside it: the moon is drawn white, so its colour can't be set.
-        this._dndNote.add_child(new St.Icon({gicon: icon('isle-moon'), icon_size: 10, opacity: 130, y_align: Clutter.ActorAlign.CENTER}));
+        this._dndNote.add_child(new St.Icon({gicon: icon('isle-moon'), icon_size: iconSize(10), opacity: 130, y_align: Clutter.ActorAlign.CENTER}));
         const text = label('Do Not Disturb: new ones wait here; urgent ones still show', 'isle-notifications-dnd-text',
             {x_expand: true, y_align: Clutter.ActorAlign.CENTER});
         text.clutter_text.ellipsize = Pango.EllipsizeMode.END;
@@ -114,7 +114,7 @@ class NotificationsPage extends Page {
         this._scroll.set_child(this._list);
 
         this._empty = new St.BoxLayout({...VERTICAL, style_class: 'isle-empty', x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER, x_expand: true});
-        this._empty.add_child(new St.Icon({gicon: icon('isle-bell'), icon_size: 24, style_class: 'isle-empty-icon', x_align: Clutter.ActorAlign.CENTER}));
+        this._empty.add_child(new St.Icon({gicon: icon('isle-bell'), icon_size: iconSize(24), style_class: 'isle-empty-icon', x_align: Clutter.ActorAlign.CENTER}));
         this._empty.add_child(label('No notifications', 'isle-empty-title', {x_align: Clutter.ActorAlign.CENTER}));
         this._empty.add_child(label('You’re all caught up', 'isle-empty-hint', {x_align: Clutter.ActorAlign.CENTER}));
 

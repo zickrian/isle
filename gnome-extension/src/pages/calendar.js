@@ -13,7 +13,7 @@ import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-import {VERTICAL, onUiScale, px} from '../compat.js';
+import {VERTICAL, iconSize, onUiScale, px} from '../compat.js';
 import * as Format from '../format.js';
 import {icon, iconButton, label} from '../widgets.js';
 import * as WorldClocks from '../worldClocks.js';
@@ -188,7 +188,7 @@ export const CalendarPage = GObject.registerClass({
 
     /** Header with month, year and arrows, the weekday letters, and the empty grid. */
     _buildMonth() {
-        const column = new St.BoxLayout({...VERTICAL, style_class: 'isle-cal-month', y_align: Clutter.ActorAlign.CENTER});
+        const column = new St.BoxLayout({...VERTICAL, style_class: 'isle-cal-month', y_align: Clutter.ActorAlign.START});
 
         // "OCTOBER 2026" in red; click it for today.
         const header = new St.BoxLayout({style_class: 'isle-cal-month-header'});
@@ -224,7 +224,6 @@ export const CalendarPage = GObject.registerClass({
         column.add_child(weekdays);
 
         this._grid = new St.BoxLayout({...VERTICAL, style_class: 'isle-cal-grid', y_align: Clutter.ActorAlign.START});
-        onUiScale(this._grid, scale => (this._grid.height = GRID_HEIGHT * scale));
         column.add_child(this._grid);
         return column;
     }
@@ -250,7 +249,7 @@ export const CalendarPage = GObject.registerClass({
         column.add_child(header);
 
         this._entry = new St.Entry({style_class: 'isle-entry isle-cal-add', can_focus: true, x_expand: true});
-        this._entry.set_primary_icon(new St.Icon({gicon: icon('isle-plus-symbolic'), icon_size: 13, style_class: 'isle-task-add-icon'}));
+        this._entry.set_primary_icon(new St.Icon({gicon: icon('isle-plus-symbolic'), icon_size: iconSize(13), style_class: 'isle-task-add-icon'}));
         const text = this._entry.clutter_text;
         text.connect('activate', () => this._add());
         // Typing needs the keyboard, which the shell only gets on request;
@@ -543,7 +542,12 @@ export const CalendarPage = GObject.registerClass({
         const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
         const lead = (month.getDay() - this._weekStart + 7) % 7;
         const rows = Math.ceil((lead + daysInMonth) / 7);
-        const rowHeight = px(Math.min(MAX_ROW_HEIGHT, Math.floor(GRID_HEIGHT / rows)));
+        const rowHeight = px(rows === 6 ? 18 : 20);
+
+        if (rows === 6)
+            this._grid.add_style_class_name('six-rows');
+        else
+            this._grid.remove_style_class_name('six-rows');
 
         this._grid.destroy_all_children();
         this._dayButtons = [];

@@ -10,7 +10,7 @@ import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import {vividColorOfFile} from '../colors.js';
-import {VERTICAL, onUiScale, px} from '../compat.js';
+import {VERTICAL, iconSize, onUiScale, px} from '../compat.js';
 import * as Format from '../format.js';
 import * as Playback from '../playback.js';
 import {Art, Bars, Slider, fence, icon, iconButton, label, ownIcon, restsAt, setButtonIcon, setEnabled, smallCover, coverKey} from '../widgets.js';
@@ -108,7 +108,7 @@ class MediaPage extends Page {
         });
         this._arts.push(art);
 
-        const badgeIcon = new St.Icon({icon_size: Math.min(22, Math.round(size * 0.3))});
+        const badgeIcon = new St.Icon({icon_size: iconSize(Math.min(22, Math.round(size * 0.3)))});
         const badge = new St.Bin({
             style_class: 'isle-app-badge',
             child: badgeIcon,
@@ -206,7 +206,7 @@ class MediaPage extends Page {
         head.add_child(texts);
         const modes = new St.BoxLayout({style_class: 'isle-player-modes', y_align: Clutter.ActorAlign.START});
         // With more than one player running: switch to the next, shown by its app's icon.
-        this._playerIcon = new St.Icon({icon_size: 16});
+        this._playerIcon = new St.Icon({icon_size: iconSize(16)});
         this._playerSwitch = new St.Button({style_class: 'isle-button isle-button-flat isle-player-switch', child: this._playerIcon,
             can_focus: true, visible: false});
         this._playerSwitch.connect('clicked', () => {
@@ -300,7 +300,7 @@ class MediaPage extends Page {
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
         });
-        box.add_child(new St.Icon({gicon: icon('isle-music'), icon_size: 28, style_class: 'isle-empty-icon'}));
+        box.add_child(new St.Icon({gicon: icon('isle-music'), icon_size: iconSize(28), style_class: 'isle-empty-icon'}));
         box.add_child(label('Nothing playing', 'isle-empty-title', {x_align: Clutter.ActorAlign.CENTER}));
         box.add_child(label('Play something in Spotify or on YouTube', 'isle-empty-hint', {x_align: Clutter.ActorAlign.CENTER}));
         return box;
@@ -422,14 +422,14 @@ class MediaPage extends Page {
         this._outputList.destroy_all_children();
         for (const output of outputs) {
             const row = new St.BoxLayout({style_class: 'isle-output-row', x_expand: true, x_align: Clutter.ActorAlign.FILL});
-            row.add_child(new St.Icon({gicon: output.gicon ? ownIcon(output.gicon) : icon('audio-speakers-symbolic'), fallback_icon_name: 'audio-speakers-symbolic', icon_size: 18, y_align: Clutter.ActorAlign.CENTER}));
+            row.add_child(new St.Icon({gicon: output.gicon ? ownIcon(output.gicon) : icon('audio-speakers-symbolic'), fallback_icon_name: 'audio-speakers-symbolic', icon_size: iconSize(18), y_align: Clutter.ActorAlign.CENTER}));
             const texts = new St.BoxLayout({...VERTICAL, x_expand: true, y_align: Clutter.ActorAlign.CENTER});
             texts.add_child(label(output.name, 'isle-output-name'));
             if (output.detail)
                 texts.add_child(label(output.detail, 'isle-output-detail'));
             row.add_child(texts);
             // The current output is marked with a check.
-            const check = new St.Icon({gicon: icon('isle-check-symbolic'), icon_size: 14, opacity: output.active ? 255 : 0, y_align: Clutter.ActorAlign.CENTER});
+            const check = new St.Icon({gicon: icon('isle-check-symbolic'), icon_size: iconSize(14), opacity: output.active ? 255 : 0, y_align: Clutter.ActorAlign.CENTER});
             row.add_child(check);
 
             const button = new St.Button({

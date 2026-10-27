@@ -47,7 +47,7 @@
 
 /* Buttons: grey (solid, so an alert's glow never tints it), white text, lighter under the pointer. */
 .isle-pill-small {
-  font-size: 12px;
+  font-size: 9pt;
   padding: 6px 14px;
   color: #ffffff;
   background-color: #2c2c2e;
@@ -77,12 +77,12 @@
 
 .isle-empty { spacing: 4px; }
 .isle-empty-icon { color: rgba(255, 255, 255, 0.35); padding-bottom: 4px; }
-.isle-empty-title { font-size: 15px; font-weight: 600; letter-spacing: -0.1px; }
-.isle-empty-hint { font-size: 12px; color: rgba(255, 255, 255, 0.5); }
+.isle-empty-title { font-size: 11.5pt; font-weight: 600; letter-spacing: -0.1px; }
+.isle-empty-hint { font-size: 9pt; color: rgba(255, 255, 255, 0.5); }
 
 .isle-entry {
   color: #ffffff;
-  font-size: 13px;
+  font-size: 10pt;
   border-radius: 999px;
   padding: 8px 14px;
   border: none;
@@ -109,15 +109,15 @@
 /* Compact top bar: slimmer than GNOME's 2.2em, so it reads as a thin bezel
  * around the island. Status icons and the tray stay where they are. */
 #panel.isle-compact-bar {
-  height: 26px;
-  font-size: 13px;
+  height: 1.8em;
+  font-size: 0.9em;
   font-family: "Inter Variable";
   font-weight: 500;
 }
 
 /* Closed island inside the top bar, like a notch: the bar is as tall as the island, so
  * maximised windows start below it. Comes after the compact bar's height so it wins. */
-#panel.isle-notch-bar { height: 32px; }
+#panel.isle-notch-bar { height: 2.2em; }
 
 /* Isle's bar is black or see-through in light and dark style alike: its text and icons stay white,
  * as GNOME's light style has them over the overview (it makes them near-black otherwise). */
@@ -162,18 +162,18 @@
 /* Both slots keep their width when empty so the clock stays centred. */
 .isle-compact-slot { width: 24px; }
 
-.isle-compact-clock { font-size: 17px; font-weight: 600; letter-spacing: -0.2px; }
+.isle-compact-clock { font-size: 13pt; font-weight: 600; letter-spacing: -0.2px; }
 .isle-compact-clock-box { spacing: 6px; }
 
 /* Inside the top bar everything is sized like the bar's own text. */
 .isle-compact-in-bar .isle-compact-row { padding: 0 14px; spacing: 10px; }
 .isle-compact-in-bar .isle-compact-slot { width: 22px; }
-.isle-compact-in-bar .isle-compact-clock { font-size: 15px; letter-spacing: -0.1px; }
+.isle-compact-in-bar .isle-compact-clock { font-size: 11pt; letter-spacing: -0.1px; }
 
 .isle-unseen-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 3px;
+  width: 0.4em;
+  height: 0.4em;
+  border-radius: 999px;
   background-color: #ffffff;
 }
 
@@ -183,9 +183,9 @@
 .isle-privacy-dots-in-slot { padding-left: 0; }
 
 .isle-privacy-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 4px;
+  width: 0.45em;
+  height: 0.45em;
+  border-radius: 999px;
 }
 
 .isle-privacy-dot.camera { background-color: #34c759; }
@@ -193,9 +193,9 @@
 .isle-privacy-dot.screenShare { background-color: #0a84ff; }
 
 .isle-recording-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 5px;
+  width: 0.65em;
+  height: 0.65em;
+  border-radius: 999px;
   background-color: #ff453a;
 }
 
@@ -206,8 +206,8 @@
 .isle-compact-second { spacing: 8px; }
 .isle-compact-second-call { color: #30d158; }
 /* As large as the clock and on its line: the two times read as one row. */
-.isle-compact-second-time { font-size: 17px; font-weight: 600; letter-spacing: -0.2px; }
-.isle-compact-in-bar .isle-compact-second-time { font-size: 15px; letter-spacing: -0.1px; }
+.isle-compact-second-time { font-size: 13pt; font-weight: 600; letter-spacing: -0.2px; }
+.isle-compact-in-bar .isle-compact-second-time { font-size: 11pt; letter-spacing: -0.1px; }
 
 /* ── Alerts (peek) ────────────────────────────────────── */
 
@@ -238,8 +238,8 @@
   padding: 3px 10px;
   border-radius: 999px;
 }
-.isle-peek-title { font-size: 14px; font-weight: 600; }
-.isle-peek-subtitle { font-size: 12px; color: rgba(255, 255, 255, 0.5); }
+.isle-peek-title { font-size: 10.5pt; font-weight: 600; }
+.isle-peek-subtitle { font-size: 9pt; color: rgba(255, 255, 255, 0.5); }
 .isle-peek-code {
     font-family: monospace;
     font-size: 12px;
@@ -266,7 +266,7 @@
 .isle-peek-answered-text { font-size: 12px; font-weight: 600; }
 .isle-peek-allowed { color: #30d158; }
 .isle-peek-denied { color: #ff453a; }
-.isle-peek-value { font-size: 20px; font-weight: 600; letter-spacing: -0.5px; }
+.isle-peek-value { font-size: 15pt; font-weight: 600; letter-spacing: -0.5px; }
 .isle-peek-level-box { spacing: 8px; }
 .isle-peek-level-text { font-size: 12px; font-weight: 600; min-width: 30px; text-align: right; }
 
@@ -275,11 +275,11 @@
 /* The orb on the left, then what was heard above the answer (voice.js sizes them to match). */
 .isle-voice-row { padding: 14px 16px 20px 16px; spacing: 12px; }
 .isle-voice-orb { border-radius: 999px; }
-.isle-voice-heard { font-size: 12px; color: rgba(255, 255, 255, 0.5); padding-bottom: 2px; }
-.isle-voice-text { font-size: 15px; font-weight: 500; letter-spacing: -0.1px; }
+.isle-voice-heard { font-size: 9pt; color: rgba(255, 255, 255, 0.5); padding-bottom: 2px; }
+.isle-voice-text { font-size: 11.25pt; font-weight: 500; letter-spacing: -0.1px; }
 .isle-voice-text-dim { color: rgba(255, 255, 255, 0.6); }
-.isle-voice-text-long { font-size: 14px; font-weight: 400; color: rgba(255, 255, 255, 0.92); }
-.isle-voice-hint { font-size: 12px; color: rgba(255, 255, 255, 0.5); padding-top: 4px; }
+.isle-voice-text-long { font-size: 10.5pt; font-weight: 400; color: rgba(255, 255, 255, 0.92); }
+.isle-voice-hint { font-size: 9pt; color: rgba(255, 255, 255, 0.5); padding-top: 4px; }
 .isle-voice-steps { spacing: 3px; padding-top: 5px; }
 .isle-voice-step { spacing: 6px; }
 .isle-voice-step-tick { color: rgba(255, 255, 255, 0.45); }
@@ -421,7 +421,7 @@
 .isle-tab:checked { background-color: rgba(255, 255, 255, 0.09); }
 .isle-tab-box { spacing: 0; }
 /* The gap from the icon is the name's own margin, so a closed name takes no room (expanded.js). */
-.isle-tab-label { font-size: 13px; font-weight: 600; margin-left: 6px; }
+.isle-tab-label { font-size: 10pt; font-weight: 600; margin-left: 6px; }
 
 /* A dot on a tab whose page has news. */
 .isle-tab-badge {
@@ -430,8 +430,8 @@
   border-radius: 3px;
   background-color: #ff453a;
 }
-.isle-header-date { font-size: 13px; color: rgba(255, 255, 255, 0.9); }
-.isle-header-time { font-size: 13px; font-weight: 600; }
+.isle-header-date { font-size: 10pt; color: rgba(255, 255, 255, 0.9); }
+.isle-header-time { font-size: 10pt; font-weight: 600; }
 .isle-header-settings { padding: 4px; color: rgba(255, 255, 255, 0.6); }
 .isle-header-settings:hover { color: #ffffff; background-color: rgba(255, 255, 255, 0.1); }
 .isle-header-status { spacing: 10px; }
@@ -444,7 +444,7 @@
 
 .isle-recording-pill:hover { background-color: rgba(255, 69, 58, 0.32); }
 .isle-recording-pill-box { spacing: 6px; }
-.isle-recording-time { font-size: 12px; font-weight: 700; color: #ff6961; }
+.isle-recording-time { font-size: 9pt; font-weight: 700; color: #ff6961; }
 
 /* Pages line up with the header's edges. */
 .isle-page { padding: 6px 28px 0 28px; }
@@ -460,8 +460,8 @@
 .isle-player-modes .isle-button { padding: 5px; color: rgba(255, 255, 255, 0.75); }
 .isle-player-top { spacing: 14px; }
 .isle-player-texts { spacing: 1px; }
-.isle-track-title { font-size: 17px; font-weight: 600; letter-spacing: -0.2px; }
-.isle-track-subtitle { font-size: 13px; color: rgba(255, 255, 255, 0.55); }
+.isle-track-title { font-size: 13pt; font-weight: 600; letter-spacing: -0.2px; }
+.isle-track-subtitle { font-size: 10pt; color: rgba(255, 255, 255, 0.55); }
 /* The playing app's icon on the cover's corner, ringed in black. */
 .isle-app-badge {
   padding: 2px;
@@ -472,7 +472,7 @@
 .isle-player-progress { spacing: 10px; padding-top: 6px; }
 
 .isle-time {
-  font-size: 12px;
+  font-size: 9pt;
   font-weight: 500;
   min-width: 34px;
   color: rgba(255, 255, 255, 0.6);
@@ -493,7 +493,7 @@
 
 .isle-audio-layout { spacing: 8px; padding-top: 2px; }
 .isle-volume-row { spacing: 10px; }
-.isle-volume-text { font-size: 12px; font-weight: 600; min-width: 46px; text-align: right; color: rgba(255, 255, 255, 0.85); }
+.isle-volume-text { font-size: 9pt; font-weight: 600; min-width: 46px; text-align: right; color: rgba(255, 255, 255, 0.85); }
 .isle-output-list { spacing: 4px; }
 
 .isle-output-button {
@@ -506,8 +506,8 @@
 .isle-output-button:hover { background-color: #1c1c1e; }
 .isle-output-button.active { background-color: #1c1c1e; }
 .isle-output-row { spacing: 12px; }
-.isle-output-name { font-size: 13px; font-weight: 600; }
-.isle-output-detail { font-size: 12px; color: rgba(255, 255, 255, 0.5); }
+.isle-output-name { font-size: 10pt; font-weight: 600; }
+.isle-output-detail { font-size: 9pt; color: rgba(255, 255, 255, 0.5); }
 
 /* Lyrics: the player in a column beside the words. */
 
@@ -518,8 +518,8 @@
 .isle-lyrics-controls { spacing: 4px; }
 .isle-lyrics-controls .isle-transport { spacing: 14px; }
 .isle-lyrics-controls .isle-mode-toggle { color: rgba(255, 255, 255, 0.75); }
-.isle-side-title { font-size: 15px; font-weight: 700; letter-spacing: -0.2px; }
-.isle-side-artist { font-size: 12px; color: rgba(255, 255, 255, 0.6); }
+.isle-side-title { font-size: 11.5pt; font-weight: 700; letter-spacing: -0.2px; }
+.isle-side-artist { font-size: 9pt; color: rgba(255, 255, 255, 0.6); }
 .isle-side-bars { padding-top: 5px; }
 
 /* Lines fade at the edges as they scroll; room below lets the last ones
@@ -530,7 +530,7 @@
 
 /* Size, brightness and scale per line are set in lyrics.js. */
 .isle-lyric-line {
-  font-size: 18px;
+  font-size: 14pt;
   font-weight: 700;
   letter-spacing: -0.3px;
   padding: 3px 0;
@@ -538,7 +538,7 @@
 }
 
 .isle-lyric-line.plain {
-  font-size: 14px;
+  font-size: 10.5pt;
   font-weight: 500;
   letter-spacing: 0;
   color: rgba(255, 255, 255, 0.85);
@@ -553,8 +553,8 @@
 .isle-lyrics-state-icon { color: rgba(255, 255, 255, 0.4); padding-bottom: 5px; }
 .isle-lyrics-state-dots { padding: 4px 0 8px 0; }
 .isle-lyrics-state-dots .isle-lyric-dot { background-color: rgba(255, 255, 255, 0.6); }
-.isle-lyrics-state-title { font-size: 14px; font-weight: 600; color: rgba(255, 255, 255, 0.85); }
-.isle-lyrics-state-hint { font-size: 12px; color: rgba(255, 255, 255, 0.55); }
+.isle-lyrics-state-title { font-size: 10.5pt; font-weight: 600; color: rgba(255, 255, 255, 0.85); }
+.isle-lyrics-state-hint { font-size: 9pt; color: rgba(255, 255, 255, 0.55); }
 
 /* ── Call ─────────────────────────────────────────────── */
 
@@ -563,7 +563,7 @@
 .isle-call-preview-button { border-radius: 14px; }
 .isle-call-preview-button:focus { color: #ffffff; }
 .isle-call-placeholder { spacing: 8px; }
-.isle-call-hint { font-size: 11px; font-weight: 500; color: rgba(255, 255, 255, 0.5); }
+.isle-call-hint { font-size: 8.5pt; font-weight: 500; color: rgba(255, 255, 255, 0.5); }
 
 /* Over the preview under the pointer: where a click goes. */
 .isle-call-preview-hover {
@@ -575,10 +575,10 @@
 
 .isle-call-side { spacing: 2px; }
 .isle-call-head { spacing: 8px; }
-.isle-call-name { font-size: 17px; font-weight: 600; letter-spacing: -0.2px; }
+.isle-call-name { font-size: 13pt; font-weight: 600; letter-spacing: -0.2px; }
 .isle-call-status { spacing: 5px; padding-left: 1px; }
-.isle-call-kind { font-size: 13px; color: rgba(255, 255, 255, 0.55); }
-.isle-call-duration { font-size: 13px; font-weight: 600; color: #30d158; }
+.isle-call-kind { font-size: 9.5pt; color: rgba(255, 255, 255, 0.55); }
+.isle-call-duration { font-size: 9.5pt; font-weight: 600; color: #30d158; }
 
 /* Round buttons with captions, like FaceTime's; mute turns white while on. */
 .isle-call-controls { spacing: 18px; padding-top: 14px; }
@@ -597,7 +597,7 @@
 .isle-call-control:focus { color: #ffffff; }
 .isle-call-control:checked { color: #000000; background-color: #ffffff; }
 .isle-call-control:checked:hover { background-color: #e6e6e6; }
-.isle-call-control-label { font-size: 11px; font-weight: 500; color: rgba(255, 255, 255, 0.6); }
+.isle-call-control-label { font-size: 8.5pt; font-weight: 500; color: rgba(255, 255, 255, 0.6); }
 
 /* The Call tab's phone is green, like the call itself. */
 .isle-tab-call StIcon { color: #30d158; }
@@ -607,14 +607,14 @@
 /* ── Focus ────────────────────────────────────────────── */
 
 /* The Focus page (timer.js): a ring with the time and the phase, steppers for the lengths, and Start. */
-.isle-timer-time { font-size: 24px; font-weight: 600; letter-spacing: -0.5px; }
-.isle-timer-phase { font-size: 12px; font-weight: 500; color: rgba(255, 255, 255, 0.55); }
+.isle-timer-time { font-size: 18pt; font-weight: 600; letter-spacing: -0.5px; }
+.isle-timer-phase { font-size: 9pt; font-weight: 500; color: rgba(255, 255, 255, 0.55); }
 
 /* "Work  25  −  +", as a pill. */
 .isle-steppers { spacing: 8px; }
 .isle-stepper { padding: 3px 4px 3px 12px; spacing: 4px; border-radius: 999px; background-color: #1c1c1e; }
-.isle-stepper-name { font-size: 12px; font-weight: 500; color: rgba(255, 255, 255, 0.55); width: 40px; }
-.isle-stepper-value { font-size: 15px; font-weight: 600; letter-spacing: -0.1px; width: 26px; text-align: right; padding-right: 6px; }
+.isle-stepper-name { font-size: 9pt; font-weight: 500; color: rgba(255, 255, 255, 0.55); width: 40px; }
+.isle-stepper-value { font-size: 11.5pt; font-weight: 600; letter-spacing: -0.1px; width: 26px; text-align: right; padding-right: 6px; }
 .isle-stepper-button { padding: 6px; border-radius: 999px; color: rgba(255, 255, 255, 0.8); }
 .isle-stepper-button:hover { color: #ffffff; background-color: rgba(255, 255, 255, 0.1); }
 
@@ -624,7 +624,7 @@
 .isle-start-pill { padding: 8px 18px; border-radius: 999px; color: #ffffff; background-color: #2c2c2e; }
 .isle-start-pill:hover { background-color: #3a3a3c; }
 .isle-start-pill-box { spacing: 7px; }
-.isle-start-pill-label { font-size: 14px; font-weight: 600; }
+.isle-start-pill-label { font-size: 10.5pt; font-weight: 600; }
 
 /* ── Lists (notifications, calendar) ──────────────────── */
 
@@ -638,8 +638,8 @@
 /* Reminders: an orange title and count (as large as the timer's caption beside it), rows of a ring and a title
  * over a hairline. A 24 px header and 24 px rows fit five whole rows in the 144 px page. */
 .isle-reminders-header { height: 24px; padding: 0; spacing: 4px; }
-.isle-reminders-title { font-size: 17px; font-weight: 600; color: #ff9f0a; letter-spacing: -0.2px; }
-.isle-reminders-count { font-size: 17px; font-weight: 600; letter-spacing: -0.2px; color: #ff9f0a; padding-right: 2px; }
+.isle-reminders-title { font-size: 13pt; font-weight: 600; color: #ff9f0a; letter-spacing: -0.2px; }
+.isle-reminders-count { font-size: 13pt; font-weight: 600; letter-spacing: -0.2px; color: #ff9f0a; padding-right: 2px; }
 .isle-reminders-add { padding: 5px; border-radius: 99px; color: rgba(255, 255, 255, 0.55); }
 .isle-reminders-add:hover { color: #ffffff; background-color: rgba(255, 255, 255, 0.1); }
 
@@ -669,18 +669,18 @@
 .isle-reminder-content { spacing: 6px; padding-right: 2px; }
 /* The hairline runs under the text, from the title to the edge. */
 .isle-reminder-line { height: 1px; background-color: rgba(255, 255, 255, 0.1); }
-.isle-reminder-title { font-size: 13.5px; color: #ffffff; transition-duration: 200ms; }
+.isle-reminder-title { font-size: 10pt; color: #ffffff; transition-duration: 200ms; }
 .isle-reminder-title.done { color: rgba(255, 255, 255, 0.38); }
 .isle-reminder-strike { height: 1.5px; background-color: rgba(255, 255, 255, 0.45); }
 .isle-reminder-remove { padding: 3px; border-radius: 99px; color: rgba(255, 255, 255, 0.5); }
 .isle-reminder-remove:hover { color: #ffffff; background-color: rgba(255, 255, 255, 0.1); }
 
-.isle-reminders-empty { font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.55); padding-top: 22px; }
+.isle-reminders-empty { font-size: 9.5pt; font-weight: 600; color: rgba(255, 255, 255, 0.55); padding-top: 22px; }
 
 /* Plain text fields, inside the row (Blur my Shell restyles entries with !important). */
 #isleIsland .isle-reminder-field,
 #isleIsland .isle-reminder-field:focus {
-  font-size: 13.5px;
+  font-size: 10pt;
   padding: 0;
   border: none;
   color: #ffffff !important;
@@ -700,21 +700,21 @@
 /* ── Calendar ─────────────────────────────────────────── */
 
 /* The month, as a calendar widget shows it. */
-.isle-cal-month { width: 196px; spacing: 2px; }
-.isle-cal-month-header { spacing: 0; padding-bottom: 2px; }
+.isle-cal-month { width: 196px; spacing: 1px; padding-top: 1px; }
+.isle-cal-month-header { spacing: 0; padding-bottom: 1px; }
 .isle-cal-month-title { padding: 1px 4px; border-radius: 6px; }
 .isle-cal-month-title:hover { background-color: rgba(255, 255, 255, 0.06); }
 .isle-cal-month-title-box { spacing: 5px; }
 /* No letter-spacing: St rounds it to whole pixels (none at 100%, 1px at 200%), and Pango then cut the
  * name at the width St measured for it ("OCTOB…"). */
-.isle-cal-month-name { font-size: 12px; font-weight: 700; color: #ff453a; }
-.isle-cal-year { font-size: 12px; font-weight: 600; color: rgba(255, 255, 255, 0.5); }
-.isle-cal-arrow { padding: 4px; color: rgba(255, 255, 255, 0.75); }
+.isle-cal-month-name { font-size: 9pt; font-weight: 700; color: #ff453a; }
+.isle-cal-year { font-size: 9pt; font-weight: 600; color: rgba(255, 255, 255, 0.5); }
+.isle-cal-arrow { padding: 3px; color: rgba(255, 255, 255, 0.75); }
 
 .isle-cal-weekdays { padding-bottom: 1px; }
 .isle-cal-weekday {
   width: 28px;
-  font-size: 10px;
+  font-size: 8pt;
   font-weight: 600;
   text-align: center;
   color: rgba(255, 255, 255, 0.55);
@@ -724,13 +724,19 @@
 .isle-cal-cell { width: 28px; }
 
 .isle-cal-day {
-  width: 19px;
-  height: 19px;
-  border-radius: 10px;
-  font-size: 11px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  font-size: 8.5pt;
   font-weight: 600;
   color: #ffffff;
   transition-duration: 120ms;
+}
+
+.isle-cal-grid.six-rows .isle-cal-day {
+  width: 17px;
+  height: 17px;
+  font-size: 8pt;
 }
 
 .isle-cal-day:hover { background-color: rgba(255, 255, 255, 0.12); }
@@ -745,7 +751,7 @@
   width: 3px;
   height: 3px;
   margin-bottom: 1px;
-  border-radius: 2px;
+  border-radius: 999px;
   background-color: rgba(255, 255, 255, 0.55);
 }
 .isle-cal-dot.on-today { background-color: #ffffff; }
@@ -753,10 +759,10 @@
 /* The day's events. */
 .isle-cal-agenda { spacing: 5px; }
 .isle-cal-day-header { spacing: 8px; }
-.isle-cal-day-name { font-size: 14px; font-weight: 600; letter-spacing: -0.1px; }
+.isle-cal-day-name { font-size: 10.5pt; font-weight: 600; letter-spacing: -0.1px; }
 
 .isle-cal-today {
-  font-size: 11px;
+  font-size: 8.5pt;
   font-weight: 600;
   padding: 2px 9px;
   border-radius: 999px;
@@ -765,7 +771,7 @@
 }
 
 .isle-cal-today:hover { background-color: #3a3a3c; }
-.isle-cal-add { padding: 6px 12px; font-size: 13px; }
+.isle-cal-add { padding: 6px 12px; font-size: 9.5pt; }
 .isle-cal-scroll { -st-vfade-offset: 14px; }
 .isle-cal-events { spacing: 3px; padding-bottom: 2px; }
 
@@ -779,8 +785,8 @@
 }
 
 .isle-cal-event-bar { width: 3px; border-radius: 2px; margin: 4px 0 4px 5px; }
-.isle-cal-event-title { font-size: 13px; font-weight: 600; }
-.isle-cal-event-time { font-size: 11px; font-weight: 500; color: rgba(255, 255, 255, 0.65); }
+.isle-cal-event-title { font-size: 9.5pt; font-weight: 600; }
+.isle-cal-event-time { font-size: 8.5pt; font-weight: 500; color: rgba(255, 255, 255, 0.65); }
 /* World clocks, in place of the events: as their rows, untinted. */
 .isle-cal-world-toggle { padding: 4px; border-radius: 999px; transition-duration: 120ms; }
 .isle-cal-world-toggle:hover { background-color: rgba(255, 255, 255, 0.1); }
@@ -792,9 +798,9 @@
   border-radius: 7px;
   background-color: rgba(255, 255, 255, 0.07);
 }
-.isle-cal-world-city { font-size: 13px; font-weight: 600; }
-.isle-cal-world-meta { font-size: 11px; font-weight: 500; color: rgba(255, 255, 255, 0.55); }
-.isle-cal-world-time { font-size: 13px; font-weight: 600; font-feature-settings: "tnum"; }
+.isle-cal-world-city { font-size: 9.5pt; font-weight: 600; }
+.isle-cal-world-meta { font-size: 8.5pt; font-weight: 500; color: rgba(255, 255, 255, 0.55); }
+.isle-cal-world-time { font-size: 9.5pt; font-weight: 600; font-feature-settings: "tnum"; }
 .isle-cal-world-strip {
   padding: 3px 2px 0 2px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
@@ -803,10 +809,10 @@
 .isle-cal-world-strip:hover .isle-cal-world-chip-city { color: rgba(255, 255, 255, 0.8); }
 .isle-cal-world-strip-box { spacing: 14px; }
 .isle-cal-world-chip { spacing: 5px; }
-.isle-cal-world-chip-city { font-size: 11px; font-weight: 500; color: rgba(255, 255, 255, 0.55); }
-.isle-cal-world-chip-time { font-size: 11px; font-weight: 600; font-feature-settings: "tnum"; }
-.isle-cal-empty { font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.55); }
-.isle-cal-accounts { font-size: 12px; color: rgba(10, 132, 255, 1); padding: 4px 8px; border-radius: 8px; }
+.isle-cal-world-chip-city { font-size: 8.5pt; font-weight: 500; color: rgba(255, 255, 255, 0.55); }
+.isle-cal-world-chip-time { font-size: 8.5pt; font-weight: 600; font-feature-settings: "tnum"; }
+.isle-cal-empty { font-size: 9.5pt; font-weight: 600; color: rgba(255, 255, 255, 0.55); }
+.isle-cal-accounts { font-size: 9pt; color: rgba(10, 132, 255, 1); padding: 4px 8px; border-radius: 8px; }
 .isle-cal-accounts:hover { background-color: rgba(255, 255, 255, 0.08); }
 .isle-cal-accounts:focus { color: #ffffff; }
 
@@ -814,13 +820,13 @@
 
 /* As the rows' insides: the heading over their icons, Clear over their times. */
 .isle-notifications-bar { spacing: 6px; padding: 0 8px 4px 8px; }
-.isle-notifications-heading { font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.6); }
-.isle-notifications-clear { font-size: 12px; font-weight: 600; padding: 5px 12px; }
+.isle-notifications-heading { font-size: 9.5pt; font-weight: 600; color: rgba(255, 255, 255, 0.6); }
+.isle-notifications-clear { font-size: 9pt; font-weight: 600; padding: 5px 12px; }
 .isle-dnd-toggle { padding: 6px; border-radius: 999px; color: rgba(255, 255, 255, 0.6); }
 .isle-dnd-toggle:checked { color: #ffffff; background-color: #5e5ce6; }
 .isle-dnd-toggle:checked:hover { background-color: #6e6cf0; }
 .isle-notifications-dnd-note { spacing: 6px; padding: 0 10px 8px 10px; }
-.isle-notifications-dnd-text { font-size: 12px; color: rgba(255, 255, 255, 0.5); }
+.isle-notifications-dnd-text { font-size: 9pt; color: rgba(255, 255, 255, 0.5); }
 .isle-notification-list { spacing: 2px; }
 
 /* A row each, as a list: the app's icon, who in white and what in grey on one line, then when. */
@@ -830,12 +836,12 @@
 }
 
 .isle-notification-row:hover { background-color: rgba(255, 255, 255, 0.06); }
-.isle-notification { spacing: 10px; padding: 6px 8px; }
+.isle-notification { spacing: 10px; padding: 5px 8px; }
 .isle-notification-line { spacing: 8px; }
-.isle-notification-title { font-size: 13px; font-weight: 600; }
-.isle-notification-body { font-size: 13px; color: rgba(255, 255, 255, 0.55); }
+.isle-notification-title { font-size: 9.5pt; font-weight: 600; }
+.isle-notification-body { font-size: 9.5pt; color: rgba(255, 255, 255, 0.55); }
 .isle-notification-tools { spacing: 6px; }
-.isle-notification-action { font-size: 11px; padding: 3px 10px; }
+.isle-notification-action { font-size: 8.5pt; padding: 3px 10px; }
 .isle-notification-dismiss { padding: 4px; border-radius: 999px; color: rgba(255, 255, 255, 0.7); background-color: #3a3a3c; }
 
 /* A system notification's symbolic icon, on a tile the size of an app icon. */
@@ -846,7 +852,7 @@
   background-color: #2c2c2e;
   color: #ffffff;
 }
-.isle-notification-time { font-size: 12px; color: rgba(255, 255, 255, 0.45); padding-left: 8px; }
+.isle-notification-time { font-size: 9pt; color: rgba(255, 255, 255, 0.45); padding-left: 8px; }
 
 .isle-dnd-moon { color: rgba(255, 255, 255, 0.85); }
 
@@ -867,7 +873,7 @@
 }
 
 .isle-segment {
-  font-size: 12px;
+  font-size: 9pt;
   font-weight: 600;
   padding: 4px 10px;
   border-radius: 999px;
@@ -885,10 +891,10 @@
 }
 .isle-segmented-icons .isle-segment { padding: 4px 6px; }
 
-.isle-shelf-field { padding: 5px 12px; font-size: 12px; }
+.isle-shelf-field { padding: 5px 12px; font-size: 9pt; }
 .isle-shelf-field-icon { padding-right: 6px; }
 .isle-shelf-confirm { padding: 5px 12px; }
-.isle-shelf-hint { font-size: 12px; color: rgba(255, 255, 255, 0.55); transition-duration: 180ms; }
+.isle-shelf-hint { font-size: 9pt; color: rgba(255, 255, 255, 0.55); transition-duration: 180ms; }
 /* While a file is on its way in. */
 .isle-shelf-hint.active { color: #ffffff; font-weight: 600; }
 
@@ -909,14 +915,14 @@
 .isle-clip:selected { border-color: #ffffff; }
 
 .isle-clip-header { padding: 7px 9px; spacing: 5px; }
-.isle-clip-age { font-size: 12px; color: rgba(255, 255, 255, 0.5); }
+.isle-clip-age { font-size: 9pt; color: rgba(255, 255, 255, 0.5); }
 .isle-clip-body { padding: 28px 10px 8px 10px; spacing: 2px; }
-.isle-clip-text { font-size: 12px; }
-.isle-clip-code { font-family: monospace; font-size: 12px; }
-.isle-clip-host { font-size: 13px; font-weight: 700; }
-.isle-clip-url { font-size: 12px; color: rgba(255, 255, 255, 0.55); }
-.isle-clip-file-name { font-size: 12px; font-weight: 600; padding-top: 4px; }
-.isle-clip-subtle { font-size: 12px; color: rgba(255, 255, 255, 0.5); }
+.isle-clip-text { font-size: 9pt; }
+.isle-clip-code { font-family: monospace; font-size: 9pt; }
+.isle-clip-host { font-size: 9.5pt; font-weight: 700; }
+.isle-clip-url { font-size: 9pt; color: rgba(255, 255, 255, 0.55); }
+.isle-clip-file-name { font-size: 9pt; font-weight: 600; padding-top: 4px; }
+.isle-clip-subtle { font-size: 9pt; color: rgba(255, 255, 255, 0.5); }
 
 /* Images fill the card; header and size sit on dark pills over them. */
 .isle-clip-thumb { border-radius: 12px; background-size: cover; background-color: #2c2c2e; }
@@ -928,14 +934,14 @@
 }
 
 .isle-clip-badge { margin: 5px; padding: 2px 6px; border-radius: 999px; background-color: rgba(0, 0, 0, 0.6); }
-.isle-clip-badge-label { font-size: 11px; font-weight: 600; }
+.isle-clip-badge-label { font-size: 8.5pt; font-weight: 600; }
 
 .isle-clip-actions { padding: 5px; spacing: 4px; }
 .isle-clip-action { padding: 4px; background-color: #3a3a3c; }
 .isle-clip-action:hover { background-color: #4a4a4c; }
 
 .isle-clip-feedback { border-radius: 12px; background-color: rgba(28, 28, 30, 0.95); }
-.isle-clip-feedback-label { font-size: 12px; font-weight: 700; padding-top: 4px; }
+.isle-clip-feedback-label { font-size: 9pt; font-weight: 700; padding-top: 4px; }
 
 /* Files tab. The shelf helper's window draws this tab when installed; its
  * style.css mirrors these sizes and colours so the two look the same. */
@@ -956,7 +962,7 @@
 .isle-shelf-tile:focus { background-color: rgba(255, 255, 255, 0.1); }
 .isle-shelf-tile-box { spacing: 4px; }
 /* Two lines high, as the drag-and-drop helper's (crates/isle-shelf). */
-.isle-shelf-name { font-size: 12px; text-align: center; height: 2.5em; }
+.isle-shelf-name { font-size: 9pt; text-align: center; height: 2.5em; }
 
 .isle-shelf-preview { border-radius: 12px; }
 .isle-shelf-preview.thumbnail { background-color: #2c2c2e; background-size: cover; }
@@ -981,28 +987,28 @@
 .isle-usage-content { spacing: 14px; padding: 0 0 4px 0; }
 .isle-usage-head { spacing: 8px; }
 .isle-usage-mark { width: 10px; height: 10px; border-radius: 5px; }
-.isle-usage-name { font-size: 15px; font-weight: 700; letter-spacing: -0.2px; }
+.isle-usage-name { font-size: 11.5pt; font-weight: 700; letter-spacing: -0.2px; }
 .isle-usage-plan {
-  font-size: 11px;
+  font-size: 8.5pt;
   font-weight: 600;
   padding: 1px 7px;
   border-radius: 99px;
   color: rgba(255, 255, 255, 0.7);
   background-color: rgba(255, 255, 255, 0.1);
 }
-.isle-usage-stamp { font-size: 11px; color: rgba(255, 255, 255, 0.55); }
+.isle-usage-stamp { font-size: 8.5pt; color: rgba(255, 255, 255, 0.55); }
 .isle-usage-stamp.warning { color: rgba(255, 255, 255, 0.8); }
 .isle-usage-limits { spacing: 11px; }
 .isle-usage-limit { spacing: 5px; }
 .isle-usage-line { spacing: 10px; }
-.isle-usage-window { font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.9); }
-.isle-usage-reset { font-size: 11px; color: rgba(255, 255, 255, 0.55); }
-.isle-usage-percent { font-size: 13px; font-weight: 700; min-width: 40px; text-align: right; }
+.isle-usage-window { font-size: 9.5pt; font-weight: 600; color: rgba(255, 255, 255, 0.9); }
+.isle-usage-reset { font-size: 8.5pt; color: rgba(255, 255, 255, 0.55); }
+.isle-usage-percent { font-size: 9.5pt; font-weight: 700; min-width: 40px; text-align: right; }
 .isle-usage-percent.critical { color: #ff453a; }
 .isle-usage-track { height: 5px; border-radius: 3px; background-color: rgba(255, 255, 255, 0.1); }
 .isle-usage-fill { height: 5px; border-radius: 3px; }
 .isle-usage-fill.critical { background-color: #ff453a; }
-.isle-usage-empty { font-size: 12px; color: rgba(255, 255, 255, 0.55); }
+.isle-usage-empty { font-size: 9pt; color: rgba(255, 255, 255, 0.55); }
 
 .isle-usage-dots { spacing: 6px; padding-left: 14px; }
 .isle-usage-dot { width: 6px; height: 6px; border-radius: 3px; background-color: rgba(255, 255, 255, 0.22); transition-duration: 200ms; }

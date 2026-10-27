@@ -19,7 +19,7 @@ import * as Alerts from './alerts.js';
 import {paletteFor} from './bot.js';
 import {ClipboardHistory} from './clipboard.js';
 import {CompactView} from './compact.js';
-import {grabsKeyboard, inhibitScanout, onUiScale, px, uiScale} from './compat.js';
+import {grabsKeyboard, inhibitScanout, onUiScale, px, stageScale, uiScale} from './compat.js';
 import {Daemon} from './daemon.js';
 import {BOTTOM_PADDING, ExpandedView, PAGE_HEIGHT} from './expanded.js';
 import {Island} from './island.js';
@@ -888,7 +888,7 @@ export class Controller {
             size = {width: this._voice.preferredWidth, height: inset + this._voice.fit(), radius: VOICE_RADIUS * scale,
                 shoulder: PEEK_SHOULDER * scale};
             view = this._voice;
-            view.style = `padding-top: ${inset / scale}px;`;
+            view.style = `padding-top: ${inset / stageScale()}px;`;
             break;
         }
         case 'peek': {
@@ -896,7 +896,7 @@ export class Controller {
             size = {width: this._peek.preferredWidth, height: inset + this._peek.preferredHeight, radius: PEEK_RADIUS * scale,
                 shoulder: PEEK_SHOULDER * scale};
             view = this._peek;
-            view.style = `padding-top: ${inset / scale}px;`;
+            view.style = `padding-top: ${inset / stageScale()}px;`;
             break;
         }
         default:
@@ -907,7 +907,7 @@ export class Controller {
                 shoulder: (inBar ? IN_BAR_SHOULDER : COMPACT_SHOULDER) * scale,
             };
             view = this._compact;
-            view.style = inBar ? null : `padding-top: ${top / scale}px;`;
+            view.style = inBar ? null : `padding-top: ${top / stageScale()}px;`;
         }
         view.set_size(size.width, size.height);
         if (this._onBar)

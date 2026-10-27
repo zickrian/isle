@@ -8,7 +8,7 @@ import GObject from 'gi://GObject';
 import St from 'gi://St';
 
 import {timerColor} from '../compact.js';
-import {VERTICAL, onUiScale} from '../compat.js';
+import {VERTICAL, iconSize, onUiScale} from '../compat.js';
 import * as Format from '../format.js';
 import {Ring, icon, iconButton, label} from '../widgets.js';
 import {Page} from './page.js';
@@ -69,7 +69,7 @@ class TimerPage extends Page {
         this._reset.y_align = Clutter.ActorAlign.CENTER;
         controls.add_child(this._reset);
         const pill = new St.BoxLayout({style_class: 'isle-start-pill-box'});
-        this._playIcon = new St.Icon({gicon: icon('isle-play-symbolic'), icon_size: 13, y_align: Clutter.ActorAlign.CENTER});
+        this._playIcon = new St.Icon({gicon: icon('isle-play-symbolic'), icon_size: iconSize(13), y_align: Clutter.ActorAlign.CENTER});
         this._playLabel = label('Start', 'isle-start-pill-label');
         pill.add_child(this._playIcon);
         pill.add_child(this._playLabel);

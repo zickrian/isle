@@ -8,7 +8,7 @@ import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 
-import {VERTICAL} from '../compat.js';
+import {VERTICAL, iconSize} from '../compat.js';
 import * as Playback from '../playback.js';
 import {icon, label, wrapFixedLines} from '../widgets.js';
 
@@ -142,7 +142,7 @@ class LyricsPane extends St.Widget {
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
         });
-        this._stateIcon = new St.Icon({icon_size: 22, style_class: 'isle-lyrics-state-icon', x_align: Clutter.ActorAlign.CENTER});
+        this._stateIcon = new St.Icon({icon_size: iconSize(22), style_class: 'isle-lyrics-state-icon', x_align: Clutter.ActorAlign.CENTER});
         this._stateDots = new PauseDots('isle-lyric-dots isle-lyrics-state-dots');
         this._stateDots.x_align = Clutter.ActorAlign.CENTER;
         this._stateTitle = label('', 'isle-lyrics-state-title', {x_align: Clutter.ActorAlign.CENTER});

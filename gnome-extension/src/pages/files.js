@@ -12,7 +12,7 @@ import Gio from 'gi://Gio';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
-import {VERTICAL, onUiScale, px, uiScale} from '../compat.js';
+import {VERTICAL, iconSize, onUiScale, px, uiScale} from '../compat.js';
 import {icon, iconButton, label} from '../widgets.js';
 
 /** The shelf holds this many files (as isled enforces). */
@@ -79,7 +79,7 @@ class FilesView extends St.Widget {
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
         });
-        this._empty.add_child(new St.Icon({gicon: icon('isle-shelf'), icon_size: 24, style_class: 'isle-empty-icon', x_align: Clutter.ActorAlign.CENTER}));
+        this._empty.add_child(new St.Icon({gicon: icon('isle-shelf'), icon_size: iconSize(24), style_class: 'isle-empty-icon', x_align: Clutter.ActorAlign.CENTER}));
         this._emptyTitle = label('', 'isle-empty-title', {x_align: Clutter.ActorAlign.CENTER});
         this._emptyHint = label('', 'isle-empty-hint', {x_align: Clutter.ActorAlign.CENTER});
         this._empty.add_child(this._emptyTitle);
@@ -254,14 +254,14 @@ class FilesView extends St.Widget {
         const preview = new St.Bin({style_class: 'isle-shelf-preview', width: px(PREVIEW_SIZE), height: px(PREVIEW_SIZE)});
         // A plain file icon until the file's own one is known (or for good,
         // if the file is gone).
-        preview.child = new St.Icon({gicon: icon('isle-file'), icon_size: ICON_SIZE * 0.6, opacity: 160});
+        preview.child = new St.Icon({gicon: icon('isle-file'), icon_size: iconSize(Math.round(ICON_SIZE * 0.6)), opacity: 160});
 
         const copied = new St.Bin({
             style_class: 'isle-shelf-copied',
             width: px(PREVIEW_SIZE),
             height: px(PREVIEW_SIZE),
             opacity: 0,
-            child: new St.Icon({gicon: icon('isle-check-symbolic'), icon_size: 18}),
+            child: new St.Icon({gicon: icon('isle-check-symbolic'), icon_size: iconSize(18)}),
         });
         const remove = iconButton('isle-close-symbolic', 'isle-shelf-remove',
             () => this._daemon.call('shelf', 'Remove', item.uri), {size: 10, accessibleName: 'Remove from the shelf'});
@@ -281,7 +281,7 @@ class FilesView extends St.Widget {
                 preview.style = `background-image: url("${GLib.filename_to_uri(shown.image, null).replace(/"/g, '%22')}");`;
                 preview.child = null;
             } else if (shown.gicon) {
-                preview.child = new St.Icon({gicon: shown.gicon, icon_size: ICON_SIZE});
+                preview.child = new St.Icon({gicon: shown.gicon, icon_size: iconSize(ICON_SIZE)});
             }
         });
         return tile;
