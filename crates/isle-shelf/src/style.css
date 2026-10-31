@@ -79,7 +79,7 @@ window.isle-shelf {
   border-radius: 9px;
   background: #3a3a3c;
   color: #ffffff;
-  border: 1.5px solid #000000;
+  border: none;
   box-shadow: none;
   transition: background-color 120ms;
 }

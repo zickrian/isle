@@ -12,6 +12,7 @@ mod mpris;
 use log::warn;
 use serde::Serialize;
 use tokio::sync::mpsc;
+use zbus::names::OwnedUniqueName;
 use zbus::zvariant::OwnedObjectPath;
 use zbus::{fdo, interface};
 
@@ -40,6 +41,7 @@ pub struct NowPlaying {
     /// position is `position_us + (now - sampled_at_ms) * 1000 * rate`.
     pub position_us: i64,
     pub sampled_at_ms: i64,
+    /// The speed it plays at: the player's `Rate`, or what its reads show (0 while it buffers).
     pub rate: f64,
     pub can_go_next: bool,
     pub can_go_previous: bool,
@@ -104,6 +106,9 @@ pub enum Wish {
     Player(String),
     /// Look lyrics up online, or not.
     Lyrics(bool),
+    /// The island shows the position: read the player again while it plays, or stop. With who asked:
+    /// gone from the bus (GNOME Shell stopped or crashed), it stops too.
+    Watching(bool, Option<OwnedUniqueName>),
 }
 
 /// The Media1 D-Bus object: the watcher fills it, the extension reads and controls through it.
@@ -204,6 +209,17 @@ impl MediaService {
     /// Whether lyrics are looked up online (LRCLIB); off, the lyrics say so instead.
     fn set_lyrics(&self, enabled: bool) -> fdo::Result<()> {
         self.wish(Wish::Lyrics(enabled))
+    }
+
+    /// While on, the active player is read at once and every second it plays: players signal seeks and
+    /// stalls unreliably. The extension turns it on only while the island shows the position.
+    fn set_watching(
+        &self,
+        watching: bool,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+    ) -> fdo::Result<()> {
+        let by = header.sender().map(|name| name.to_owned().into());
+        self.wish(Wish::Watching(watching, by))
     }
 
     /// Brings the player's window to the front.

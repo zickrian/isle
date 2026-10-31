@@ -4,27 +4,35 @@
 // The island itself: a black shape hanging from the top bar that springs between sizes and
 // cross-fades views. On a bar that is not black it hangs from the screen's top edge, like a notch.
 
-import Cairo from 'cairo';
 import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import Meta from 'gi://Meta';
 import St from 'gi://St';
 
 import {px, uiScale} from './compat.js';
-import {paintRim} from './glow.js';
 import {GlassBackdrop} from './glass.js';
+import {RIM_FUNCTIONS, RIM_UNIFORMS, rimCode, rimUniforms} from './glow.js';
+import {effectPoint, shaderEffect} from './shader.js';
 import {GENTLE, Spring, SpringDriver} from './spring.js';
 import * as Theme from './theme.js';
-import {fence, slideBy} from './widgets.js';
+import {fence, setEnabled, slideBy} from './widgets.js';
 
 
 /** Sideways speed (CSS px/s) `nudge` gives: a ~15 px stretch that springs back, as at a volume limit. */
 const NUDGE_VELOCITY = 220;
 /** How long a view takes to glide to its new place when its width changes. */
 const GLIDE_MS = 360;
-/** The shape layer reaches this far past the island on each side (see `_repaint`), in stage pixels: it covers
- * the fraction of one the island is drawn off its place, whatever the scale. */
+/** The shape layer reaches this far past the island on each side, in stage pixels: it covers the fraction of
+ * one the island is drawn off its place, whatever the scale. */
 const SHAPE_PAD = 1;
+/** While the island moves, the layers drawn by shaders keep one size, as a new one makes new textures (and a new blur)
+ * for them: room for the overshoot (of the way still to go) and a nudge's stretch (CSS px) past the target. */
+const ROOM_OVERSHOOT = 0.1;
+const ROOM_SLACK = 16;
+/** How deep the glass's glow reaches in from its edge, in CSS pixels (see glass.js). */
+const GLASS_GLOW_REACH = 4;
+/** Up to this tall the glass keeps its colour down (a closed island, an alert); from the next, it is open. */
+const GLASS_CLOSED = 48, GLASS_OPEN = 140;
 
 /** How long a tint takes to come and go: a wash, and a glow (which lingers out). */
 const TINT_FADE = {wash: [450, 450], glow: [380, 1100], aura: [300, 500]};
@@ -36,9 +44,107 @@ const PULSE_MS = 900;
 const BREATH_OPACITY = 140;
 const BREATH_MS = 1400;
 const BREATHS = 4;
-/** The 'aura' glow is drawn at 1/this of the size and scaled up: it is soft, so it looks the same
- * with a quarter of the pixels to paint each frame. */
+/** The 'aura' glow is soft: it is drawn as at 1/this of the size, scaled up. */
 const GLOW_SCALE = 2;
+
+// The outline `_box` gives, in GLSL, as (how far inside, the edge's normal) for the nearest edge: of the body below
+// the top bar (its sides and rounded bottom), and of the band above it with the shoulders that flare from it.
+const OUTLINE = `
+vec3 edgeMin(vec3 a, vec3 b) {
+    return a.x < b.x ? a : b;
+}
+vec3 edgeMax(vec3 a, vec3 b) {
+    return a.x > b.x ? a : b;
+}
+vec3 outlineBody(vec2 q) {
+    float r = corner.x;
+    vec2 c = vec2(clamp(q.x, body.x + r, body.y - r), min(q.y, body.w - r));
+    float off = length(q - c);
+    if (off > 0.0)
+        return vec3(r - off, (q - c) / off);
+    return edgeMin(edgeMin(vec3(q.x - body.x, 1.0, 0.0), vec3(body.y - q.x, 1.0, 0.0)), vec3(body.w - q.y, 0.0, 1.0));
+}
+vec3 outlineFlare(vec2 q, float x, float side) {
+    float sh = corner.y;
+    vec2 c = vec2(x - side * sh, body.z + sh);
+    float off = max(length(q - c), 0.0001);
+    vec3 arc = edgeMin(vec3(off - sh, (q - c) / off), vec3(c.y - q.y, 0.0, 1.0));
+    return edgeMin(arc, edgeMin(vec3(sh + side * (q.x - x), 1.0, 0.0), vec3(sh - side * (q.x - x), 1.0, 0.0)));
+}
+vec3 outlineBeside(vec2 q) {
+    float sh = corner.y;
+    vec3 band = edgeMin(edgeMin(vec3(q.x - body.x + sh, 1.0, 0.0), vec3(body.y + sh - q.x, 1.0, 0.0)),
+        vec3(body.z - q.y, 0.0, 1.0));
+    if (sh <= 0.0)
+        return band;
+    return edgeMax(band, edgeMax(outlineFlare(q, body.x, 1.0), outlineFlare(q, body.y, -1.0)));
+}
+// The share of a pixel (so many a unit) inside an edge: a square cut by a straight line, as Cairo has it.
+float coverage(vec3 edge, float pixel) {
+    float a = max(abs(edge.y), abs(edge.z)), b = min(abs(edge.y), abs(edge.z));
+    float u = edge.x * pixel, h = 0.5 * (a + b);
+    if (u >= h)
+        return 1.0;
+    if (u <= -h)
+        return 0.0;
+    if (u < b - h)
+        return (u + h) * (u + h) / (2.0 * a * b);
+    if (u > h - b)
+        return 1.0 - (h - u) * (h - u) / (2.0 * a * b);
+    return (u + h - 0.5 * b) / a;
+}
+`;
+
+// The shape in the theme's colour (`fill`), a 'wash' (`style` 1) or 'glow' (2) of `tint` (rgb, strength) over it,
+// and the theme's `edge` (rgb, on; `edgeAlpha` at the top and the bottom), each edge softened over a pixel.
+const SHAPE_CODE = `
+vec2 p = ${effectPoint('frame.xy')};
+float pixel = frame.z, left = body.x, right = body.y, top = body.z, bottom = body.w;
+vec3 edgeAt = edgeMin(edgeMax(outlineBody(p), outlineBeside(p)), vec3(p.y, 0.0, 1.0));
+float inside = edgeAt.x;
+float cover = coverage(edgeAt, pixel);
+vec4 color = vec4(fill.rgb, 1.0) * fill.a * cover;
+vec4 tinted = vec4(tint.rgb, 1.0) * tint.a * cover;
+if (style > 1.5) {
+    // A pool of light at each bottom corner, joined by a faint band along the bottom edge.
+    float r = max(min((right - left) * 0.36, max(0.0, bottom - top) * 1.05), 0.001);
+    float a = 0.2 * clamp((p.y - bottom + 0.4 * r) / (0.4 * r), 0.0, 1.0);
+    color = tinted * a + color * (1.0 - tinted.a * a);
+    for (int i = 0; i < 2; i++) {
+        float t = length(p - vec2(i == 0 ? left + 0.12 * r : right - 0.12 * r, bottom + 0.2 * r)) / r;
+        a = t < 0.4 ? mix(0.95, 0.42, t / 0.4) : mix(0.42, 0.0, min(1.0, (t - 0.4) / 0.6));
+        color = tinted * a + color * (1.0 - tinted.a * a);
+    }
+} else if (style > 0.5) {
+    // Clear under the top bar, deepening to the colour.
+    float a = 0.75 * clamp((p.y - top) / max(bottom - top, 0.001), 0.0, 1.0);
+    color = tinted * a + color * (1.0 - tinted.a * a);
+}
+if (edge.a > 0.0) {
+    // A hairline inside the shape, none along the screen's top edge, lit from above and fading downwards.
+    float band = max(0.0, min(inside + 0.5 / pixel, 1.0) - max(inside - 0.5 / pixel, 0.0)) * pixel *
+        clamp(0.5 + (p.y - 1.0) * pixel, 0.0, 1.0);
+    float a = mix(edgeAlpha.x, edgeAlpha.y, clamp(p.y / max(bottom, 0.001), 0.0, 1.0)) * band;
+    color = vec4(edge.rgb, 1.0) * a + color * (1.0 - a);
+}
+cogl_color_out = color * cogl_color_in.a;
+`;
+
+/** The island's shape, drawn by the GPU as it changes (see `_syncShape`). */
+const ShapeFill = shaderEffect('ShapeFill', {frame: 4, body: 4, corner: 4, fill: 4, tint: 4, style: 1, edge: 4, edgeAlpha: 2},
+    SHAPE_CODE, OUTLINE);
+
+// What the views draw, cut to the outline as the shape is (see SHAPE_CODE).
+const VIEWS_CODE = `
+vec2 p = ${effectPoint('frame.xy')};
+cogl_color_out *= coverage(edgeMin(edgeMax(outlineBody(p), outlineBeside(p)), vec3(p.y, 0.0, 1.0)), frame.z);
+`;
+
+/** Keeps the views inside the island's rounded outline while it changes shape (see `_syncViews`). */
+const ViewsMask = shaderEffect('ViewsMask', {frame: 4, body: 4, corner: 4}, VIEWS_CODE, OUTLINE);
+
+/** The 'aura' light, drawn by the GPU each frame (see glow.js). */
+const RimLight = shaderEffect('RimLight', RIM_UNIFORMS, rimCode(effectPoint('frame.xy')), OUTLINE + RIM_FUNCTIONS);
 
 /** Cross-fade timings in milliseconds. */
 const FADE_OUT = 160;
@@ -83,17 +189,13 @@ export const Island = GObject.registerClass({
         this._motion = {time: 0, level: 0, work: 0};
         this._breathing = false;
         this._pulse = null;
-        /** The shape as last drawn (see `_sync`): unchanged, it isn't drawn again. */
-        this._drawn = {width: -1, height: -1, radius: -1, shoulder: -1, fraction: 0, inset: -1};
-        /** The shape's box as last traced (see `_outline`). */
-        this._outlineBox = {left: 0, right: 0, top: 0, radius: 0};
-        /** The glow's rising mask, kept while its top and height stay (see glow.js). */
-        this._rising = {};
 
         /** Where the island and its views' frame were last put, in whole pixels (see `_sync`). */
         this._islandX = 0;
         this._islandFraction = 0;
         this._stageX = 0;
+        /** The size of the layers drawn by shaders (see `_roomFor`). */
+        this._room = {width: 0, height: 0};
         this._width = new Spring(0);
         this._height = new Spring(0);
         this._radius = new Spring(0, GENTLE);
@@ -104,17 +206,23 @@ export const Island = GObject.registerClass({
         // The glass theme's blurred backdrop, under the shape (see glass.js).
         this._backdrop = new GlassBackdrop();
         this.add_child(this._backdrop);
-        this._shape = new St.DrawingArea();
-        this._shape.connect('repaint', area => this._repaint(area));
+        this._shape = new St.Widget({x: -SHAPE_PAD});
+        this._fill = new ShapeFill();
+        this._shape.add_effect(this._fill);
         this.add_child(this._shape);
         // The moving 'aura' light, on a layer of its own: the shape below is only drawn when it changes.
-        this._glow = new St.DrawingArea({visible: false});
-        this._glow.set_pivot_point(0, 0);
-        this._glow.set_scale(GLOW_SCALE, GLOW_SCALE);
-        this._glow.connect('repaint', area => this._repaintGlow(area));
+        this._glow = new St.Widget({visible: false});
+        this._rim = new RimLight();
+        this._glow.add_effect(this._rim);
         // A breath asked for while it was hidden starts as it shows (see `_breathe`).
         this._glow.connect('notify::mapped', () => this._breathing && this._breathe());
         this.add_child(this._glow);
+        // Its shader is built the first time it draws: once, unlit, as the island first shows (see `_warmGlow`).
+        this._warmPaint = 0;
+        this._warmId = this.connect('notify::mapped', () => this.mapped && this._warmGlow());
+        // Their edges are softened over a pixel of the display they are on.
+        this._shape.connect('resource-scale-changed', () => this._syncShape());
+        this._glow.connect('resource-scale-changed', () => this._queueGlow());
 
         // Clips the views while the island grows; a fixed layout keeps them at
         // full size (a bin would squeeze them), so nothing reflows.
@@ -122,7 +230,14 @@ export const Island = GObject.registerClass({
             layout_manager: new Clutter.FixedLayout(),
             clip_to_allocation: true,
         });
-        this.add_child(this._stage);
+        // While it moves, the views are also cut to its rounded corners: a spring past its size leaves content
+        // that fits at rest beyond them for a moment. A layer of the shaders' size, so its texture stays.
+        this._viewsLayer = new St.Widget({layout_manager: new Clutter.FixedLayout()});
+        this._viewsMask = new ViewsMask();
+        this._viewsMask.enabled = false;
+        this._viewsLayer.add_effect(this._viewsMask);
+        this._viewsLayer.add_child(this._stage);
+        this.add_child(this._viewsLayer);
         this._stageEnd = fence(this._stage);
         this.connect('destroy', () => this._onDestroy());
     }
@@ -187,11 +302,9 @@ export const Island = GObject.registerClass({
     set tint_strength(value) {
         this._tintStrength = value;
         this.notify('tint-strength');
-        const aura = this._tintStyle === 'aura';
-        this._glow.visible = aura && Boolean(this._tint) && value > 0;
+        this._syncGlowShown();
         this._queueGlow();
-        if (!aura)
-            this._shape.queue_repaint();
+        this._syncShape();
     }
 
     // Colours the island with `rgb` (0..1; null fades it): 'wash' rises to the bottom, 'glow' spills
@@ -201,11 +314,10 @@ export const Island = GObject.registerClass({
         this._pulse?.stop();
         this._pulse = null;
         if (rgb) {
-            // The shape draws every style but the glow, so it changes when the style does.
-            if (style !== this._tintStyle)
-                this._shape.queue_repaint();
             this._tint = rgb;
             this._tintStyle = style;
+            // The shape draws every style but the glow.
+            this._syncShape();
         }
         const [fadeIn, fadeOut] = TINT_FADE[this._tintStyle];
         this.remove_transition('tint-strength');
@@ -342,6 +454,7 @@ export const Island = GObject.registerClass({
             // and text are made at the monitor's scale now, not in the first frames it is opened.
             const below = Math.ceil(this.height) + 1;
             slideBy(view, 'y', below, below);
+            this._placeView(view);
             view.show();
         } else {
             view.hide();
@@ -383,19 +496,18 @@ export const Island = GObject.registerClass({
         this._driver.start();
     }
 
-    // A view that changes width moves its edges at once; the one shown glides there instead (FLIP: it is
-    // put in its new place, offset back to where it was, and eased to none), as the shape springs after.
+    // A view that changes width moves its edges at once; the one shown glides there instead (FLIP: it is put in its
+    // new place, offset back to where it was, and slid to none in whole pixels), as the shape springs after.
     _onViewWidth(view) {
         const before = this._monitor ? view.x + this._islandX + this._stageX : null;
         this._placeView(view);
-        if (before === null || view !== this._view || !view.mapped || !St.Settings.get().enable_animations)
+        // One that keeps its middle still (the closed island's clock) grows at its sides instead.
+        if (before === null || view !== this._view || !view.mapped || view.keepsMiddle || !St.Settings.get().enable_animations)
             return;
         const offset = view.translation_x + before - (view.x + this._islandX + this._stageX);
         if (offset === 0)
             return;
-        view.remove_transition('translation-x');
-        view.translation_x = offset;
-        view.ease({translation_x: 0, duration: GLIDE_MS, mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
+        slideBy(view, 'x', offset, 0, {duration: GLIDE_MS});
     }
 
     /** Where `view` sits on screen: centred on the monitor, in whole pixels. */
@@ -440,8 +552,9 @@ export const Island = GObject.registerClass({
         // Still fading out (shown again within a moment): it comes back from where it is, without a blink.
         const returning = view.visible && view.opacity > 0;
         view.remove_all_transitions();
+        this._placeView(view);
         const from = returning ? view.translation_y : growing ? -shift : shift;
-        view.translation_x = 0;
+        slideBy(view, 'x', 0, 0);
         view.show();
         if (!returning)
             view.opacity = 0;
@@ -460,14 +573,11 @@ export const Island = GObject.registerClass({
         const outerWidth = width + 2 * margin;
 
         this.set_size(Math.ceil(outerWidth), Math.ceil(height));
+        const room = this._roomFor(outerWidth, height);
         // A pixel wider on each side, for the fraction the island is drawn off its whole-pixel place.
-        const shapeWidth = Math.ceil(outerWidth) + 2 * SHAPE_PAD, shapeHeight = Math.ceil(height);
-        // Against the size it was last laid out at: that layout is what draws it again.
-        const laidOut = this._shape.get_allocation_box();
-        const resized = shapeWidth !== Math.round(laidOut.get_width()) || shapeHeight !== Math.round(laidOut.get_height());
-        this._shape.set_position(-SHAPE_PAD, 0);
-        this._shape.set_size(shapeWidth, shapeHeight);
-        this._glow.set_size(Math.ceil(outerWidth / GLOW_SCALE), Math.ceil(height / GLOW_SCALE));
+        this._shape.set_size(room.width + 2 * SHAPE_PAD, room.height);
+        this._glow.set_size(room.width, room.height);
+        this._viewsLayer.set_size(room.width, room.height);
         // Whole pixels keep text sharp while the island resizes.
         this._stageX = Math.round(margin);
         this._stage.set_position(this._stageX, 0);
@@ -479,65 +589,68 @@ export const Island = GObject.registerClass({
             this._islandFraction = exact - this._islandX;
             this.set_position(this._islandX, y);
         }
-        for (const view of this._views)
-            this._placeView(view);
-        this._placeBackdrop(outerWidth, height, margin, width);
-        if (this._shapeChanged()) {
-            // A new size draws it again as it is laid out: asking as well would draw it twice a frame. Not while
-            // unmapped, when no layout comes until it shows.
-            if (!resized || !this._shape.mapped)
-                this._shape.queue_repaint();
-            this._queueGlow();
+        // A hidden view is placed as it shows.
+        for (const view of this._views) {
+            if (view.visible)
+                this._placeView(view);
         }
+        this._placeBackdrop(outerWidth, height, margin, width, room);
+        this._syncShape();
+        this._syncViews(room);
+        this._queueGlow();
         this.emit('geometry-changed');
     }
 
-    /** Whether the shape differs from the one last drawn; notes it as drawn. */
-    _shapeChanged() {
-        const drawn = this._drawn;
-        const width = this._width.value, height = this._height.value;
-        const radius = this._radius.value, shoulder = this._shoulder.value;
-        if (drawn.width === width && drawn.height === height && drawn.radius === radius &&
-            drawn.shoulder === shoulder && drawn.fraction === this._islandFraction && drawn.inset === this._topInset)
-            return false;
-        drawn.width = width;
-        drawn.height = height;
-        drawn.radius = radius;
-        drawn.shoulder = shoulder;
-        drawn.fraction = this._islandFraction;
-        drawn.inset = this._topInset;
-        return true;
+    /** The size of the layers drawn by shaders: the island's own at rest; while it moves, grown to where it goes. */
+    _roomFor(outerWidth, height) {
+        const exact = {width: Math.ceil(outerWidth), height: Math.ceil(height)};
+        if (this._springs.every(spring => spring.settled)) {
+            this._room = exact;
+            return exact;
+        }
+        const reach = (value, target) => Math.ceil(Math.max(value, target + ROOM_OVERSHOOT * Math.abs(target - value)) +
+            px(ROOM_SLACK));
+        const outerTarget = Math.max(0, this._width.target) + 2 * Math.max(0, this._shoulder.target);
+        this._room = {
+            width: Math.max(this._room.width, reach(outerWidth, outerTarget)),
+            height: Math.max(this._room.height, reach(height, this._height.target)),
+        };
+        return this._room;
     }
 
-    /** Draws the shape in the theme's colour, with a 'wash' or 'glow' tint over it and the theme's edge. */
-    _repaint(area) {
-        const cr = area.get_context();
-        // At the island's exact place (its actor sits on a whole pixel), so its edges never step back.
-        cr.translate(SHAPE_PAD + this._islandFraction, 0);
+    /** Cuts the views to the outline while the island moves; at rest they fit, drawn straight. */
+    _syncViews(room) {
+        const moving = !this._springs.every(spring => spring.settled);
+        this._viewsMask.enabled = moving;
+        if (!moving)
+            return;
         const height = Math.max(0, this._height.value);
-        this._outline(cr, height);
-        cr.setSourceRGBA(...Theme.fill());
-        cr.fillPreserve();
-        if (this._tint && this._tintStrength > 0 && this._tintStyle !== 'aura') {
-            const {left, right, top} = this._outlineBox;
-            for (const gradient of this._tintGradients(left, right, top, height)) {
-                cr.setSource(gradient);
-                cr.fillPreserve();
-            }
-        }
+        const {left, right, top, radius, shoulder} = this._box(height);
+        this._viewsMask.setUniforms({
+            frame: [room.width, room.height, this._viewsLayer.get_resource_scale() || 1, 0],
+            body: [left + this._islandFraction, right + this._islandFraction, top, height],
+            corner: [radius, shoulder, 0, 0],
+        });
+    }
+
+    /** The shape as it is now, in the theme's colour with its tint and edge, given to its shader. */
+    _syncShape() {
+        const height = Math.max(0, this._height.value);
+        const {left, right, top, radius, shoulder} = this._box(height);
+        const shift = SHAPE_PAD + this._islandFraction;
+        const [width, actorHeight] = this._shape.get_size();
+        const tinted = this._tint && this._tintStyle !== 'aura';
         const edge = Theme.edge();
-        if (edge) {
-            // A hairline inside the shape, as round glass menus; none along the screen's top edge.
-            cr.clip();
-            cr.rectangle(-1e4, 1, 2e4, height + 1);
-            cr.clip();
-            this._outline(cr, height);
-            cr.setSourceRGBA(...edge);
-            cr.setLineWidth(2);
-            cr.stroke();
-        }
-        cr.newPath();
-        cr.$dispose();
+        this._fill.setUniforms({
+            frame: [width, actorHeight, this._shape.get_resource_scale() || 1, 0],
+            body: [left + shift, right + shift, top, height],
+            corner: [radius, shoulder, 0, 0],
+            fill: Theme.fill(),
+            tint: tinted ? [...this._tint, this._tintStrength] : [0, 0, 0, 0],
+            style: {wash: 1, glow: 2}[this._tintStyle] ?? 0,
+            edge: edge ? [...edge.color, 1] : [0, 0, 0, 0],
+            edgeAlpha: edge ? [edge.top, edge.bottom] : [0, 0],
+        });
     }
 
     /** The theme changed: the shape in its colour, glass blurring what is behind, and everything Cairo paints in
@@ -545,51 +658,87 @@ export const Island = GObject.registerClass({
     refreshTheme() {
         this._backdrop.look = Theme.blur();
         this._sync();
+        // Parts with more to change than a drawing (a call's rounded preview) follow in `syncTheme`; disabled
+        // buttons take the look's dimming.
         const repaint = actor => {
             if (actor instanceof St.DrawingArea)
                 actor.queue_repaint();
+            actor.syncTheme?.();
+            if (actor._isleDisabled)
+                setEnabled(actor, false);
             actor.get_children().forEach(repaint);
         };
         repaint(this);
     }
 
-    // Redraws the 'aura' once, just before the frame: a drawing area draws at once when asked, and the shape
-    // and the motion both ask in one frame. Soft light a frame behind the shape is not seen.
+    /** Whether an 'aura' tint lights the glow layer. */
+    get _glowLit() {
+        return this._tintStyle === 'aura' && Boolean(this._tint) && this._tintStrength > 0;
+    }
+
+    /** Shows the glow layer while it is lit. */
+    _syncGlowShown() {
+        this._glow.visible = this._glowLit;
+    }
+
+    /** Draws the glow layer once with nothing lit (its uniforms all 0), so its shader is built before an alert's or the
+     * assistant's first frame needs it; that takes a frame of its own. */
+    _warmGlow() {
+        this.disconnect(this._warmId);
+        this._warmId = 0;
+        this._glow.visible = true;
+        this._warmPaint = global.stage.connect('after-paint', () => {
+            // Not drawn yet without a size.
+            if (!this._glow.width || !this._glow.height)
+                return;
+            global.stage.disconnect(this._warmPaint);
+            this._warmPaint = 0;
+            this._syncGlowShown();
+        });
+    }
+
+    // Moves the 'aura' once, just before the frame: the shape and the motion may both ask in one frame.
     _queueGlow() {
-        if (!this._glow.visible || this._glowLater)
+        if (!this._glowLit || this._glowLater)
             return;
         this._glowLater = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
             this._glowLater = 0;
-            if (this._glow.visible)
-                this._glow.queue_repaint();
+            if (this._glowLit)
+                this._syncGlow();
             return false;
         });
     }
 
-    /** Draws the 'aura' light inside the shape, on the scaled-down glow layer. */
-    _repaintGlow(area) {
-        const cr = area.get_context();
+    /** The 'aura' light inside the shape as it is now, given to its shader. */
+    _syncGlow() {
         const height = Math.max(0, this._height.value);
-        cr.scale(1 / GLOW_SCALE, 1 / GLOW_SCALE);
-        cr.translate(this._islandFraction, 0);
-        this._outline(cr, height);
-        cr.clip();
-        paintRim(cr, this._outlineBox, height, this._tint, this._motion, this._tintStrength, this._rising, uiScale());
-        cr.$dispose();
+        const outerWidth = Math.max(0, this._width.value) + 2 * Math.max(0, this._shoulder.value);
+        // In the pixels of the drawing it stands for (see GLOW_SCALE), which has the display's own.
+        const pixels = Math.ceil(this._glow.get_resource_scale()) || 1;
+        const box = this._box(height);
+        const [width, actorHeight] = this._glow.get_size();
+        this._rim.setUniforms({
+            frame: [width, actorHeight, GLOW_SCALE / pixels, 0],
+            grid: [Math.ceil(outerWidth / GLOW_SCALE) * pixels, Math.ceil(height / GLOW_SCALE) * pixels],
+            ...rimUniforms({...box, left: box.left + this._islandFraction, right: box.right + this._islandFraction},
+                height, this._tint, this._motion, this._tintStrength, uiScale()),
+        });
     }
 
-    /** The glass backdrop over the island as it is now drawn: its body, corners and shoulders (see `_outline`). */
-    _placeBackdrop(outerWidth, height, margin, width) {
+    /** The glass backdrop over the island as it is now drawn: its body, corners and shoulders (see `_box`). */
+    _placeBackdrop(outerWidth, height, margin, width, room) {
         if (!this._monitor || !Theme.blur())
             return;
         const top = Math.min(this._topInset, height);
         const fraction = this._islandFraction;
         this._backdrop.place({
             stageX: this._islandX, stageY: this._monitor.y,
-            width: Math.ceil(outerWidth), height: Math.ceil(height),
+            width: room.width, height: room.height, bottom: height,
             left: margin + fraction, right: margin + width + fraction,
             radius: this._bodyRadius(height),
             shoulder: top > 0 ? 0 : Math.min(margin, Math.max(0, height / 2)),
+            reach: GLASS_GLOW_REACH * uiScale(),
+            open: Math.max(0, Math.min(1, (height / uiScale() - GLASS_CLOSED) / (GLASS_OPEN - GLASS_CLOSED))),
         });
     }
 
@@ -602,59 +751,16 @@ export const Island = GObject.registerClass({
         return Math.max(0, Math.min(this._radius.value, height - top * hanging - shoulder, Math.max(0, this._width.value) / 2));
     }
 
-    /** Traces the island's shape `height` tall into `cr`, and keeps its box in `_outlineBox`. */
-    _outline(cr, height) {
+    /** The island's shape `height` tall: its body `left` to `right` below `top`, its bottom corners' `radius` and
+     * its `shoulder`s', which flare from the band above the body (the top bar's, `top` deep) to its sides. */
+    _box(height) {
         const top = Math.min(this._topInset, height);
         // Shoulders and corners must share the part below the top bar; an
         // island without shoulders may round its corners inside the bar.
         const margin = Math.max(0, this._shoulder.value);
         const shoulder = Math.min(margin, Math.max(0, (height - top) / 2));
         const left = margin;
-        const right = left + Math.max(0, this._width.value);
-        const radius = this._bodyRadius(height);
-
-        cr.moveTo(left - shoulder, 0);
-        cr.lineTo(right + shoulder, 0);
-        cr.lineTo(right + shoulder, top);
-        cr.arcNegative(right + shoulder, top + shoulder, shoulder, -Math.PI / 2, -Math.PI);
-        cr.lineTo(right, height - radius);
-        cr.arc(right - radius, height - radius, radius, 0, Math.PI / 2);
-        cr.arc(left + radius, height - radius, radius, Math.PI / 2, Math.PI);
-        cr.lineTo(left, top + shoulder);
-        cr.arcNegative(left - shoulder, top + shoulder, shoulder, 0, -Math.PI / 2);
-        cr.closePath();
-        const box = this._outlineBox;
-        box.left = left;
-        box.right = right;
-        box.top = top;
-        box.radius = radius;
-    }
-
-    /** The gradients that paint the tint over the black shape, in order. */
-    _tintGradients(left, right, top, height) {
-        const strength = this._tintStrength;
-        const [r, g, b] = this._tint;
-        if (this._tintStyle === 'glow') {
-            // A pool of light at each bottom corner, joined by a faint band
-            // along the bottom edge.
-            const radius = Math.min((right - left) * 0.36, Math.max(0, height - top) * 1.05);
-            const corners = [left + radius * 0.12, right - radius * 0.12].map(x => {
-                const glow = new Cairo.RadialGradient(x, height + radius * 0.2, 0, x, height + radius * 0.2, radius);
-                glow.addColorStopRGBA(0, r, g, b, 0.95 * strength);
-                glow.addColorStopRGBA(0.4, r, g, b, 0.42 * strength);
-                glow.addColorStopRGBA(1, r, g, b, 0);
-                return glow;
-            });
-            const band = new Cairo.LinearGradient(0, height - radius * 0.4, 0, height);
-            band.addColorStopRGBA(0, r, g, b, 0);
-            band.addColorStopRGBA(1, r, g, b, 0.2 * strength);
-            return [band, ...corners];
-        }
-        // Black under the top bar, deepening to the cover's colour.
-        const wash = new Cairo.LinearGradient(0, top, 0, height);
-        wash.addColorStopRGBA(0, r, g, b, 0);
-        wash.addColorStopRGBA(1, r, g, b, 0.75 * strength);
-        return [wash];
+        return {left, right: left + Math.max(0, this._width.value), top, radius: this._bodyRadius(height), shoulder};
     }
 
     /** Stops the springs and a pending glow redraw. */
@@ -666,5 +772,8 @@ export const Island = GObject.registerClass({
         if (this._glowLater)
             global.compositor.get_laters().remove(this._glowLater);
         this._glowLater = 0;
+        if (this._warmPaint)
+            global.stage.disconnect(this._warmPaint);
+        this._warmPaint = 0;
     }
 });

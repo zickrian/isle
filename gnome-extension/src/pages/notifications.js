@@ -77,7 +77,7 @@ class NotificationsPage extends Page {
     _buildBar() {
         const bar = new St.BoxLayout({style_class: 'isle-notifications-bar'});
         bar.add_child(label('Notifications', 'isle-notifications-heading', {x_expand: true, y_align: Clutter.ActorAlign.CENTER}));
-        this._dndButton = iconButton('isle-bell', 'isle-button-flat isle-dnd-toggle', () => {
+        this._dndButton = iconButton('isle-bell', 'isle-button-round isle-button-small isle-dnd-toggle', () => {
             this._center.dnd = !this._center.dnd;
         }, {size: 13, accessibleName: 'Do Not Disturb'});
         this._dndButton.y_align = Clutter.ActorAlign.CENTER;
@@ -232,6 +232,11 @@ class NotificationsPage extends Page {
             });
         }
         return row;
+    }
+
+    /** New cards are built ahead while another page is open too. */
+    get warmsOpen() {
+        return true;
     }
 
     /** Builds the list ahead, if it is out of date. */

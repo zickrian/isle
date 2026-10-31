@@ -21,10 +21,33 @@ import {Page} from './page.js';
 const ART_SIZE = 104;
 /** The island widens to this while lyrics are shown. */
 const LYRICS_WIDTH = 720;
+/** The lyrics fade in over the last this many px the island widens to them (see `uncover`). */
+const UNCOVER_FADE = 24;
 /** How often the elapsed time and scrubber move while playing. */
 const PROGRESS_REFRESH_MS = 250;
 /** The music bars' opacity while the song is paused, as on the closed island. */
 const PAUSED_BARS_OPACITY = 110;
+
+/** Lays its child out as wide as with the lyrics shown, also while laid out ahead behind the narrower
+ * player (see `warmUp`): the lines wrap there once, not again in the first frame they show. */
+const LyricsWidthLayout = GObject.registerClass(
+class LyricsWidthLayout extends Clutter.LayoutManager {
+    vfunc_get_preferred_width(container, forHeight) {
+        return container.get_first_child().get_preferred_width(forHeight);
+    }
+
+    vfunc_get_preferred_height(container, forWidth) {
+        return container.get_first_child().get_preferred_height(forWidth);
+    }
+
+    vfunc_allocate(container, box) {
+        // The page is allocated before its children: its width now is the one it has.
+        const page = container.get_parent().get_allocation_box().get_width();
+        const wide = box.copy();
+        wide.x2 += Math.max(0, px(LYRICS_WIDTH) - page);
+        container.get_first_child().allocate(wide);
+    }
+});
 
 /** The music page: the player, with lyrics or volume and outputs as its other modes. */
 export const MediaPage = GObject.registerClass(
@@ -65,6 +88,11 @@ class MediaPage extends Page {
         // Left out of the island, it follows the songs again once it is back.
         this.connect('availability-changed', () => !this.hidden && this._update());
         this.watch(['players'], () => this._syncPlayers());
+        // isled forgets it when it restarts (and a shell restarted while open left it on): told again.
+        this._daemonHandlers.push(daemon.connect('appeared', (_daemon, name) => {
+            if (name === 'media')
+                this._syncWatching({again: true});
+        }));
         this._audioIds = [
             audio.connect('changed', () => this._updateVolume()),
             audio.connect('outputs-changed', () => this._updateOutputs()),
@@ -230,7 +258,7 @@ class MediaPage extends Page {
 
     /** The player in a column beside the lyrics. */
     _buildLyricsLayout() {
-        const layout = new St.BoxLayout({style_class: 'isle-lyrics-layout', x_expand: true, y_expand: true, visible: false});
+        const layout = new St.BoxLayout({style_class: 'isle-lyrics-layout', x_expand: true, y_expand: true});
 
         const side = new St.BoxLayout({...VERTICAL, style_class: 'isle-lyrics-side', y_align: Clutter.ActorAlign.CENTER});
         const top = new St.BoxLayout({style_class: 'isle-player-top'});
@@ -255,7 +283,9 @@ class MediaPage extends Page {
         this._lyricsPane = new LyricsPane(this);
         layout.add_child(side);
         layout.add_child(this._lyricsPane);
-        return layout;
+        const box = new St.Widget({layout_manager: new LyricsWidthLayout(), x_expand: true, y_expand: true, visible: false});
+        box.add_child(layout);
+        return box;
     }
 
     /** Volume, then the outputs to choose from. */
@@ -306,9 +336,16 @@ class MediaPage extends Page {
         return box;
     }
 
+    /** The lines show as the island makes room for them: never cut by its edge. */
+    uncover(past) {
+        const covered = past - this.get_theme_node().get_padding(St.Side.RIGHT);
+        this._lyricsPane.opacity = Math.round(255 * Math.min(1, Math.max(0, 1 - covered / px(UNCOVER_FADE))));
+    }
+
     /** Opens `mode`, or goes back to the player if it is open already. */
     _toggleMode(mode) {
         this._mode = this._mode === mode ? 'player' : mode;
+        this._syncWatching();
         this._update();
         this.emit('width-changed');
         this.emit('tint-changed');
@@ -493,6 +530,7 @@ class MediaPage extends Page {
 
     /** Starts the bars, the clock and the lyrics' scrolling. */
     onActivate() {
+        this._syncWatching();
         this._syncBars();
         this._tickProgress();
         this._lyricsPane.follow();
@@ -504,10 +542,24 @@ class MediaPage extends Page {
         // Reopening the island starts on the player, not a sub-view.
         if (this._mode === 'audio')
             this._toggleMode('audio');
+        this._syncWatching();
     }
 
-    /** Stops listening to the audio outputs. */
+    /** Has isled read the player every second while the position shows (see Media1.SetWatching); never
+     * while closed, so a closed island costs nothing. `again` tells isled even if unchanged. */
+    _syncWatching({again = false} = {}) {
+        const watching = this.active && this._mode !== 'audio' && !this._destroyed;
+        if (watching === Boolean(this._watching) && !again)
+            return;
+        this._watching = watching;
+        // An isled from before SetWatching only keeps the old timing.
+        this.daemon.attemptQuietly('media', 'SetWatching', watching);
+    }
+
+    /** Stops listening to the audio outputs, and isled reading the player. */
     _onDestroy() {
         this._audioIds.forEach(id => this._audio.disconnect(id));
+        if (this._watching)
+            this.daemon.attemptQuietly('media', 'SetWatching', false);
     }
 });

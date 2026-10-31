@@ -6,11 +6,90 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-10-31
+
+A tidier closed island that fits what it shows, Glass made new with a slider from clear to dark,
+lyrics that stay in time for the whole song, a smoother and lighter island, typed timer lengths (thanks
+to @Ashishranjan980), and many fixes. To update from 1.5: click Update on the new-version alert (or
+Settings → About → Update), then log out and back in.
+
 ### Added
 
-- The Focus timer's Work and Break lengths can be typed directly: click the minutes, type a
-  number, and Enter or a click elsewhere keeps it (Esc restores the old length). The − and +
-  buttons still step a minute at a time.
+- With the island inside the top bar, a little space now stays below it, so it no longer touches
+  maximised windows (#14). It is on by default; Settings → Appearance → Space below the island
+  turns it off for the earlier look.
+- Scrolling or swiping over the open island's tabs changes the page again: one page a swipe or wheel
+  click, stopping at the first and last page. Scrolling over a page's own content (lists, lyrics,
+  calendar) still never changes the page (#13).
+- The timer's Work and Break lengths can be typed: click the minutes, type a number, and Enter or a
+  click elsewhere keeps it (Esc restores the old length). Thanks to @Ashishranjan980.
+- With the timer as the closed island's only activity, it shows its time left beside the clock:
+  dimmed while paused, green on a break (#17).
+- With two activities at once, the closed island shows each as one small sign, one on each side of
+  the clock (a song's cover, a call's phone, the timer's ring), with the privacy dots beside them, all
+  in the one island; anything more is in the open island.
+
+### Changed
+
+- The closed island is as wide as what it shows: its signs sit evenly at both ends, as far in as from
+  its top, the clock stays exactly centred (the Do Not Disturb moon sits before it), and it grows or
+  shrinks with its content instead of stretching to a fixed width.
+- During a call the closed island shows the green phone and the time; the call's length is on the
+  Call page.
+- The Focus page is called Timer, in its tab, in Settings and in the Pages list; the phase inside it
+  still reads Focus (#17). Its lengths hold still from Start until Reset, so a session can't change
+  part way.
+- Glass is new: clearer and calmer, an even frosted look over light pages, gentle colour over bright
+  wallpapers, a clean dark closed island, a soft lit edge, and every button, row, field and alert made
+  of the same glass. Toggles that are on take your accent colour; grey text reads better over bright
+  windows. Glows follow the island's shape on Black and Glass alike. Your Glass setting from 1.5
+  carries over.
+- A Glass slider in Settings → Appearance runs from clear glass to dark smoked glass, as GNOME's own
+  blurred menus: what is behind dimmed, its colour kept, never a flat grey. Its buttons, rows and
+  fields follow it. Rows, cards and fields are plain fills, never outlined boxes, on Black and Glass
+  alike.
+- The open island's pages have the same room on every side, rows and columns line up across each
+  page, and buttons and switches come in one size each. Super+V moved to Clipboard History and the
+  privacy dots to Appearance in Settings.
+
+### Performance
+
+Smoother and lighter. The island's shape and the assistant's light are drawn on the graphics card
+rather than redrawn each frame, the island widens in whole pixels so text stays sharp, lyrics draw
+only the lines in view, the Shelf and Notifications are ready before you switch to them, and isled
+sleeps while nothing needs it. Measured on GNOME 51 with an Intel GPU, before and after:
+
+| | 1.5.0 | 1.5.1 |
+|---|---|---|
+| Opening lyrics, slowest first frame | 47–50 ms | 14–16 ms |
+| GNOME Shell CPU while a song plays | 15–17 % | 13–14 % |
+| Opening the Shelf or Notifications the first time | 40–54 ms | 7–20 ms |
+| Missed frames at 144 Hz (Glass, one set of actions) | 45–55 | 20–35 |
+| Drawing work per frame while the island animates | 0.5–0.75 ms | 0.18–0.29 ms |
+| Music bars, drawing per frame | 1.35 ms | 0.9 ms |
+| GNOME Shell CPU with the assistant open | 24–32 % | 15–20 % |
+| Frames that shimmer while the island widens | 21–36 | 0 |
+| isled wake-ups a minute while idle | 6–16 | 0 |
+| Memory after 200 opens and closes | no leak | no leak |
+
+### Fixed
+
+- Lyrics stay in time for the whole song: while the island shows the music, Isle checks with the
+  player every second, so buffering, ads, seeks made inside the player and speed changes no longer
+  leave them ahead or behind, also when a player changes speed without saying so. With the island
+  closed, Isle checks nothing (#15).
+- The top bar no longer flickers beside the island when Blur my Shell 76 or later is on, and Isle's
+  top bar colour works beside it again: Isle now keeps its colour alongside other extensions that
+  style the top bar.
+- Typing in the island's fields works on GNOME 50 and 51: a click into a field gets the keyboard.
+  On GNOME 46, a click outside the island ends typing without opening it again.
+- The timer's Resume button is no longer cut to "Resu…", and a typed "180" shows in full.
+- The calendar's six-week months fit their page.
+- The open tab's name is no longer cut after changing the display's scale while Isle runs.
+- A player that stops answering no longer holds up the music in the island, and Isle stops asking a
+  player for its position if GNOME Shell goes away.
+- The island announces a new version again (since 0.7.0 only Settings → About did).
+- Uninstalling stops Isle's background service even where no user service manager runs.
 
 ## [1.5.0] - 2026-10-29
 
@@ -1391,7 +1470,8 @@ The first release.
   dark, vivid ones bright.
 - Text is at least 12 px throughout.
 
-[Unreleased]: https://github.com/zickrian/isle/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/zickrian/isle/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/zickrian/isle/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/zickrian/isle/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/zickrian/isle/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/zickrian/isle/compare/v1.3.0...v1.3.1

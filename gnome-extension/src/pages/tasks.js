@@ -8,7 +8,7 @@ import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 
-import {VERTICAL, onUiScale} from '../compat.js';
+import {VERTICAL} from '../compat.js';
 import {iconButton, label, wrapLines} from '../widgets.js';
 import {Page} from './page.js';
 
@@ -131,10 +131,10 @@ class TasksPage extends Page {
         header.add_child(label('Reminders', 'isle-reminders-title', {x_expand: true}));
         this._count = label('', 'isle-reminders-count');
         header.add_child(this._count);
-        const add = iconButton('isle-plus-symbolic', 'isle-button-flat isle-reminders-add',
-            () => this._focusNew(), {size: 12, accessibleName: 'New reminder'});
-        // Its plus on the page's right edge; the padding hangs past it.
-        onUiScale(add, scale => (add.translation_x = 5 * scale));
+        // A small round button, as the other pages' actions, on the page's right edge.
+        const add = iconButton('isle-plus-symbolic', 'isle-button-round isle-button-small isle-reminders-add',
+            () => this._focusNew(), {size: 13, accessibleName: 'New reminder'});
+        add.y_align = Clutter.ActorAlign.CENTER;
         header.add_child(add);
         return header;
     }
@@ -154,12 +154,7 @@ class TasksPage extends Page {
         const text = this._entry.clutter_text;
         // Enter adds it and leaves the field ready for the next.
         text.connect('activate', () => this._add());
-        // The shell only gets keys on request: ask before the field takes focus, as
-        // the grab moves focus itself. Esc or a click outside gives the keyboard back.
-        text.connect('button-press-event', () => {
-            this.emit('request-keyboard', true);
-            return Clutter.EVENT_PROPAGATE;
-        });
+        // A click takes the keyboard (see the controller's `_onFieldPress`); Esc or a click outside gives it back.
         text.connect('key-press-event', (_text, event) => {
             if (event.get_key_symbol() !== Clutter.KEY_Escape)
                 return Clutter.EVENT_PROPAGATE;

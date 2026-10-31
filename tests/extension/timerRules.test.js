@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 zickrian
 
-// The Focus timer's typed lengths: `node --experimental-default-type=module --test tests/extension/*.test.js`.
+// The timer's typed lengths: `node --experimental-default-type=module --test tests/extension/*.test.js`.
 
 import assert from 'node:assert/strict';
 import {test} from 'node:test';

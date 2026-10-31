@@ -509,7 +509,10 @@ export function agentAsks(request, look, answer) {
         subtitle: request.project ? AGENT_APPS[request.provider] : '',
         code: toolLine(request.tool, request.input),
         tone: 'warn',
-        glow: Theme.theme() === 'glass' ? GLASS_ASKING_GLOW : ASKING_GLOW,
+        // Read as it is drawn: the theme may change while it shows.
+        get glow() {
+            return Theme.translucent() ? GLASS_ASKING_GLOW : ASKING_GLOW;
+        },
         actions,
         // It waits on the user: it stays until answered, or until the agent stops asking.
         sticky: true,
@@ -528,7 +531,9 @@ export function agentDone(event, look, show) {
         titleLines: 2,
         subtitle: `${[event.project, AGENT_APPS[event.provider]].filter(Boolean).join(' · ')} finished`,
         tone: 'good',
-        glow: Theme.theme() === 'glass' ? GLASS_DONE_GLOW : DONE_GLOW,
+        get glow() {
+            return Theme.translucent() ? GLASS_DONE_GLOW : DONE_GLOW;
+        },
         actions: [
             ...show ? [{label: 'Open terminal', callback: show}] : [],
             {label: 'OK', primary: true, callback: () => {}},

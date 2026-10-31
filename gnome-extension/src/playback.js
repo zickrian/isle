@@ -16,13 +16,18 @@ export function hasTrack(nowPlaying) {
     return nowPlaying?.available && Boolean(nowPlaying.title);
 }
 
+/** The speed it plays at; 0 while isled sees it buffering, though the player says it plays. */
+function rateOf(nowPlaying) {
+    return nowPlaying.rate ?? 1;
+}
+
 /** The playback position now (ms), advanced in real time from the daemon's last sample while playing. */
 export function positionMs(nowPlaying) {
     if (!nowPlaying?.available)
         return 0;
     let position = nowPlaying.position_us / 1000;
     if (nowPlaying.status === 'Playing')
-        position += (nowMs() - nowPlaying.sampled_at_ms) * (nowPlaying.rate || 1);
+        position += (nowMs() - nowPlaying.sampled_at_ms) * rateOf(nowPlaying);
     const length = nowPlaying.length_us / 1000;
     return length > 0 ? Math.min(Math.max(position, 0), length) : Math.max(position, 0);
 }
@@ -49,12 +54,12 @@ export function lineIndexAt(lines, position) {
     return found;
 }
 
-/** Milliseconds until the line after `index` starts at the current playback speed, or null if none. */
+/** Milliseconds until the line after `index` starts at the current playback speed, or null if none (or stalled). */
 export function msUntilLine(nowPlaying, lines, index) {
     const next = lines[index + 1];
-    if (!next)
+    const rate = rateOf(nowPlaying);
+    if (!next || !(rate > 0))
         return null;
-    const rate = nowPlaying.rate || 1;
     return Math.max(0, (next.time_ms - positionMs(nowPlaying)) / rate);
 }
 

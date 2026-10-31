@@ -113,6 +113,10 @@ export const Page = GObject.registerClass({
         return 'wash';
     }
 
+    /** While the island widens to the page, `past` px of the page's right side are still past its edge; 0 once
+     * it all fits. */
+    uncover(_past) {}
+
     /** Called as the page comes on screen. */
     onActivate() {}
 
@@ -124,6 +128,11 @@ export const Page = GObject.registerClass({
 
     /** Puts away what `warmUp` showed. */
     coolDown() {}
+
+    /** Whether it is also built ahead while the island is open on another page (see `Expanded._openWarmStep`). */
+    get warmsOpen() {
+        return false;
+    }
 
     /** Notes a change made out of sight: its next showing would style and lay it out in the frames it animates.
      * `force` for a change in a part of it not shown (lyrics behind the player), though the page is. */

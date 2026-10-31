@@ -21,8 +21,9 @@ import * as WorldClocks from '../worldClocks.js';
 import {Page} from './page.js';
 import {onHover} from './tasks.js';
 
-/** The month grid's height, shared by its rows; sizes in CSS pixels (see `px`). */
-const GRID_HEIGHT = 108;
+/** The month grid's height, shared by its rows: what the page has under the title and weekdays (39 of its
+ * 144 inside); sizes in CSS pixels (see `px`). Five weeks fill it, six take smaller days (`isle-cal-six-weeks`). */
+const GRID_HEIGHT = 105;
 const MAX_ROW_HEIGHT = 21;
 /** Events of a desktop calendar with no colour of its own (blue), and Isle's own (orange), as RGB. */
 const SYSTEM_COLOR = [10, 132, 255];
@@ -360,12 +361,6 @@ export const CalendarPage = GObject.registerClass({
         text.connect('activate', () => this._add());
         // How the line reads, as it is typed (see `_previewLine`).
         text.connect('text-changed', () => this.later('preview', PREVIEW_DELAY_MS, () => this._previewLine()));
-        // Typing needs the keyboard, which the shell only gets on request;
-        // ask before the field takes focus, as on the Tasks page.
-        text.connect('button-press-event', () => {
-            this.emit('request-keyboard', true);
-            return Clutter.EVENT_PROPAGATE;
-        });
         text.connect('key-press-event', (_text, event) => {
             if (event.get_key_symbol() !== Clutter.KEY_Escape)
                 return Clutter.EVENT_PROPAGATE;
@@ -724,6 +719,7 @@ export const CalendarPage = GObject.registerClass({
         const rowHeight = px(Math.min(MAX_ROW_HEIGHT, Math.floor(GRID_HEIGHT / rows)));
 
         this._grid.destroy_all_children();
+        this._grid.set_style_class_name(rows > 5 ? 'isle-cal-grid isle-cal-six-weeks' : 'isle-cal-grid');
         this._dayButtons = [];
         for (let row = 0; row < rows; row++) {
             const week = new St.BoxLayout({style_class: 'isle-cal-week', height: rowHeight});

@@ -8,10 +8,12 @@ import GdkPixbuf from 'gi://GdkPixbuf';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
+import Graphene from 'gi://Graphene';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import {onUiScale, px, uiScale} from './compat.js';
+import * as Theme from './theme.js';
 
 let iconDir = null;
 /** Icons by name, made once: a GIcon never changes, and looking for the file is a disk access. */
@@ -264,15 +266,17 @@ class WrapLayout extends Clutter.LayoutManager {
     }
 });
 
-/** Opacity of disabled controls: still visible, clearly not available. */
-const DISABLED_OPACITY = 90;
+/** Opacity of disabled controls: still visible, clearly not available; a step more on the lighter glass. */
+const DISABLED_OPACITY = 90, DISABLED_OPACITY_SEE_THROUGH = 105;
 
 // Enables or disables a button; disabled ones stay in place, dimmed, so the layout never jumps.
 // Dimmed by opacity, not CSS colour: the bundled icons are white images that take no colour.
 export function setEnabled(button, enabled) {
+    // Kept, so a change of look dims it as that look does (see Island `refreshTheme`).
+    button._isleDisabled = !enabled;
     button.reactive = enabled;
     button.can_focus = enabled;
-    const opacity = enabled ? 255 : DISABLED_OPACITY;
+    const opacity = enabled ? 255 : Theme.translucent() ? DISABLED_OPACITY_SEE_THROUGH : DISABLED_OPACITY;
     if (!restsAt(button, 'opacity', opacity))
         button.ease({opacity, duration: 150});
 }
@@ -437,7 +441,8 @@ export const Ring = GObject.registerClass({
         cr.setLineWidth(lineWidth);
         cr.setLineCap(1); // round
 
-        cr.setSourceRGBA(r, g, b, this._trackOpacity);
+        // A track half as bright again on glass, which is lighter than black.
+        cr.setSourceRGBA(r, g, b, this._trackOpacity * (Theme.translucent() ? 1.5 : 1));
         cr.arc(width / 2, height / 2, radius, 0, 2 * Math.PI);
         cr.stroke();
 
@@ -448,6 +453,21 @@ export const Ring = GObject.registerClass({
             cr.stroke();
         }
         cr.$dispose();
+    }
+});
+
+/** One equaliser bar. It tells Clutter it draws across its whole row, so the bars' redraws make one rectangle a
+ * frame: four small ones apart cost the shell half as much again to paint. */
+const Bar = GObject.registerClass(
+class Bar extends St.Widget {
+    vfunc_get_paint_volume(volume) {
+        const row = this.get_parent();
+        if (!row)
+            return super.vfunc_get_paint_volume(volume);
+        volume.set_origin(new Graphene.Point3D({x: -this.x, y: 0, z: 0}));
+        volume.set_width(row.width);
+        volume.set_height(this.height);
+        return true;
     }
 });
 
@@ -464,7 +484,7 @@ class Bars extends St.BoxLayout {
         this._bounces = [];
         for (let i = 0; i < count; i++) {
             // Full height, scaled about its middle: a scale moves below a pixel and lays nothing out again.
-            const bar = new St.Widget({style_class: 'isle-bar', y_align: Clutter.ActorAlign.CENTER});
+            const bar = new Bar({style_class: 'isle-bar', y_align: Clutter.ActorAlign.CENTER});
             bar.set_pivot_point(0.5, 0.5);
             bar.scale_y = this._rest(i);
             // A bar's bounce pauses off screen. Each bar is watched itself: the box maps a moment before them.

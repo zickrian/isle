@@ -13,6 +13,7 @@ import St from 'gi://St';
 
 import {VERTICAL, onUiScale, px, uiScale} from '../compat.js';
 import * as Format from '../format.js';
+import {roundCorners} from '../glass.js';
 import * as Theme from '../theme.js';
 import {icon, label, setEnabled} from '../widgets.js';
 import {Page} from './page.js';
@@ -86,7 +87,14 @@ class WindowPreview extends St.Widget {
             this.set_size(this._width * scale, PREVIEW_HEIGHT * scale);
             if (this._clone)
                 this._layout();
+            this.syncTheme();
         });
+        this.syncTheme();
+    }
+
+    /** On glass the corners are cut away, as the glass round them varies; on black they are painted over. */
+    syncTheme() {
+        roundCorners(this, Theme.translucent() ? PREVIEW_RADIUS * uiScale() : null);
     }
 
     /** Shows `window` live, or else `gicon` with an optional `hint`. */
@@ -165,17 +173,19 @@ class WindowPreview extends St.Widget {
         this.width = px(width);
     }
 
-    /** The island's colour outside the rounded shape, then a faint white edge. */
+    /** The island's colour outside the rounded shape (not on glass: see `syncTheme`), then a faint white edge. */
     _repaintCorners(area) {
         const cr = area.get_context();
         const [width, height] = area.get_surface_size();
         const scale = uiScale();
         const radius = PREVIEW_RADIUS * scale, edge = scale / 2;
-        cr.rectangle(0, 0, width, height);
-        roundedRect(cr, 0, 0, width, height, radius);
-        cr.setFillRule(Cairo.FillRule.EVEN_ODD);
-        cr.setSourceRGBA(...Theme.solid(), 1);
-        cr.fill();
+        if (!Theme.translucent()) {
+            cr.rectangle(0, 0, width, height);
+            roundedRect(cr, 0, 0, width, height, radius);
+            cr.setFillRule(Cairo.FillRule.EVEN_ODD);
+            cr.setSourceRGBA(...Theme.solid(), 1);
+            cr.fill();
+        }
         roundedRect(cr, edge, edge, width - 2 * edge, height - 2 * edge, radius - edge);
         cr.setSourceRGBA(1, 1, 1, 0.1);
         cr.setLineWidth(scale);

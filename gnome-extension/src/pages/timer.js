@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 zickrian
 
-// Focus timer (Pomodoro), the Focus page. See docs/product-spec.md.
+// The Pomodoro timer, the Timer page. See docs/product-spec.md.
 
 import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
@@ -11,7 +11,7 @@ import {timerColor} from '../compact.js';
 import {VERTICAL, onUiScale} from '../compat.js';
 import * as Format from '../format.js';
 import {typedMinutes} from '../timerRules.js';
-import {Ring, icon, iconButton, label} from '../widgets.js';
+import {Ring, icon, iconButton, label, setEnabled} from '../widgets.js';
 import {Page} from './page.js';
 
 /** The phase's name inside the ring, under the time. */
@@ -22,8 +22,9 @@ const PHASES = {
     long_break: 'Long break',
 };
 const RING_SIZE = 104;
-/** Reset and Start, at the right, in a slot as wide as both (CSS px): Reset appearing moves nothing. */
-const CONTROLS_WIDTH = 152;
+/** Reset and Start, at the right, in a slot as wide as both with "Resume" (CSS px): Reset appearing moves nothing;
+ * the steppers sit midway between the ring and Start as it is before a session (`_centreSteppers`). */
+const CONTROLS_WIDTH = 160;
 /** Shown until isled reports the timer: a fresh 25-minute focus session. */
 const DEFAULT_STATE = {phase: 'idle', running: false, remaining_ms: 25 * 60000, duration_ms: 25 * 60000, today_sessions: 0};
 /** The lengths the steppers keep to, in minutes (as Settings). */
@@ -31,8 +32,10 @@ const STEPPERS = [
     {key: 'focus_minutes', label: 'Work', min: 1, max: 180},
     {key: 'short_break_minutes', label: 'Break', min: 1, max: 60},
 ];
+/** ClutterText's room either side of an editable line (its TEXT_PADDING), in device pixels. */
+const CARET_ROOM = 2;
 
-// The Focus page: a ring with the time left, the lengths of work and break as steppers, and Start.
+// The Timer page: a ring with the time left, the lengths of work and break as steppers, and Start.
 export const TimerPage = GObject.registerClass(
 class TimerPage extends Page {
     /** `height` is the expanded island's page height. */
@@ -57,9 +60,14 @@ class TimerPage extends Page {
 
         const steppers = new St.BoxLayout({...VERTICAL, style_class: 'isle-steppers', y_align: Clutter.ActorAlign.CENTER});
         this._values = new Map();
+        // The fields and − / + buttons, locked while a session is under way (see `_syncLock`), and their pills.
+        this._lockable = [];
+        this._stepperRows = [];
+        this._locked = false;
         for (const stepper of STEPPERS)
             steppers.add_child(this._buildStepper(stepper));
         this.add_child(steppers);
+        this._steppers = steppers;
         this.add_child(new St.Widget({x_expand: true}));
 
         // Reset only once started; then Start, Pause or Resume.
@@ -78,9 +86,14 @@ class TimerPage extends Page {
         this._play.connect('clicked', () => this._toggle());
         controls.add_child(this._play);
         const slot = new St.Widget({layout_manager: new Clutter.BinLayout()});
-        onUiScale(slot, scale => (slot.width = CONTROLS_WIDTH * scale));
+        onUiScale(slot, scale => {
+            slot.width = CONTROLS_WIDTH * scale;
+            if (this.mapped)
+                this._centreSteppers();
+        });
         slot.add_child(controls);
         this.add_child(slot);
+        this._slot = slot;
 
         this.watch(['pomodoro'], () => this._update());
         this.watch(['pomodoroConfig'], () => this._syncSteppers());
@@ -91,6 +104,7 @@ class TimerPage extends Page {
     /** "Work  25  −  +": a length to type, and buttons a minute down or up. */
     _buildStepper({key, label: name, min, max}) {
         const row = new St.BoxLayout({style_class: 'isle-stepper'});
+        this._stepperRows.push(row);
         row.add_child(label(name, 'isle-stepper-name'));
         // The number is a field: click it, type a length, Enter or a click away keeps it. The
         // buttons still step a minute, which stays quicker for a small change.
@@ -104,18 +118,34 @@ class TimerPage extends Page {
         this._values.set(key, value);
         const text = value.clutter_text;
         text.x_align = Clutter.ActorAlign.END;
-        // Ask for the keyboard before the field takes it: the grab moves focus itself.
-        text.connect('button-press-event', () => {
-            this.emit('request-keyboard', true);
-            return Clutter.EVENT_PROPAGATE;
+        // Editable only while typed in: drawn editable with no input method on it, the caret ClutterText
+        // places for one logs Clutter criticals. Shifted as editable lays it out (CARET_ROOM in from the end).
+        const setEditable = editable => {
+            text.editable = editable;
+            text.translation_x = editable ? 0 : CARET_ROOM / text.get_resource_scale() - 2 * CARET_ROOM;
+            // Its width changes with it (the room), which ClutterText leaves to the next layout.
+            text.queue_relayout();
+        };
+        setEditable(false);
+        text.connect('resource-scale-changed', () => setEditable(text.editable));
+        // A click on it, beside the digits too, takes the keyboard (see the controller's `_onFieldPress`).
+        // All of it, so typing replaces it: after the click, which puts the cursor where it lands.
+        text.connect('key-focus-in', () => {
+            setEditable(!this._locked);
+            this.later('select-length', 0, () => {
+                if (text.has_key_focus())
+                    text.set_selection(0, -1);
+            });
         });
-        text.connect('key-focus-in', () => text.set_selection(0, -1));
         text.connect('activate', () => {
             this._saveValue(key, value, min, max);
             this._giveKeyboardBack();
         });
         // Clicking elsewhere keeps the typed length, as renaming a reminder does.
-        text.connect('key-focus-out', () => this._saveValue(key, value, min, max));
+        text.connect('key-focus-out', () => {
+            this._saveValue(key, value, min, max);
+            setEditable(false);
+        });
         text.connect('key-press-event', (_text, event) => {
             if (event.get_key_symbol() !== Clutter.KEY_Escape)
                 return Clutter.EVENT_PROPAGATE;
@@ -134,16 +164,21 @@ class TimerPage extends Page {
             }
         });
         row.add_child(value);
+        this._lockable.push(value);
         for (const [glyph, step, accessibleName] of [['isle-minus-symbolic', -1, `Shorter ${name.toLowerCase()}`],
             ['isle-plus-symbolic', 1, `Longer ${name.toLowerCase()}`]]) {
-            row.add_child(iconButton(glyph, 'isle-button-flat isle-stepper-button',
-                () => this._step(key, step, min, max), {size: 12, accessibleName}));
+            const button = iconButton(glyph, 'isle-button-flat isle-stepper-button',
+                () => this._step(key, step, min, max), {size: 12, accessibleName});
+            row.add_child(button);
+            this._lockable.push(button);
         }
         return row;
     }
 
     /** One stepper click, kept within `min`..`max` minutes. */
     _step(key, step, min, max) {
+        if (this._locked)
+            return;
         // From what was last asked for: clicks faster than isled answers each count.
         const config = this._asked ?? this.daemon.state.pomodoroConfig;
         if (!config)
@@ -154,7 +189,7 @@ class TimerPage extends Page {
 
     /** Keeps a typed length, within the stepper's limits. */
     _saveValue(key, value, min, max) {
-        const minutes = typedMinutes(value.text, min, max);
+        const minutes = this._locked ? null : typedMinutes(value.text, min, max);
         if (minutes === null) {
             this._showValue(key, value);
             return;
@@ -191,6 +226,41 @@ class TimerPage extends Page {
         this.emit('request-keyboard', false);
     }
 
+    /** Ends any typing with isled's length back in the field. */
+    _cancelTyping() {
+        for (const {key} of STEPPERS) {
+            const value = this._values.get(key);
+            if (!value.clutter_text.has_key_focus())
+                continue;
+            this._showValue(key, value);
+            this._giveKeyboardBack();
+        }
+    }
+
+    /** From Start until Reset the lengths hold still and take no clicks, keys or focus: each length reads on in grey
+     * (`.isle-stepper-locked`, not faded), its − / + dimmed. Only on a change: this runs every tick. */
+    _syncLock(locked) {
+        if (locked === this._locked)
+            return;
+        this._locked = locked;
+        if (locked)
+            this._cancelTyping();
+        for (const row of this._stepperRows) {
+            if (locked)
+                row.add_style_class_name('isle-stepper-locked');
+            else
+                row.remove_style_class_name('isle-stepper-locked');
+        }
+        for (const actor of this._lockable) {
+            if (actor instanceof St.Entry) {
+                // The field's text takes clicks of its own; it is editable only while typed in.
+                actor.reactive = actor.can_focus = actor.clutter_text.reactive = !locked;
+            } else {
+                setEnabled(actor, !locked);
+            }
+        }
+    }
+
     /** Steppers show isled's lengths, or the clicks it hasn't answered yet. */
     _syncSteppers() {
         const config = this.daemon.state.pomodoroConfig;
@@ -214,6 +284,8 @@ class TimerPage extends Page {
 
     /** Start, Pause or Resume. */
     _toggle() {
+        // A length half typed is dropped, not started with.
+        this._cancelTyping();
         const state = this.daemon.state.pomodoro;
         this.daemon.call('pomodoro', state?.running ? 'Pause' : 'Start');
     }
@@ -231,6 +303,7 @@ class TimerPage extends Page {
         this._playIcon.gicon = icon(state.running ? 'isle-pause-symbolic' : 'isle-play-symbolic');
         this._playLabel.text = state.running ? 'Pause' : idle ? 'Start' : 'Resume';
         this._reset.visible = !idle;
+        this._syncLock(!idle);
         this._scheduleTick(state);
     }
 
@@ -254,6 +327,19 @@ class TimerPage extends Page {
     onActivate() {
         this._update();
         this._syncSteppers();
+        this._centreSteppers();
+    }
+
+    /** Midway between the ring and Start, measured as "Start" whatever the button says now: the same shift
+     * idle, running or paused, so nothing moves as Reset and Pause take the room on the right. */
+    _centreSteppers() {
+        const text = this._playLabel.clutter_text;
+        const [, button] = this._play.get_preferred_width(-1);
+        const [shown] = text.create_pango_layout(text.text).get_pixel_size();
+        const [start] = text.create_pango_layout('Start').get_pixel_size();
+        const shift = Math.round((this._slot.width - (button - shown + start)) / 2);
+        if (this._steppers.translation_x !== shift)
+            this._steppers.translation_x = shift;
     }
 
     /** Forgets unanswered clicks, and settles a length still being typed. */

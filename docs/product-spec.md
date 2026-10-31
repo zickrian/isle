@@ -9,8 +9,8 @@ disagrees with this document is a bug in one or the other; fix both together.
 |---|---|
 | see the time and what is running at a glance | show the clock in the closed island, with live activities beside it (timer ring, music) |
 | control music without switching windows | open on hover with cover, scrubber, controls; sing along with synced lyrics |
-| keep an eye on a call while I work in another window | show calls from any app or browser: their length in the closed island, a live preview of the call, mute and a way back |
-| focus in blocks | run a Pomodoro timer that stays visible while closed and chimes at the end |
+| keep an eye on a call while I work in another window | show calls from any app or browser: a green phone in the closed island, their length in the open one, a live preview of the call, mute and a way back |
+| focus in blocks | run a Pomodoro timer that stays visible while closed (its time left beside the clock when nothing else runs) and chimes at the end |
 | know where my time goes | time the app in front, if I turn it on, and show it today, over the last seven days or the last 30 |
 | not forget small tasks | write them down in one line, tick them off; tasks survive reboots and power cuts |
 | move files between apps | park files on the island and drag them out later |
@@ -18,59 +18,119 @@ disagrees with this document is a bug in one or the other; fix both together.
 | still get my notifications now that the clock is gone | show GNOME's notifications in the island, keep them in a list, and offer Do Not Disturb right there |
 | know when I am being watched or recorded | show privacy dots for the camera, microphone and screen sharing, and a timer while the screen records |
 | control sound without opening Quick Settings | change the volume and the output device from the music page |
-| keep my laptop fast and cool | never poll; animate only while something moves |
+| keep my laptop fast and cool | never poll what can be watched; animate only while something moves |
 
 Out of scope for v1: water reminders (removed), notification banners in the
 island, and desktops other than GNOME.
 
 ## 2. Presentations
 
-The island is always in exactly one presentation. `P` is the top bar height:
-26 px with the compact top bar (the default), GNOME's 32 px otherwise. All
-sizes are logical pixels.
+The island is always in exactly one presentation. `P` is the top bar's
+height: 32 px with the closed island inside it (the default), 36 px with the
+space below the island on as well (the default too); with the island hanging
+below it, 26 px with the compact top bar (the default), GNOME's 32 px
+otherwise. `B` is the band the closed island fills: `P` without the space
+below the island (32 px in the bar). All sizes are logical pixels.
 
 | Presentation | Size (w × h) | Corner | Shoulder | Content |
 |---|---|---|---|---|
-| Compact | 144 × P; 232 with an activity | 10 | 7 | Clock; activity slots left/right |
-| Compact, hanging | 164 × (P + 30); 256 with an activity | 16 | 10 | As above |
-| Peek (alert) | fits its content, up to 380 wide × (P + 56); 56 high off a black bar; 12 px round the badge on every side | 28 | 13 | Badge · title/subtitle (a notification's words on up to two lines) · value, level bar or button, centred |
+| Compact | as wide as it shows, at least 144 (the clock alone) × B | 10 | 7 | Clock, centred; one sign each side (first activity left; a second activity's sign or what goes with the first right), privacy dots after it |
+| Compact, hanging | as wide as it shows, at least 164 × (P + 30; Settings 24–40) | 16 | 10 | As above |
+| Peek (alert) | fits its content, up to 380 wide × (P + 56); 56 high off a black bar; 12 px round the badge on every side, and the value or button as far from the right edge | 28 | 13 | Badge · title/subtitle (a notification's words on up to two lines) · value, level bar or button, centred |
 | Peek with buttons | fits its words up to 440, its buttons whole up to 560; buttons that don't fit go on to a line below; 16 px round one lit along its edges | 28 | 13 | Badge · title/subtitle · code · small buttons under the words, from the left |
-| Expanded | 600 × (P + 164) on every page; wider when its tabs need room; 720 for lyrics | 32 | 22 | Header row (tabs) · page |
+| Expanded | at least 600 × (B + 170) on every page; wider when its tabs and status need room (about 650 with the usual tabs); 720 for lyrics | 32 | 22 | Header row (tabs) · page, 20 px in from the sides and the bottom |
 
 Every width is even, so the island sits centred on its display to the pixel.
 
+**The closed island's width.** Each end's sign sits in a square as big as the
+cover (22 px in the bar, 24 hanging), as far in from the end as from the top
+and bottom ((height − cover) / 2: 5 px in a 32 px band), and no nearer the
+corner than the island's radius less the cover's (10 px hanging). Text last
+on the right (the timer's time left) keeps further in: 10 px from the end in
+the bar, 13 hanging. The privacy dots follow the right side's sign 6 px on;
+alone, they sit centred in the end's square. Both sides are as wide as the
+wider one, each 28 px from the clock (30 hanging), so the clock stays
+centred. The width is the two insets, the two sides with their gaps, and the
+time (with the Do Not Disturb moon's room on both sides of it), never less
+than the clock alone (144, 164 hanging; plus the moon and its 6 px gap in Do
+Not Disturb), rounded up to even: about 154 in the bar with a sign on each
+side, wider for the timer's time left or several dots. It grows and shrinks
+with what it shows (a time going from 9:59 to 10:00 too) at its sides, the
+clock staying where it is, and a sign that comes in fades in.
+
 The top bar is slimmed to a thin bezel (status icons and the tray stay in
-it) and see-through like glass, with no colour of its own. The
-island is a black notch hanging from the top edge of the screen with concave
-shoulders. Settings → Appearance → Island can make it **Glass** instead: what is
-behind it (windows and wallpaper) blurred (GNOME Shell's blur, radius 30) and
-dimmed under an 80% layer of rgba(19, 19, 21), as GNOME's menus measure with
-Blur my Shell, with a 1 px white edge at 10%; cut to the island's exact shape,
-shoulders and corners included, so nothing shows outside it. On glass,
-buttons are white at 8–16% instead of grey, an answer (Allow, Run, Join) and
-a toggle that is on take GNOME's accent colour (the user's, from GNOME 47),
-an OK stays white, and the assistant's and the alerts' light keeps to the
-edge, each colour lit by its own lightness, so it never burns to white. Closed, it sits inside the bar
-(32 px, against 26 px when it hangs below instead): maximised
+it) and see-through like glass, with no colour of its own. The island has
+two looks, chosen in Settings → Appearance → Island ("Black, or clear glass
+that shows what is behind it, blurred"); Black is the default:
+
+- **Black**: a black notch hanging from the top edge of the screen with
+  concave shoulders.
+- **Glass**: what is behind it (windows and wallpaper) blurred (GNOME Shell's
+  blur, radius 40) and toned in the same pass: its lightness held in a
+  narrow, even band, so a white page and a dark wallpaper beside it end close
+  together, and its brightest held up to a fifth deeper still, so text reads
+  at 4.5:1 or more over a white page; its colour let through softly (less on the closed island and
+  alerts, so small pills stay clean; more once open); under a thin cool smoke
+  of rgba(15, 17, 23) at 45%, with a sheen, a soft glow inside the edge and a
+  1 px white rim lit from 7% at the top to 24% at the bottom.
+
+A Glass slider beside it (Settings → Appearance) runs from that clear glass to
+dark smoked glass, as GNOME Shell's own blurred menus: what is behind dimmed to
+about two fifths with its colour kept, under a thin dark smoke, no sheen or
+glow, a faint rim. Buttons, rows and fields follow it; on the dark end they
+are flat panes of white, so channels such as the timer's steppers still show.
+
+Glass is cut to the island's exact shape, shoulders and corners included, so
+nothing shows outside it, and everything on it is made of the same material:
+buttons frosted (white at 14%, lit along the top), rows and cards a pane with
+a lit rim, commands and code sunk in darker wells, a call's preview with the
+glass round its corners, and greys a step brighter so text reads over bright
+windows. An answer (Allow, Run, Join), a toggle that is on (Do Not Disturb,
+Mute, lyrics, the output button, world clocks), the volume's fill and the
+caret take GNOME's accent colour (the user's, from GNOME 47; blue before); an
+OK stays white. The assistant's and the alerts' light follows the island's
+shape on Black and Glass alike; on Glass it keeps to the edge, each colour
+lit by its own lightness, so it never burns to white.
+
+Colours fit the look. On Glass the signal colours are lifted a quarter
+towards white, so they read on the lighter grey without glaring:
+alerts' badges and icons, the agent's tick and cross, the timer's glyph, ring
+and time, the recording and privacy dots and the service warning; red, green
+and orange text (a recording's length, a call's phone and length, Reminders'
+title, the calendar's month) and links likewise. Text picked in a field takes
+the accent. Small times and captions (a notification's or a chat's time,
+a command's output) are white at 46% on Black, the least that reads at
+4.5:1, and 64% on Glass. A control that can't act is dimmed to 35% opacity
+on Black, 41% on Glass, and takes the new look's dimming at once when the
+look changes.
+
+Closed, the island sits inside the bar, 32 px tall (against 26 px of bar
+when it hangs below instead). The bar is 4 px taller than the island
+(36 px), its buttons kept to the island's 32 px band, so the island stops
+just short of maximised windows (Settings → Appearance → Space below the
+island, on by default; off, the bar is as tall as the island). Maximised
 windows start below the bar, so the resting island never covers an app and
 no screen space is lost to it. Alerts and the open island reach below the
 bar; they cover windows only for as long as they are shown. Their content
 sits below the bar's height, and the open island's header row level with
-the bar. In the settings the closed island can hang below the bar instead
-("Compact, hanging").
+the closed island's band. In the settings the closed island can hang below
+the bar instead ("Compact, hanging"); Island height (24–40 px) then takes
+the place of the space below the island.
 
 Type is set in Inter (installed with Isle), semibold for titles, nothing heavier than bold, and slightly tighter
 tracking on large figures. The island's text fields keep their own look
 when Blur my Shell restyles the shell's.
 
-A slider takes the bar from glass to black; the island stays black. All
+A slider takes the bar from glass to black; the island keeps its look. All
 the way to black, bar and island read as one shape: the shoulders then curve
 out of the bar's lower edge instead of the screen's top. The installer sets glass (and the slim
 bar) on every install, turns off Blur my Shell's top bar blur (it darkens
 the bar), and turns off
-extensions that take the island's place. Isle adds its colour to the bar's
-own style and puts it back if another extension replaces that style,
-leaving the other extension's rules in place.
+extensions that take the island's place. Isle's colour is one declaration
+in the bar's own style: it writes it only when it is not in effect (however
+another extension spells or orders the style), keeps other extensions'
+declarations as they are, puts its colour back if another extension takes
+it out, and takes out only its own when it stops.
 
 ### State details
 
@@ -79,13 +139,13 @@ glance (and for colour-blind users):
 
 | Control | Off | On |
 |---|---|---|
-| Do Not Disturb | bell outline, grey chip | filled moon, indigo chip; moon in the closed island |
-| Focus timer | ▶ Start pill | ⏸ Pause while it runs, ▶ Resume when paused; a round reset beside it once started |
+| Do Not Disturb | bell outline, grey chip | filled moon, indigo chip (the accent on Glass); moon in the closed island |
+| Timer | ▶ Start pill; Work and Break lengths can be changed | ⏸ Pause while it runs, ▶ Resume when paused; a round reset beside it once started; the lengths locked until Reset, in grey with faint − / + |
 | Lyrics | speech bubble outline | filled bubble, lit button |
 | Completed tasks | arrow pointing right, folded | arrow pointing down, listed |
 | Play / pause | play | pause |
 | Task | empty circle | white circle with a black check; title struck through |
-| Mute (call) | microphone, grey round button, "Mute" | crossed-out microphone, white button, "Muted"; a red crossed-out microphone in the closed island |
+| Mute (call) | microphone, grey round button, "Mute" | crossed-out microphone, white button (the accent on Glass), "Muted"; a red crossed-out microphone on the closed island's right |
 
 Controls that cannot act right now (Clear All with nothing to clear) stay in
 place, dimmed, so the layout never jumps.
@@ -115,10 +175,11 @@ place, dimmed, so the layout never jumps.
 | Right-click | On an alert: put it away; else bring the call, or the music player, to the front | Bring the music player to the front |
 | Pointer on an alert | Holds it; it goes 1.5 s after the pointer leaves (one asking, a reminder or an event keeps its own time). One the pointer doesn't open (with a button) and an answer show a × on their icon to put them away | – |
 | Two-finger swipe up / down on an alert | Put it away / open it | – |
-| Super+V (GNOME's calendar shortcut) | Open the clipboard history, search ready, held open (Settings may leave it to GNOME's calendar) | Close |
+| Super+V (GNOME's calendar shortcut) | Open the clipboard history, search ready, held open (Settings → Clipboard → Clipboard History may leave it to GNOME's calendar) | Close |
 | Super+I (Settings: any shortcut) | Ask the assistant; typing while it listens types the request instead | Speak again |
 | Click a tab | – | Go to that page |
-| Scroll, or swipe with two fingers | – | Lists and lyrics scroll; pages change only by their tabs |
+| Scroll, or swipe with two fingers, over the header (tabs and status) | – | Change page: down or right the next, up or left the one before; one page a swipe, one a wheel click (at most one every 0.2 s while it spins); stops at the first and last page |
+| Scroll, or swipe with two fingers, over a page | – | Lists, lyrics and the calendar's events scroll; the page never changes |
 | ← → Enter (search field) | – | Choose a clipboard card; Enter pastes it into the window in front |
 | Esc | – | Clear the search, stop typing or renaming; then close when opened with Super+V |
 
@@ -126,11 +187,11 @@ place, dimmed, so the layout never jumps.
 shown → the page picked by hand (a tab, or the Shelf after a file
 was dragged onto the island), remembered for 5 minutes and forgotten when a
 call starts → Call during a call → Notifications if some arrived unseen
-(during Do Not Disturb) → Music if something plays → Focus if the timer
+(during Do Not Disturb) → Music if something plays → Timer if the timer
 runs → Music.
 
 Pages, in order: **Call** (only during a call) **· Music · Notifications ·
-Focus · Reminders · Shelf · Calendar · Apps · Usage** (Apps only with its switch
+Timer · Reminders · Shelf · Calendar · Apps · Usage** (Apps only with its switch
 on, Usage only with an AI plan found), one tab each in the header. Lists scroll
 with the wheel or touchpad and never show a scrollbar.
 
@@ -139,31 +200,42 @@ with the wheel or touchpad and never show a scrollbar.
 - Where it is: on the main display, in its top bar; or (Settings) on the display of the window in use,
   moving there once closed. A display without the top bar has the island hang from its top edge, with
   a header of its own when open, and GNOME's clock comes back to the main top bar meanwhile.
-- Right slot, first that applies: a warning (Isle's service stopped; a click offers to restart it) →
-  the bot, 18 px, in the look chosen, blinking and glancing every few seconds (the assistant works on
-  a request or a command runs with the island closed; a click shows it) →
-  muted microphone on a call → a second activity → music bars → up to two privacy dots.
-- Two activities at once: the first of recording, call, music and timer keeps the left slot and the
-  centre; the next takes the right slot: the timer's time left (white while focusing,
-  green on a break; beside the music bars while a song is first), a call's green phone and length, or
-  the music bars. A second time is as large as the clock and on its line, with no ring. The island widens
-  by as much as that is wider than a slot, on both sides, so the clock stays centred. Each side's sign
-  keeps to its end of the island, all as far in.
-- Left slot, first that applies: breathing red dot (screen recording) →
-  green phone (a call) → focus timer ring → cover art (a song playing or paused) → white dot (unseen
-  notifications).
-- Do Not Disturb: a small moon before the clock (or the call's or recording's length), whatever the sides hold.
-- While the screen records, the centre shows how long it has been recording
-  instead of the clock; during a call (and no recording), how long the call
-  has lasted, in green.
-- Right slot: a red crossed-out microphone while a call is muted, else music
-  bars while a song is loaded. They dance only while it
-  plays and the closed island is on screen, and rest after a minute without
-  input. Paused, they rest and dim, and the cover stays until the player
+- Centre: the clock (follows GNOME's 12/24-hour setting), exactly centred; while the screen records,
+  how long it has been recording in its place. A call keeps the clock (its length is on the open
+  island).
+- One island, one sign on each side of the clock. Left: the first activity that applies, in the order
+  screen recording → a call → music (a song playing or paused, until its player closes; none with the
+  Music page left out) → the timer (a session or break under way); with none, a white dot while
+  notifications are unseen. Right, first that applies:
+  1. a warning (Isle's service stopped; a click offers to restart it);
+  2. the bot, 18 px, in the look chosen, blinking and glancing every few seconds (the assistant works
+     on a request or a command runs with the island closed; a click shows it);
+  3. a red crossed-out microphone while a call is muted;
+  4. the second activity's sign: the timer's ring (filling as the phase runs), the song's cover, or a
+     call's green phone;
+  5. what goes with the first activity: the song's music bars, or the timer's time left.
+
+  A third activity and later ones show only in the open island.
+
+  | Shown | Left | Right |
+  |---|---|---|
+  | Screen recording | breathing red dot | – |
+  | Call | green phone | – (red microphone while muted) |
+  | Music | cover art | music bars |
+  | Timer alone | a still timer glyph | its time left, as large as the clock and on its line |
+  | Timer with privacy dots | its ring | the dots |
+  | Call and music | green phone | the song's cover |
+  | Music and timer | cover art | the timer's ring |
+
+  The timer's glyph, ring and time are white while focusing and green on a break, and dim while
+  paused. The bars dance only while the song plays and the closed island is on screen, and rest
+  after a minute without input; paused, they rest and dim, and the cover stays until the player
   closes.
-- Far right: privacy dots: green camera, orange microphone,
-  blue screen sharing (the island widens by 22 px while any is shown).
-- Centre: the clock (follows GNOME's 12/24-hour setting).
+- Privacy dots, in the same island after the right side's sign: green camera, orange microphone,
+  blue screen sharing (7 px, 4 px apart). On a call the microphone's dot shows only while another app
+  records too. Settings → Appearance → Privacy indicators.
+- Do Not Disturb: a small moon before the time (or the recording's length), the time still centred,
+  whatever the sides hold.
 
 ## 5. Pages
 
@@ -173,9 +245,15 @@ name, and a red dot on Notifications while some are unseen. On the right a
 red "● 0:42" pill while the screen records (click to stop), a green "📞 1:15"
 pill during a call on any page but Call (click: the Call page), the privacy
 dots, the music bars, the assistant's sparkle, `[timer ring] Tue 20 Oct 12:26` and the gear. The
-tabs' icons, the gear and the pages' contents share the same 28 px edges. When the tabs and the
-status together need more than the page's width, the island grows to fit them, by the same amount on
-both sides so it stays centred. The Call tab, its phone in green, only shows during a call.
+first tab's pill, the gear's icon and the pages' contents share the same 20 px edges; every tab is 26 px
+tall, 3 px from the band's top and bottom, the open one's name on the clock's line. When the tabs and
+the status together need more than 600, the island grows to fit them, by the same amount on both
+sides so it stays centred. The Call tab, its phone in green, only shows during a call. Scrolling or
+swiping over the header changes the page (see §3).
+
+Pages sit 20 px in from the island's sides and from its bottom (cards' 12 px corners concentric with
+the island's 32); on each page rows and columns line up on shared edges, and buttons and switches
+come in one size each (text buttons 25 px tall, an alert's own included).
 
 **Call**, with round controls. A call is an app holding the
 microphone for over 2 s (sites open it briefly to ask for permission), in
@@ -237,8 +315,21 @@ way to nothing (browsers report no title and "Paused" for a moment between
 videos), the song is shown playing for up to 1.5 s, so the cover, bars and
 width do not drop out and back; a song paused by itself shows at once.
 
+The lyrics and the scrubber stay in time for the whole song. While the open
+island shows the music (the player or the lyrics, not the outputs), `isled`
+reads the player's position at once and then once a second while it plays,
+since players don't reliably report stalls, ads or seeks made inside them;
+closed, or on another page, it reads nothing. A player that says it plays
+but stands still between two reads (buffering, an ad) holds the lyrics until
+it moves on again. A speed the player doesn't report (it keeps saying 1×
+while playing faster) is measured from two agreeing steps between reads; a
+player that says 0× while moving plays on at the speed it is seen moving. A
+browser's read that jumps back more than 1.5 s, or a read of 0, is believed
+only once the next read moves on from it. A player that stops answering
+holds up no other.
+
 **Notifications**, as cards: a heading "Notifications" with
-**Do Not Disturb** (a bell, or a moon on purple while on) and a **Clear**
+**Do Not Disturb** (a bell, or a moon on purple while on; the accent on Glass) and a **Clear**
 pill on its right. Below, newest first, a card each, 6 px apart: the app's
 icon (a symbolic one on a grey tile), the title in bold and its text in
 grey on one line, how long ago on the right, and its buttons ("Reply",
@@ -248,16 +339,25 @@ Cards past the edge fade out as the list scrolls. Click a card to open
 it (the island closes). Opening the page marks them seen. Empty: a bell,
 "No notifications · You're all caught up".
 
-**Focus**: a 104 px ring on the left that fills clockwise as the phase
+**Timer** (its tab, its Settings page and its row in Settings → Pages say
+Timer): a 104 px ring on the left that fills clockwise as the phase
 runs (white while focusing, green on a break), the time left inside and the
-phase under it ("Focus", "Short break", "Long break"). In the middle two
-stepper pills, **Work** and **Break**, each with its minutes and − / +
-(Work 1–180, Break 1–60; each click counts, however fast). The minutes can
-also be typed: click the number, type a length, and Enter or a click elsewhere
-keeps it, while Esc puts the old one back; it is kept to those limits. On the
-right a **Start** pill (Pause while it runs, Resume when paused) with a round
-reset beside it once the timer has started; the controls keep a fixed width, so
-nothing moves as they change. No glows.
+phase under it ("Focus", "Short break", "Long break"). Between the ring and
+Start, centred midway (measured against Start as it reads before a session,
+so nothing moves as Reset and Pause appear), two stepper pills, **Work** and
+**Break**, each with its minutes and − / + (Work 1–180, Break 1–60; each
+click counts, however fast). The minutes can also be typed: a click anywhere
+in the field selects the length, so typing replaces it (digits only, up to
+three, "180" shown whole); Enter or a click elsewhere keeps it, kept to those
+limits, while Esc puts the old one back; leaving the page keeps it too. From
+Start until Reset the lengths hold still and take no clicks, keys or focus:
+each number reads on in grey (white at 60% on Black, 72% on Glass),
+its − / + dimmed as a control that can't act, so it reads as locked, not
+broken; and a length half typed when Start is pressed
+goes back. On the right a **Start** pill (Pause while it runs, Resume when
+paused) with a round reset beside it once the timer has started, in a slot
+as wide as reset and "Resume" together, so Resume is never cut and nothing
+moves as they change. No glows.
 
 While a focus session runs (paused part way included), Do Not Disturb is on,
 like a Focus mode; it goes off when the phase ends. A focus session waiting
@@ -265,8 +365,7 @@ for Start after a break doesn't count. Isle only undoes what it did: if Do Not
 Disturb was already on, it is left alone, and turned off mid-session it stays
 off until that session ends, past pauses and the lock screen. It stays on
 across the lock screen, and is turned off on the next start if the shell
-stopped mid-session. ("Do Not Disturb" in Focus
-Timer settings.)
+stopped mid-session. (Settings → Timer → While Focusing → Do Not Disturb.)
 
 **Shelf** (title "Shelf"): things to keep close, in two tabs on a
 segmented control (switching crossfades).
@@ -340,7 +439,8 @@ midnight.
 month in red capitals with the year (click: back to today) and ‹ › to move
 between months; the week's day letters (from the locale's first weekday,
 weekends dimmer); the days, today in a red circle, the chosen day in a grey
-one, a dot under days with events. Right: the chosen day ("Today, 20
+one, a dot under days with events; the weeks share 105 px, 21 px each for
+five, while a six-week month takes 17 px rows and days so it fits the page. Right: the chosen day ("Today, 20
 October"; "Tomorrow", "Yesterday", or its weekday), a **Today** pill when
 away from it, a field to add an event in one line (the hint says "e.g.
 Dinner 8:00 pm"; also "Standup 9:00-9:15", "Gym at 7pm", "Dinner 1930" (four
@@ -477,7 +577,7 @@ said, and Open terminal.
 ### Voice assistant
 
 Super+I opens a pill below the top bar (280 px wide while it listens, 600 px,
-as wide as the open island, once there is more to show): the bot on the left (36 px), the text beside
+the open island's least width, once there is more to show): the bot on the left (36 px), the text beside
 it, one round 32 px button at the end. The bot takes the shape (circle,
 pebble, squircle, capsule, cloud, hexagon, drop, ghost) and colour chosen
 in Settings → Assistant → Look, shaded with a soft highlight, a darker rim
@@ -562,7 +662,13 @@ hovering opens the Notifications page.
   an answer sleeps on D-Bus. The files tray's helper quits 20 seconds after the tray closes.
 - The bot in the closed island is drawn once and moves only while the assistant works.
 - Animations run on the display's frame clock only while a spring moves.
-- The open island ticks only the visible page (scrubber 4×/s, timer 1×/s).
+- The open island ticks only the visible page (scrubber 4×/s, timer 1×/s); the closed island's timer
+  time left ticks once a second, and its ring every 5 s, only while on screen.
+- MPRIS reports no progress, so `isled` reads the player's position only while the open island shows
+  the music (player or lyrics): at once, then once a second while it plays (after 0.35 or 0.5 s to
+  confirm a read that fell behind or to measure a new speed, 10 s after a read failed). Closed, it
+  sets no timer at all, and it stops if GNOME Shell leaves the bus with the page open. Each read runs
+  on its own, so a player that hangs holds up no other.
 - Calls are found from the shell's own audio events, never polled. The
   call's length ticks once a second only while it is on screen; the call
   preview reuses the window's picture and exists only while the Call page

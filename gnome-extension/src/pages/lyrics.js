@@ -24,6 +24,8 @@ const SUNG_OPACITY = 75;
 const RESTING_SCALE = 0.93;
 const LINE_EASE_MS = 380;
 const SCROLL_EASE_MS = 520;
+/** Lines are grouped this many to a block; only the blocks in view are drawn (see `_syncBlocks`). */
+const BLOCK_LINES = 8;
 /** A song whose first line comes this late opens with the pause dots. */
 const INTRO_MS = 3000;
 
@@ -100,6 +102,7 @@ class LyricsPane extends St.Widget {
         this._key = null;
         this._lines = [];
         this._rows = [];
+        this._blocks = [];
         /** Each row's last opacity and scale eased to: Clutter would ease again to the same. */
         this._opacities = [];
         this._scales = [];
@@ -123,11 +126,15 @@ class LyricsPane extends St.Widget {
             y_expand: true,
         });
         this._scroll.set_child(this._column);
+        const adjustment = this._scroll.vadjustment;
         // The lines laid out anew (say, a new width): back to the one sung.
-        this._scroll.vadjustment.connect('notify::upper', () => {
+        adjustment.connect('notify::upper', () => {
             if (this._synced && Date.now() > this._manualUntil)
                 this._page.later('lyric-relayout', 0, () => this._scrollTo(this._current));
         });
+        // Scrolled: the blocks in view are drawn (laid out anew, see `vfunc_allocate`).
+        adjustment.connect('notify::value', () => this._syncBlocks());
+        adjustment.connect('notify::page-size', () => this._syncBlocks());
         // Scrolling by hand holds the lines still for a while.
         this._scroll.connect('scroll-event', () => {
             this._manualUntil = Date.now() + MANUAL_SCROLL_HOLD_MS;
@@ -150,6 +157,11 @@ class LyricsPane extends St.Widget {
         for (const part of [this._stateIcon, this._stateDots, this._stateTitle, this._stateHint])
             this._state.add_child(part);
         this.add_child(this._state);
+    }
+
+    vfunc_allocate(box) {
+        super.vfunc_allocate(box);
+        this._syncBlocks();
     }
 
     /** Catches up with isled's lyrics: rebuilt only for a new track or status. */
@@ -188,6 +200,8 @@ class LyricsPane extends St.Widget {
     /** Makes a row per line, all resting until `follow` picks the sung one. */
     _rebuild(lyrics) {
         this._column.destroy_all_children();
+        // Dropped before the scroll resets: its notify syncs the blocks, which are gone now.
+        this._blocks = [];
         this._synced = lyrics?.status === 'synced';
         this._lines = [...lyrics?.lines ?? []];
         // A long intro opens with the pause dots.
@@ -198,8 +212,12 @@ class LyricsPane extends St.Widget {
         this._rows = this._lines.map(line => this._row(line));
         this._opacities = this._rows.map(() => COMING_OPACITY.at(-1));
         this._scales = this._rows.map(() => RESTING_SCALE);
-        for (const row of this._rows)
-            this._column.add_child(row);
+        for (let i = 0; i < this._rows.length; i += BLOCK_LINES) {
+            const block = new St.BoxLayout({...VERTICAL, style_class: 'isle-lyrics-block'});
+            this._rows.slice(i, i + BLOCK_LINES).forEach(row => block.add_child(row));
+            this._column.add_child(block);
+            this._blocks.push(block);
+        }
         // Room after the last line, so it too can reach the reading line.
         // (Padding would not do: St takes it off the scrolled view.)
         if (this._rows.length)
@@ -297,6 +315,17 @@ class LyricsPane extends St.Widget {
         });
     }
 
+    /** Hides the blocks out of view: the edge fade draws the lines off screen first, where none is
+     * skipped for being out of sight, but a block at opacity 0 is not drawn. */
+    _syncBlocks() {
+        const {value, page_size: pageSize} = this._scroll.vadjustment;
+        for (const block of this._blocks) {
+            // Not laid out yet, it is synced again once it is, before it is drawn.
+            const {y1, y2} = block.get_allocation_box();
+            block.opacity = y2 > value && y1 < value + pageSize ? 255 : 0;
+        }
+    }
+
     /** Glides the view so line `index` sits at ANCHOR. */
     _scrollTo(index) {
         const target = this._rows[Math.max(index, 0)];
@@ -308,7 +337,8 @@ class LyricsPane extends St.Widget {
             return;
         }
         const adjustment = this._scroll.vadjustment;
-        const middle = target.get_allocation_box().y1 + target.height / 2;
+        // A row's place is within its block.
+        const middle = target.get_parent().get_allocation_box().y1 + target.get_allocation_box().y1 + target.height / 2;
         const value = Math.max(adjustment.lower,
             Math.min(adjustment.upper - adjustment.page_size, middle - adjustment.page_size * ANCHOR));
         adjustment.remove_transition('value');

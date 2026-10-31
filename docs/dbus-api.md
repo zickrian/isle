@@ -32,18 +32,29 @@ that played last. Another player starting to play ends the pick.
 | `Raise()` | | Bring the player's window to the front. |
 | `Choose(s name)` | | Show and control the player `name` (from `Players`). |
 | `SetLyrics(b enabled)` | | Look lyrics up online (LRCLIB), or not; off, `Lyrics` says `off`. The extension sends its setting whenever isled appears. |
+| `SetWatching(b watching)` | | While on, read the active player at once and then every second it plays (every 0.35 s to confirm a read that fell behind or while it buffers, every 0.5 s after a read that was off or while a new speed is measured, every 10 s after a read failed). The extension turns it on only while the open island shows the position (the player or lyrics), and sends it again whenever isled appears; off, isled sets no timer at all. |
 | `NowPlaying` | `s` | `{available, identity, desktop_entry, status, title, artist, album, art_path, length_us, position_us, sampled_at_ms, rate, can_go_next, can_go_previous, can_play_pause, can_seek}` |
 | `Lyrics` | `s` | `{track, status, lines: [{time_ms, text}]}`; `status` is `none`, `loading`, `synced`, `plain` (lines have `time_ms` -1), `instrumental`, `not_found`, `error` (LRCLIB could not be reached), `unavailable` (LRCLIB answered but is busy or failing) or `off` (turned off with `SetLyrics`); isled retries `error` and `unavailable` on its own. |
 | `Players` | `s` | `[{name, identity, desktop_entry, playing, active}]`, sorted by name; empty unless two or more players run. |
 
-The position is only sampled when something changes. While playing, the
+The position is sampled when something changes, and while watched (see
+`SetWatching`) every second as well: MPRIS signals no progress, and players
+signal stalls, ads and seeks made inside them unreliably. While playing, the
 current position is `position_us + (now - sampled_at_ms) * 1000 * rate`.
 A player that reports position 0 while it is still playing (Firefox and Zen do)
 does not move that sample; a `Seeked` signal does, and its position is the one
-kept. A length that disappears for the same track is kept. While playing with
-no length yet, isled reads the player again after 1s and after 3s. A relative
-seek, used when the player gives no track id, is measured from this position
-when the player's own `Position` read is 0.
+kept. A browser's read more than 1.5 s behind the sample is kept only once the
+next read moved on from it at a speed a player plays at (a stall, not a stale
+read); so is a 0 from any player's poll. Firefox reads whole seconds, cut
+down: once three reads in a row are whole seconds, a read moves the sample
+only when the sample falls outside the second after it. `rate` is the player's `Rate`, unless
+two agreeing steps between reads show another speed (0.25–4, a player that keeps
+`Rate` at 1 while it plays faster); that measure ends with a seek, a pause, the
+song or a new `Rate`. While two reads in a row stand at the same place though
+the player says it plays (buffering), `rate` is 0 until a read moves on. A length that disappears for the same track is kept.
+While playing with no length yet, isled reads the player again after 1s and
+after 3s. A relative seek, used when the player gives no track id, is measured
+from this position when the player's own `Position` read is 0.
 
 The control methods only fail when no player is running. They return
 without waiting for the player, so a slow player cannot hold the daemon up;

@@ -63,11 +63,11 @@ appear in the same place instead of in the middle of the screen.
 <tr>
 <td width="50%" valign="top">
 <img src="docs/images/call.png" alt="A Google Meet call in the island: its length, mute and open" width="100%"><br>
-<b>Calls</b> in WhatsApp, Telegram, Meet or any app or browser: the closed island shows a green phone and how long the call has lasted. Open it to see the call live (you and whoever you call) while you work in other windows, mute your microphone, or jump back to the call.
+<b>Calls</b> in WhatsApp, Telegram, Meet or any app or browser: the closed island shows a green phone beside the time, and the Call page how long the call has lasted. Open it to see the call live (you and whoever you call) while you work in other windows, mute your microphone, or jump back to the call.
 </td>
 <td width="50%" valign="top">
-<img src="docs/images/focus.png" alt="Focus page: the timer's ring, the work and break lengths, and Start" width="100%"><br>
-<b>Focus.</b> A Pomodoro timer with breaks and Do Not Disturb while you focus: a ring with the time left, the work and break lengths to change with − and +, and Start. Its ring and time stay in the closed island; beside a song, its time sits next to the music bars.
+<img src="docs/images/focus.png" alt="Timer page: the timer's ring, the work and break lengths, and Start" width="100%"><br>
+<b>Timer.</b> A Pomodoro timer with breaks and Do Not Disturb while you focus: a ring with the time left, the work and break lengths to type or change with − and + (they hold still from Start until Reset), and Start. Its time left stays in the closed island; beside a song or a call, it shows as a small ring on the other side of the clock.
 </td>
 </tr>
 <tr>
@@ -137,7 +137,7 @@ appear in the same place instead of in the middle of the screen.
 </td>
 <td width="50%" valign="top">
 <img src="docs/images/glass.png" alt="The music page in the glass island, the wallpaper behind it showing through, blurred" width="100%"><br>
-<b>Glass.</b> The island in dark glass instead of black, if you prefer: what is behind it shows through, blurred, as you work. Choose it in Settings → Island → Appearance.
+<b>Glass.</b> The island in clear dark glass instead of black, if you prefer: what is behind it shows through, blurred, as you work. Choose it in Settings → Island → Appearance.
 </td>
 </tr>
 </table>
@@ -257,7 +257,7 @@ cd isle
 | Do this | To |
 |---|---|
 | Rest the pointer on the notch | Open the island (or click it, if Settings say so) |
-| Click a tab | Switch pages |
+| Click a tab, or scroll or swipe over the tabs | Switch pages (scrolling a page's own content never does) |
 | Move the pointer away, or press Esc | Close it |
 | Click the notch | Open it now; on an alert, open what it is about |
 | Middle-click the notch | Play or pause |
@@ -287,24 +287,24 @@ stops, a warning shows in the closed island; click it to start it again.
 Click the gear right of the clock in the open island (or Isle's gear in the
 **Extensions** app):
 
-- **Island:** Isle's own black island, or Glass: dark glass that shows what
-  is behind it (windows and wallpaper) blurred, as GNOME's menus look with
-  Blur my Shell; the top bar on a slider from glass (default) to black; which pages the open island has (Music,
-  Notifications, Focus, Reminders, Shelf, Calendar, Apps, AI Usage) and whether it
+- **Island:** Isle's own black island, or Glass, clear dark glass that shows what
+  is behind it (windows and wallpaper) blurred, with a slider from clear to dark smoked glass; the top bar on a slider from glass (default) to black;
+  a little space below the island inside the bar (on by default); privacy dots; which pages the open island has (Music,
+  Notifications, Timer, Reminders, Shelf, Calendar, Apps, AI Usage) and whether it
   has the AI assistant at all; world clocks, and their cities;
   the closed island inside the bar or hanging below it; with more than one
   display, on the main one or the one you are using; opening when the
   pointer rests on it (and for how long) or only on a click.
 - **Alerts:** apps' notifications in the island (or GNOME's own banners
   instead); volume and brightness; charging, network, Bluetooth and Caps
-  Lock, each on its own; privacy dots, new songs, sounds; what Super+V opens (the
-  clipboard history, or GNOME's calendar); lyrics online;
+  Lock, each on its own; new songs, sounds; lyrics online;
   a reminder before calendar events, and how many minutes before.
   Alerts other than a low battery are not shown while Do Not Disturb is on.
 - **Calls:** show calls in the island, and the live preview of the call.
-- **Clipboard:** turn the history on or off, clear it, and choose apps whose
-  copies are never kept (password managers are on the list from the start).
-- **Focus timer:** session and break lengths, Do Not Disturb while focusing.
+- **Clipboard:** turn the history on or off, clear it, what Super+V opens (the
+  clipboard history, or GNOME's calendar), and choose apps whose copies are never
+  kept (password managers are on the list from the start).
+- **Timer:** session and break lengths, Do Not Disturb while focusing.
 - **Assistant:** the bot's look (shape, colour, glow, with a live
   preview); the assistant on or off, its shortcut, which AI answers and with
   which model (only those your plan includes, with your plan's name), speech recognition, language, and whether it may use the text
@@ -514,7 +514,8 @@ GNOME 46 (version 1.0.0):
 Animations run on the display's frame clock only while a spring moves and
 stop when it settles: closed and idle, Isle draws no frames at all, and over 40
 openings, page changes, lyrics and alerts 99.8% of frames came in time for 60 Hz. The clock wakes once a minute, lyrics exactly when the
-next line starts, and pages only tick while they are open. The call preview
+next line starts, and pages only tick while they are open; only while the
+music page shows does Isle ask the player where it is, once a second. The call preview
 reuses the window's picture already on the graphics card, so it costs about
 nothing, and only exists while the Call page is open; Isle never opens the
 camera or the microphone itself.

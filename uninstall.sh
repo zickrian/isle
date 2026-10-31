@@ -23,6 +23,9 @@ if [ "$SYSTEM" = 0 ]; then
     done
 fi
 systemctl --user disable --now isled.service 2>/dev/null
+# Without a user service manager (install.sh allows that) the disable still succeeds, but D-Bus started
+# isled, which would run on from its deleted file.
+pkill -u "$(id -u)" -x isled 2>/dev/null
 pkill -x isle-shelf 2>/dev/null
 
 rm -rf "$DATA/gnome-shell/extensions/$UUID" "$DATA/doc/isle" "$DATA/fonts/isle"

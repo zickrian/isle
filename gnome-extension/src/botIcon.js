@@ -146,8 +146,12 @@ class BotIcon extends St.DrawingArea {
         const r = Math.max(4, this._size * 0.17) * scale;
         const x = r + 0.5 * scale, y = r + 0.5 * scale;
         cr.arc(x, y, r + 1.5 * scale, 0, 2 * Math.PI);
+        // On glass the ring is cut out of the bot, so the glass itself shows through it.
+        if (Theme.translucent())
+            cr.setOperator(Cairo.Operator.CLEAR);
         cr.setSourceRGBA(...Theme.solid(), 1);
         cr.fill();
+        cr.setOperator(Cairo.Operator.OVER);
         cr.arc(x, y, r, 0, 2 * Math.PI);
         cr.setSourceRGBA(...this._badge.color, 1);
         cr.fill();

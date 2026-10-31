@@ -27,6 +27,7 @@ const INTERFACES = {
             <method name="Raise"/>
             <method name="Choose"><arg name="name" type="s" direction="in"/></method>
             <method name="SetLyrics"><arg name="enabled" type="b" direction="in"/></method>
+            <method name="SetWatching"><arg name="watching" type="b" direction="in"/></method>
             <property name="NowPlaying" type="s" access="read"/>
             <property name="Lyrics" type="s" access="read"/>
             <property name="Players" type="s" access="read"/>`),
@@ -157,6 +158,8 @@ const INTERFACES = {
         properties: {State: 'assistant', History: 'chat'},
     },
 };
+/** State keys whose property is plain text rather than JSON. */
+const PLAIN = new Set(['updates']);
 
 // Signals: `changed` (key) when `state[key]` is new; `appeared` (interface), `running-changed` and `assistant-lost`
 // (a request in flight dies) as isled comes and goes; isled's own signals, renamed in `_onSignal`.
@@ -169,6 +172,8 @@ export class Daemon extends Signals.EventEmitter {
         /** The JSON each key last had, to tell a real change from the same value sent again. */
         this._raw = {};
         this._proxies = {};
+        /** Calls each proxy awaits; one is disposed only once they are answered (see `destroy`). */
+        this._inFlight = new Map();
         this._cancellable = new Gio.Cancellable();
 
         for (const [name, {xml, properties}] of Object.entries(INTERFACES)) {
@@ -288,7 +293,8 @@ export class Daemon extends Signals.EventEmitter {
         this._raw[key] = json;
         let value = null;
         try {
-            value = json ? JSON.parse(json) : null;
+            // Updates1's Latest is a bare version ("1.5.1"), not JSON.
+            value = !json ? null : PLAIN.has(key) ? json : JSON.parse(json);
         } catch (e) {
             console.warn(`Isle: invalid ${key} from isled: ${e.message}`);
         }
@@ -367,6 +373,12 @@ export class Daemon extends Signals.EventEmitter {
         return new Promise(resolve => {
             try {
                 proxy[`${method}Remote`](...args, (result, error) => {
+                    this._settle(proxy);
+                    // Sent as Isle went (SetWatching(false) from the Music page): isled has it; nobody waits.
+                    if (this._destroyed) {
+                        resolve({result: null, error: null});
+                        return;
+                    }
                     if (error && !quiet)
                         console.warn(`Isle: ${method} failed: ${error.message}`);
                     // isled's own words: why it would not (Failed), or what was wrong with what it was asked (InvalidArgs).
@@ -376,6 +388,7 @@ export class Daemon extends Signals.EventEmitter {
                     resolve({result: error ? null : result, error: refused ? error.message.replace(/^GDBus\.Error:[\w.]+:\s*/, '') : null,
                         unknownMethod: name === 'org.freedesktop.DBus.Error.UnknownMethod'});
                 });
+                this._inFlight.set(proxy, (this._inFlight.get(proxy) ?? 0) + 1);
             } catch (e) {
                 // Arguments that do not fit the method's signature.
                 console.warn(`Isle: ${method} failed: ${e.message}`);
@@ -384,14 +397,30 @@ export class Daemon extends Signals.EventEmitter {
         });
     }
 
+    /** One call on `proxy` was answered; a proxy left over from `destroy` goes with its last. */
+    _settle(proxy) {
+        const left = (this._inFlight.get(proxy) ?? 1) - 1;
+        if (left > 0) {
+            this._inFlight.set(proxy, left);
+            return;
+        }
+        this._inFlight.delete(proxy);
+        if (this._destroyed)
+            proxy.run_dispose();
+    }
+
     /** Cancels pending calls and drops the proxies. */
     destroy() {
+        this._destroyed = true;
         // Tell no one about changes made while tearing down.
         this.disconnectAll();
         this._cancellable.cancel();
         Gio.bus_unwatch_name(this._nameWatch);
-        for (const proxy of Object.values(this._proxies))
-            proxy.run_dispose();
+        // A call still out reads its answer from its proxy: that one goes with the answer (`_settle`).
+        for (const proxy of Object.values(this._proxies)) {
+            if (!this._inFlight.has(proxy))
+                proxy.run_dispose();
+        }
         this._proxies = {};
     }
 }

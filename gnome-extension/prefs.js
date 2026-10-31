@@ -30,7 +30,7 @@ const SAVE_DELAY_MS = 400;
 
 // Runs in a process of its own when Settings opens, never inside GNOME Shell.
 export default class IslePreferences extends ExtensionPreferences {
-    // Island, Clipboard, Focus Timer, Assistant, AI Usage and About, in that order.
+    // Island, Clipboard, Timer, Assistant, AI Usage and About, in that order.
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
         window.set_default_size(560, 680);
@@ -157,7 +157,7 @@ export default class IslePreferences extends ExtensionPreferences {
                 'computer (Set up downloads it, once); the request goes to the AI you pick, with your ' +
                 'own sign-in and plan.',
         });
-        group.add(switchRow(settings, 'voice-assistant', 'AI assistant',
+        group.add(switchRow(settings, 'voice-assistant', 'AI Assistant',
             'The shortcut and the ✦ in the open island. Off: Isle never asks an AI'));
         group.add(shortcutRow(settings, 'voice-shortcut', 'Shortcut', 'Opens the assistant and listens'));
 
@@ -288,6 +288,10 @@ export default class IslePreferences extends ExtensionPreferences {
         });
         history.add(switchRow(settings, 'clipboard-history', 'Keep clipboard history',
             'Text, links, images and files you copy. Passwords from password managers are never kept.'));
+        history.add(choiceRow(settings, 'super-v', 'Super+V', 'GNOME’s calendar shortcut', [
+            ['isle', 'Isle’s clipboard history'],
+            ['gnome', 'GNOME’s calendar and notifications'],
+        ]));
         const clear = new Adw.ActionRow({title: 'Clear history', subtitle: 'Pinned items are kept'});
         const clearButton = new Gtk.Button({label: 'Clear…', valign: Gtk.Align.CENTER});
         clearButton.connect('clicked', () => confirmClear(window));
@@ -309,17 +313,24 @@ export default class IslePreferences extends ExtensionPreferences {
         const page = new Adw.PreferencesPage({title: 'Island', icon_name: 'preferences-desktop-appearance-symbolic'});
 
         const look = new Adw.PreferencesGroup({title: 'Appearance'});
-        look.add(choiceRow(settings, 'island-theme', 'Island', 'Isle’s own black, or dark glass that shows what is behind it, blurred', [
+        look.add(choiceRow(settings, 'island-theme', 'Island', 'Black, or clear glass that shows what is behind it, blurred', [
             ['black', 'Black'],
             ['glass', 'Glass'],
         ]));
+        look.add(glassRow(settings, window));
         look.add(topBarRow(settings, window));
         look.add(switchRow(settings, 'compact-top-bar', 'Compact top bar', 'A slimmer top bar that frames the island like a bezel'));
         look.add(switchRow(settings, 'island-in-top-bar', 'Island inside the top bar',
             'Like a notch: the closed island never covers windows'));
+        // One of the two, as the island sits: below the bar, or inside it.
         const depth = spinRow(settings, 'notch-depth', 'Island height', 'How far the closed island hangs below the top bar, in pixels', 24, 40);
-        settings.bind('island-in-top-bar', depth, 'sensitive', Gio.SettingsBindFlags.GET | Gio.SettingsBindFlags.INVERT_BOOLEAN);
+        settings.bind('island-in-top-bar', depth, 'visible', Gio.SettingsBindFlags.GET | Gio.SettingsBindFlags.INVERT_BOOLEAN);
         look.add(depth);
+        const gap = switchRow(settings, 'notch-gap', 'Space below the island',
+            'A little room between the closed island and the windows below');
+        settings.bind('island-in-top-bar', gap, 'visible', Gio.SettingsBindFlags.GET);
+        look.add(gap);
+        look.add(switchRow(settings, 'privacy-indicators', 'Privacy indicators', 'Dots when the camera, microphone or screen sharing is in use'));
         look.add(choiceRow(settings, 'island-monitor', 'Display', 'With more than one display, where the island is', [
             ['primary', 'Main display'],
             ['active', 'Display in use'],
@@ -357,11 +368,6 @@ export default class IslePreferences extends ExtensionPreferences {
         const eventMinutes = spinRow(settings, 'event-alert-minutes', 'Minutes before an event', null, 1, 60);
         settings.bind('event-alerts', eventMinutes, 'sensitive', Gio.SettingsBindFlags.GET);
         alerts.add(eventMinutes);
-        alerts.add(choiceRow(settings, 'super-v', 'Super+V', 'GNOME’s calendar shortcut', [
-            ['isle', 'Isle’s clipboard history'],
-            ['gnome', 'GNOME’s calendar and notifications'],
-        ]));
-        alerts.add(switchRow(settings, 'privacy-indicators', 'Privacy indicators', 'Dots when the camera, microphone or screen sharing is in use'));
         alerts.add(switchRow(settings, 'track-peek', 'New song', 'Briefly show the song when the track changes'));
         alerts.add(switchRow(settings, 'lyrics-online', 'Lyrics', 'Look up the playing song’s lyrics on LRCLIB'));
         alerts.add(switchRow(settings, 'chimes', 'Sounds', 'Chime when a focus session or break ends, and for reminders'));
@@ -382,7 +388,7 @@ export default class IslePreferences extends ExtensionPreferences {
 
     // Lengths live in isled, so this page needs it running; changes are saved as typing pauses.
     _timerPage(settings, window) {
-        const page = new Adw.PreferencesPage({title: 'Focus Timer', icon_name: 'alarm-symbolic'});
+        const page = new Adw.PreferencesPage({title: 'Timer', icon_name: 'alarm-symbolic'});
         const focus = new Adw.PreferencesGroup({title: 'While Focusing'});
         focus.add(switchRow(settings, 'focus-dnd', 'Do Not Disturb', 'Silence notifications during focus sessions, and restore them afterwards'));
         page.add(focus);
@@ -694,6 +700,52 @@ function switchRow(settings, key, title, subtitle) {
 }
 
 /** The top bar beside the island, from glass to black, on a slider; the island itself stays black. */
+/** How dark the Glass look is, Clear to Dark; shown only while the island is glass. */
+function glassRow(settings, window) {
+    const row = new Adw.ActionRow({title: 'Glass'});
+    const scale = new Gtk.Scale({
+        adjustment: new Gtk.Adjustment({lower: 0, upper: 100, step_increment: 5, page_increment: 25}),
+        draw_value: false, width_request: 150, valign: Gtk.Align.CENTER,
+    });
+    const ends = new Gtk.Box({spacing: 6, valign: Gtk.Align.CENTER});
+    ends.append(new Gtk.Label({label: 'Clear', css_classes: ['dim-label', 'caption']}));
+    ends.append(scale);
+    ends.append(new Gtk.Label({label: 'Dark', css_classes: ['dim-label', 'caption']}));
+    row.add_suffix(ends);
+    row.activatable_widget = scale;
+    const describe = value => {
+        row.subtitle = value <= 0 ? 'Clear glass: what is behind shows through'
+            : value >= 100 ? 'Dark frosted glass' : `${value}% darker`;
+    };
+    let syncing = false;
+    scale.connect('value-changed', () => {
+        if (syncing)
+            return;
+        // Stored in steps of 5; the knob stays under the pointer meanwhile.
+        const value = Math.round(scale.get_value() / 5) * 5;
+        describe(value);
+        if (settings.get_int('glass-tint') !== value)
+            settings.set_int('glass-tint', value);
+    });
+    const sync = () => {
+        const value = settings.get_int('glass-tint');
+        if (Math.round(scale.get_value() / 5) * 5 !== value) {
+            syncing = true;
+            scale.set_value(value);
+            syncing = false;
+        }
+        describe(value);
+        row.visible = settings.get_string('island-theme') === 'glass';
+    };
+    const changed = ['glass-tint', 'island-theme'].map(key => settings.connect(`changed::${key}`, sync));
+    window.connect('close-request', () => {
+        changed.forEach(id => settings.disconnect(id));
+        return false;
+    });
+    sync();
+    return row;
+}
+
 function topBarRow(settings, window) {
     const row = new Adw.ActionRow({title: 'Top bar'});
     const scale = new Gtk.Scale({
@@ -749,7 +801,7 @@ function topBarRow(settings, window) {
 const PAGES = [
     ['music', 'Music', 'audio-x-generic-symbolic', 'The player and lyrics, and the song in the closed island'],
     ['notifications', 'Notifications', 'preferences-system-notifications-symbolic', 'The list to look back at, and its unread dot; alerts show either way'],
-    ['focus', 'Focus', 'alarm-symbolic', 'The Pomodoro timer'],
+    ['focus', 'Timer', 'alarm-symbolic', 'Pomodoro focus sessions and breaks'],
     ['reminders', 'Reminders', 'object-select-symbolic', 'Your to-do list'],
     ['shelf', 'Shelf', 'edit-paste-symbolic', 'Clipboard history (Super+V) and the files tray'],
     ['calendar', 'Calendar', 'x-office-calendar-symbolic', 'The month, its events and world clocks'],

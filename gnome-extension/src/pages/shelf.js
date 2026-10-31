@@ -157,11 +157,6 @@ export const ShelfPage = GObject.registerClass({
         this._search = new St.Entry({style_class: 'isle-entry isle-shelf-field', hint_text: 'Search', can_focus: true, x_expand: true});
         this._search.set_primary_icon(new St.Icon({gicon: icon('isle-search'), icon_size: 12, style_class: 'isle-shelf-field-icon'}));
         const text = this._search.clutter_text;
-        // Ask for the keyboard before the field takes focus: the grab moves focus itself.
-        text.connect('button-press-event', () => {
-            this.emit('request-keyboard', true);
-            return Clutter.EVENT_PROPAGATE;
-        });
         text.connect('text-changed', () => {
             if (!this._clearingSearch)
                 this._clips.query = this._search.text;
@@ -549,6 +544,11 @@ export const ShelfPage = GObject.registerClass({
             this._updateFilesHint();
         }
         return clips;
+    }
+
+    /** New cards are built ahead while another page is open too. */
+    get warmsOpen() {
+        return true;
     }
 
     /** Redraws ahead what changed while closed. */

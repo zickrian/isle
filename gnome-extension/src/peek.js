@@ -13,6 +13,7 @@ import St from 'gi://St';
 import {BotIcon} from './botIcon.js';
 import {VERTICAL, onUiScale, px} from './compat.js';
 import * as Palette from './palette.js';
+import * as Theme from './theme.js';
 import {Art, LevelBar, Ring, VolumeGlyph, WrapLayout, cornerClose, icon, isSymbolic, ownIcon, pillButton, playMotion,
     revealClose, wrapLines} from './widgets.js';
 
@@ -96,7 +97,9 @@ export const PeekView = GObject.registerClass({
         this._row = new St.BoxLayout({
             style_class: 'isle-peek-row',
             x_expand: true,
-            x_align: Clutter.ActorAlign.CENTER,
+            // Filling the island, which is an even width: a spare pixel goes to the texts, so the badge and
+            // the value or button stay as far from the edges, not half a pixel off.
+            x_align: Clutter.ActorAlign.FILL,
             y_expand: true,
         });
         this.add_child(this._row);
@@ -216,7 +219,7 @@ export const PeekView = GObject.registerClass({
             this._forget();
         // Its button stays under its words while it updates in place, the same button under the pointer.
         under = Boolean(alert.action) && (under || alert.key === this._underKey);
-        const rgb = TONE_COLORS[alert.tone] ?? TONE_COLORS.neutral;
+        const rgb = Theme.semantic(TONE_COLORS[alert.tone] ?? TONE_COLORS.neutral);
         const color = css(rgb);
         const gicon = alert.gicon ? ownIcon(alert.gicon) : icon(alert.icon ?? 'dialog-information-symbolic');
         const hasRing = alert.ring !== undefined && alert.ring !== null;
@@ -226,9 +229,8 @@ export const PeekView = GObject.registerClass({
         const actions = alert.actions ?? (under ? [{...alert.action, accent: alert.action.primary}] : []);
         this._asks = actions.length > 0;
         this._shown = alert;
-        // One that asks reads from the left, like a dialog, the assistant level with its title; the others sit centred.
+        // One that asks reads from the left, like a dialog, the assistant level with its title.
         const decision = this._asks || Boolean(alert.code);
-        this._row.x_align = decision ? Clutter.ActorAlign.FILL : Clutter.ActorAlign.CENTER;
         this._lit = Boolean(alert.glow);
         this._row.style_class = decision ? `isle-peek-row isle-peek-row-asks${this._lit ? ' isle-peek-row-glow' : ''}` : 'isle-peek-row';
         this._lead.y_align = this._texts.y_align = decision ? Clutter.ActorAlign.START : Clutter.ActorAlign.CENTER;
@@ -441,7 +443,7 @@ export const PeekView = GObject.registerClass({
             return;
         }
         const allowed = action.answer === 'allow';
-        this._bot.badge = {color: allowed ? Palette.GREEN : Palette.RED, glyph: allowed ? 'check' : 'cross'};
+        this._bot.badge = {color: Theme.semantic(allowed ? Palette.GREEN : Palette.RED), glyph: allowed ? 'check' : 'cross'};
         this._bot.form = allowed ? 'success' : 'attentive';
         this._bot.play(allowed ? 'hop' : 'shake');
         this._answeredIcon.gicon = icon(allowed ? 'isle-check-symbolic' : 'isle-close-symbolic');

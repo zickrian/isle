@@ -2,11 +2,12 @@
 // Copyright (C) 2026 zickrian
 
 use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use chrono::{DateTime, Duration, Local, NaiveDate, TimeZone, Utc};
 use isle_core::calendar::{AddError, Calendar, Event, Parsed, Send, format_time, parse};
 use log::warn;
+use tokio::sync::Notify;
 use zbus::object_server::{InterfaceRef, SignalEmitter};
 use zbus::{fdo, interface};
 
@@ -34,6 +35,8 @@ pub struct CalendarService {
     calendar: Mutex<Calendar>,
     store: Store<Calendar>,
     links: MeetingLinks,
+    /// Told when an event starts waiting for its calendar: `send_waiting` sleeps on it while none waits.
+    waiting: Arc<Notify>,
 }
 
 impl CalendarService {
@@ -48,6 +51,7 @@ impl CalendarService {
             calendar: Mutex::new(calendar),
             store,
             links: MeetingLinks::default(),
+            waiting: Arc::default(),
         }
     }
 
@@ -80,6 +84,7 @@ impl CalendarService {
             })?;
             if send.is_some() {
                 calendar.set_send(id, send);
+                self.waiting.notify_one();
             }
             calendar.forget_old(&today());
             id
@@ -291,11 +296,16 @@ fn out_of_time(progress: Progress, uid: String) -> Result<String, Option<Send>> 
     }
 }
 
-/// Every [`SEND_EVERY`], sends the events waiting for their calendar, with their first uid so none lands
-/// twice; one that got there leaves Isle's own, one whose calendar went or keeps refusing stays.
+/// Every [`SEND_EVERY`] while any wait, sends the events waiting for their calendar, with their first uid so
+/// none lands twice; one that got there leaves Isle's own, one whose calendar went or keeps refusing stays.
 pub async fn send_waiting(own: InterfaceRef<CalendarService>, bus: zbus::Connection) {
     let mut refusals: HashMap<u64, u32> = HashMap::new();
+    let wake = own.get().await.waiting.clone();
     loop {
+        // No timer while none waits: the first to start waiting wakes this.
+        if own.get().await.calendar().waiting().next().is_none() {
+            wake.notified().await;
+        }
         tokio::time::sleep(SEND_EVERY).await;
         let waiting: Vec<Event> = own.get().await.calendar().waiting().cloned().collect();
         if waiting.is_empty() {
