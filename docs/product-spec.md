@@ -445,7 +445,8 @@ segmented control (switching crossfades), and a third, Phone, while sharing
 with a phone.
 
 - **Clipboard**: what was copied, pinned items first, then newest first, as
-  cards (136 × 96): text
+  cards in a horizontal row (136 × 96) or a vertical stack (68 px tall;
+  Settings → Clipboard sets the layout, width and height): text
   (three lines; code in a monospace font), links (site and address), images
   (thumbnail with its size) and files (icon, name, "+2 more"). Each card shows
   the app it came from and how long ago. Click a card to copy it ("Copied"
@@ -455,7 +456,7 @@ with a phone.
   images, files; the chosen one lit, the others dimmed), search (a round
   button that opens into a field, closing again when left empty) and
   Clear all (asks once more; pinned items are kept). Opened with Super+V, the search
-  field has the keyboard: ← → choose a card (white outline), Enter pastes it
+  field has the keyboard: arrows choose a card (white outline), Enter pastes it
   into the window in front (Ctrl+Shift+V in terminals).
 - **Files**: at most 6 files, all in view with no scrolling; a seventh is
   refused until one is removed. Each file is a tile of one size: a 52 px
