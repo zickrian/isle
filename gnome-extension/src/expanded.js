@@ -188,10 +188,15 @@ export const ExpandedView = GObject.registerClass({
         const clock = new St.BoxLayout({y_align: Clutter.ActorAlign.CENTER, style_class: 'isle-header-clock'});
         this._headerRing = new Ring({size: 15, lineWidth: 2.5});
         this._date = label('', 'isle-header-date');
-        this._time = label('', 'isle-header-time');
+        this._time = label('', 'isle-header-time', {y_align: Clutter.ActorAlign.END});
+        // With a 12-hour clock, AM or PM after it, smaller (a label of its own, as in the closed island).
+        this._meridiem = label('', 'isle-header-meridiem', {y_align: Clutter.ActorAlign.END, visible: false});
+        const time = new St.BoxLayout({style_class: 'isle-header-time-box', y_align: Clutter.ActorAlign.CENTER});
+        time.add_child(this._time);
+        time.add_child(this._meridiem);
         clock.add_child(this._headerRing);
         clock.add_child(this._date);
-        clock.add_child(this._time);
+        clock.add_child(time);
         status.add_child(clock);
         const settings = iconButton('isle-settings', 'isle-button-flat isle-header-settings',
             () => this.emit('settings-requested'), {size: 15, accessibleName: 'Settings'});
@@ -645,7 +650,10 @@ export const ExpandedView = GObject.registerClass({
     _tickClock() {
         const now = GLib.DateTime.new_now_local();
         this._date.text = Format.longDate(now);
-        this._time.clutter_text.set_markup(Format.clockMarkup(now));
+        const {time, meridiem} = Format.clockParts(now);
+        this._time.text = time;
+        this._meridiem.text = meridiem;
+        this._meridiem.visible = Boolean(meridiem);
         this._updateHeader();
         this._unwatchClock ??= watchClock(() => this._tickClock());
     }

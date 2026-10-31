@@ -29,12 +29,12 @@ export function uses12Hour() {
     return interfaceSettings.get_string('clock-format') === '12h';
 }
 
-/** The clock as Pango markup: "14:05", or "2:05" and a smaller, dimmer "PM" with a 12-hour clock (none where the
- * language has no such word). */
-export function clockMarkup(dateTime = GLib.DateTime.new_now_local(), twelveHour = uses12Hour()) {
-    const time = GLib.markup_escape_text(dateTime.format(twelveHour ? '%l:%M' : '%H:%M').trim(), -1);
+/** The clock's two parts: {time: "14:05"} or, with a 12-hour clock, {time: "2:05", meridiem: "PM"} (none where the
+ * language has no such word). Two labels show them, the second smaller and dimmer (see stylesheet.css). */
+export function clockParts(dateTime = GLib.DateTime.new_now_local(), twelveHour = uses12Hour()) {
+    const time = dateTime.format(twelveHour ? '%l:%M' : '%H:%M').trim();
     const meridiem = twelveHour ? dateTime.format('%p').trim() : '';
-    return meridiem ? `${time}<span size="80%" weight="600" foreground="#ffffff" alpha="72%"> ${GLib.markup_escape_text(meridiem, -1)}</span>` : time;
+    return {time, meridiem};
 }
 
 /** "14:05", or "2:05 PM" with a 12-hour clock: a time of day that stands alone. */

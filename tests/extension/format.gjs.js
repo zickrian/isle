@@ -5,7 +5,7 @@
 
 import GLib from 'gi://GLib';
 
-import {answerPlain, clockMarkup, hoursMinutes, setClockFormat, shortcutLabel, uses12Hour, weekendDays} from '../../gnome-extension/src/format.js';
+import {answerPlain, clockParts, hoursMinutes, setClockFormat, shortcutLabel, uses12Hour, weekendDays} from '../../gnome-extension/src/format.js';
 
 let failures = 0;
 // Prints a failure and counts it; JSON compares arrays by value.
@@ -39,9 +39,9 @@ check('say json fenced', answerPlain('```json\n{"say":"Hi there."}\n```'), 'Hi t
 GLib.setenv('LC_TIME', 'C', true);
 const afternoon = GLib.DateTime.new_local(2026, 10, 31, 15, 4, 0);
 const morning = GLib.DateTime.new_local(2026, 10, 31, 9, 30, 0);
-check('24-hour clock', clockMarkup(afternoon, false), '15:04');
-check('12-hour clock, afternoon', clockMarkup(afternoon, true), '3:04<span size="80%" weight="600" foreground="#ffffff" alpha="72%"> PM</span>');
-check('12-hour clock, morning', clockMarkup(morning, true), '9:30<span size="80%" weight="600" foreground="#ffffff" alpha="72%"> AM</span>');
+check('24-hour clock', clockParts(afternoon, false), {time: '15:04', meridiem: ''});
+check('12-hour clock, afternoon', clockParts(afternoon, true), {time: '3:04', meridiem: 'PM'});
+check('12-hour clock, morning', clockParts(morning, true), {time: '9:30', meridiem: 'AM'});
 // Isle's Clock setting wins over GNOME's; 'system' asks GNOME again.
 setClockFormat('12h');
 check('Clock set to 12-hour', uses12Hour(), true);

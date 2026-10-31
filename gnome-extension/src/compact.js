@@ -119,11 +119,16 @@ export const CompactView = GObject.registerClass({
 
         const center = new St.Widget({layout_manager: new CentreLayout(), x_expand: true});
         const times = new St.Widget({layout_manager: new CentreLayout(), y_align: Clutter.ActorAlign.CENTER});
-        this._clock = new St.Label({style_class: 'isle-compact-clock', x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+        // The time and, with a 12-hour clock, a smaller AM or PM: two labels, so each keeps its own size.
+        this._clockTime = new St.Label({style_class: 'isle-compact-clock', y_align: Clutter.ActorAlign.END});
+        this._meridiem = new St.Label({style_class: 'isle-compact-meridiem', y_align: Clutter.ActorAlign.END, visible: false});
+        this._clock = new St.BoxLayout({style_class: 'isle-compact-clock-row', x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+        this._clock.add_child(this._clockTime);
+        this._clock.add_child(this._meridiem);
         // How long the screen has been recording, in place of the clock. A call keeps the clock.
         this._elapsed = new St.Label({style_class: 'isle-compact-clock', x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER, visible: false});
         // Never "1:0…": the one fading out may be wider than the room left for the one fading in.
-        for (const time of [this._clock, this._elapsed])
+        for (const time of [this._clockTime, this._meridiem, this._elapsed])
             time.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
         times.add_child(this._clock);
         times.add_child(this._elapsed);
@@ -556,10 +561,13 @@ export const CompactView = GObject.registerClass({
 
     /** Sets the clock's text; `watchClock` calls it again as the minute changes. */
     _tickClock() {
-        const length = this._clock.text.length;
-        this._clock.clutter_text.set_markup(Format.clockMarkup());
-        // Longer or shorter (12:59 to 1:00): the centre is measured again; not while being built.
-        if (this._clock.text.length !== length && this._contentWidth)
+        const before = `${this._clockTime.text}${this._meridiem.text}`;
+        const {time, meridiem} = Format.clockParts();
+        this._clockTime.text = time;
+        this._meridiem.text = meridiem;
+        this._meridiem.visible = Boolean(meridiem);
+        // Longer or shorter (12:59 to 1:00, or the format changed): the centre is measured again; not while being built.
+        if (`${time}${meridiem}`.length !== before.length && this._contentWidth)
             this._refit();
     }
 

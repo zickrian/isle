@@ -6,6 +6,18 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-11-01
+
+A quick fix for 1.5.2's clock. To update: click Update on the new-version alert (or Settings → About →
+Update), then log out and back in.
+
+### Fixed
+
+- The island's time no longer shows with the wrong sizes after the clock's format changes while it shows (Settings
+  → Appearance → Clock, or GNOME's own 12/24-hour setting): "01:57" could come with its last digit small, or
+  "1:57 AM" with a full-size AM, until the next minute. The time and its AM or PM are now two labels, each
+  with its own size, in the closed island and the open island's header (#25).
+
 ## [1.5.2] - 2026-11-01
 
 Sharp clipboard pictures, AM/PM and a 24/12-hour choice for the island's clock, and Glass no longer makes
@@ -1528,7 +1540,8 @@ The first release.
   dark, vivid ones bright.
 - Text is at least 12 px throughout.
 
-[Unreleased]: https://github.com/zickrian/isle/compare/v1.5.2...HEAD
+[Unreleased]: https://github.com/zickrian/isle/compare/v1.5.3...HEAD
+[1.5.3]: https://github.com/zickrian/isle/compare/v1.5.2...v1.5.3
 [1.5.2]: https://github.com/zickrian/isle/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/zickrian/isle/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/zickrian/isle/compare/v1.4.0...v1.5.0
