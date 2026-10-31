@@ -3,7 +3,9 @@
 
 // Formatting that needs GLib but not GNOME Shell: `gjs -m tests/extension/format.gjs.js`.
 
-import {answerPlain, hoursMinutes, shortcutLabel, weekendDays} from '../../gnome-extension/src/format.js';
+import GLib from 'gi://GLib';
+
+import {answerPlain, clockMarkup, hoursMinutes, setClockFormat, shortcutLabel, uses12Hour, weekendDays} from '../../gnome-extension/src/format.js';
 
 let failures = 0;
 // Prints a failure and counts it; JSON compares arrays by value.
@@ -32,6 +34,20 @@ check('code and a list', answerPlain('Run `sudo apt update`:\n- first\n- second'
 check('plain stays', answerPlain('Two things today.'), 'Two things today.');
 check('say json', answerPlain('{"say":"Something."}'), 'Something.');
 check('say json fenced', answerPlain('```json\n{"say":"Hi there."}\n```'), 'Hi there.');
+
+// The clock: AM or PM, smaller, only with a 12-hour clock (#25).
+GLib.setenv('LC_TIME', 'C', true);
+const afternoon = GLib.DateTime.new_local(2026, 10, 31, 15, 4, 0);
+const morning = GLib.DateTime.new_local(2026, 10, 31, 9, 30, 0);
+check('24-hour clock', clockMarkup(afternoon, false), '15:04');
+check('12-hour clock, afternoon', clockMarkup(afternoon, true), '3:04<span size="80%" weight="600" foreground="#ffffff" alpha="72%"> PM</span>');
+check('12-hour clock, morning', clockMarkup(morning, true), '9:30<span size="80%" weight="600" foreground="#ffffff" alpha="72%"> AM</span>');
+// Isle's Clock setting wins over GNOME's; 'system' asks GNOME again.
+setClockFormat('12h');
+check('Clock set to 12-hour', uses12Hour(), true);
+setClockFormat('24h');
+check('Clock set to 24-hour', uses12Hour(), false);
+setClockFormat('system');
 
 if (failures)
     imports.system.exit(1);

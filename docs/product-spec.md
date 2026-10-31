@@ -26,11 +26,11 @@ island, and desktops other than GNOME.
 ## 2. Presentations
 
 The island is always in exactly one presentation. `P` is the top bar's
-height: 32 px with the closed island inside it (the default), 36 px with the
-space below the island on as well (the default too); with the island hanging
-below it, 26 px with the compact top bar (the default), GNOME's 32 px
+height: 32 px with the closed island inside it (the default); with the island
+hanging below it, 26 px with the compact top bar (the default), GNOME's 32 px
 otherwise. `B` is the band the closed island fills: `P` without the space
-below the island (32 px in the bar). All sizes are logical pixels.
+below the island (28 px in the bar with it on, the default; 32 px with it off).
+All sizes are logical pixels.
 
 | Presentation | Size (w × h) | Corner | Shoulder | Content |
 |---|---|---|---|---|
@@ -38,14 +38,14 @@ below the island (32 px in the bar). All sizes are logical pixels.
 | Compact, hanging | as wide as it shows, at least 164 × (P + 30; Settings 24–40) | 16 | 10 | As above |
 | Peek (alert) | fits its content, up to 380 wide × (P + 56); 56 high off a black bar; 12 px round the badge on every side, and the value or button as far from the right edge | 28 | 13 | Badge · title/subtitle (a notification's words on up to two lines) · value, level bar or button, centred |
 | Peek with buttons | fits its words up to 440, its buttons whole up to 560; buttons that don't fit go on to a line below; 16 px round one lit along its edges | 28 | 13 | Badge · title/subtitle · code · small buttons under the words, from the left |
-| Expanded | at least 600 × (B + 170) on every page; wider when its tabs and status need room (about 650 with the usual tabs); 720 for lyrics | 32 | 22 | Header row (tabs) · page, 20 px in from the sides and the bottom |
+| Expanded | at least 600 × (P + 170) on every page; wider when its tabs and status need room (about 650 with the usual tabs); 720 for lyrics | 32 | 22 | Header row (tabs) · page, 20 px in from the sides and the bottom |
 
 Every width is even, so the island sits centred on its display to the pixel.
 
 **The closed island's width.** Each end's sign sits in a square as big as the
 cover (22 px in the bar, 24 hanging), as far in from the end as from the top
-and bottom ((height − cover) / 2: 5 px in a 32 px band), and no nearer the
-corner than the island's radius less the cover's (10 px hanging). Text last
+and bottom ((height − cover) / 2: 3 px in the 28 px band, 5 px in a 32 px one), and no
+nearer the corner than the island's radius less the cover's (4 px in the bar, 10 px hanging). Text last
 on the right (the timer's time left) keeps further in: 10 px from the end in
 the bar, 13 hanging. The privacy dots follow the right side's sign 6 px on;
 alone, they sit centred in the end's square. Both sides are as wide as the
@@ -104,16 +104,16 @@ a command's output) are white at 46% on Black, the least that reads at
 on Black, 41% on Glass, and takes the new look's dimming at once when the
 look changes.
 
-Closed, the island sits inside the bar, 32 px tall (against 26 px of bar
-when it hangs below instead). The bar is 4 px taller than the island
-(36 px), its buttons kept to the island's 32 px band, so the island stops
-just short of maximised windows (Settings → Appearance → Space below the
-island, on by default; off, the bar is as tall as the island). Maximised
+Closed, the island sits inside the 32 px bar (against 26 px of bar when it
+hangs below instead), 28 px tall, so it stops just short of maximised
+windows while the bar's other buttons stay centred in its full height
+(Settings → Appearance → Space below the island, on by default; off, the
+island is as tall as the bar). Maximised
 windows start below the bar, so the resting island never covers an app and
 no screen space is lost to it. Alerts and the open island reach below the
 bar; they cover windows only for as long as they are shown. Their content
-sits below the bar's height, and the open island's header row level with
-the closed island's band. In the settings the closed island can hang below
+sits below the bar's height, and the open island's header row fills the
+bar. In the settings the closed island can hang below
 the bar instead ("Compact, hanging"); Island height (24–40 px) then takes
 the place of the space below the island.
 
@@ -200,7 +200,7 @@ with the wheel or touchpad and never show a scrollbar.
 - Where it is: on the main display, in its top bar; or (Settings) on the display of the window in use,
   moving there once closed. A display without the top bar has the island hang from its top edge, with
   a header of its own when open, and GNOME's clock comes back to the main top bar meanwhile.
-- Centre: the clock (follows GNOME's 12/24-hour setting), exactly centred; while the screen records,
+- Centre: the clock (24- or 12-hour as Settings → Appearance → Clock says, by default as GNOME's clock; with 12 hours a smaller, dimmer AM or PM beside it), exactly centred; while the screen records,
   how long it has been recording in its place. A call keeps the clock (its length is on the open
   island).
 - One island, one sign on each side of the clock. Left: the first activity that applies, in the order
@@ -415,7 +415,8 @@ segmented control (switching crossfades).
 Clipboard history is event driven (GNOME tells the shell when the
 clipboard changes; nothing polls) and kept by `isled`: the 20 most recent
 items plus up to 10 pinned ones ("Pins full · unpin one" past that), images
-with a 320 × 200 thumbnail. The cards are only
+with a thumbnail made for the card's shape, sharp at 1× and 2×; an image too
+small or thin to fill the card shows at its own pixels in the middle. The cards are only
 drawn while the page is open, so copying costs nothing on screen. Copies are never kept
 when a password manager marks them secret, from ignored apps (password
 managers by default; Settings → Clipboard), or while history is off.

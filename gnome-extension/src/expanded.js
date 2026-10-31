@@ -645,7 +645,7 @@ export const ExpandedView = GObject.registerClass({
     _tickClock() {
         const now = GLib.DateTime.new_now_local();
         this._date.text = Format.longDate(now);
-        this._time.text = Format.clockTime(now);
+        this._time.clutter_text.set_markup(Format.clockMarkup(now));
         this._updateHeader();
         this._unwatchClock ??= watchClock(() => this._tickClock());
     }

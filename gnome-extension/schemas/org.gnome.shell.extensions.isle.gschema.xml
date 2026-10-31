@@ -19,6 +19,16 @@
       <summary>The island's look</summary>
       <description>black: Isle's own black island. glass: clear dark glass over what is behind it, blurred, with a lit rim.</description>
     </key>
+    <key name="clock-format" type="s">
+      <choices>
+        <choice value="system"/>
+        <choice value="24h"/>
+        <choice value="12h"/>
+      </choices>
+      <default>'system'</default>
+      <summary>The island's clock</summary>
+      <description>system: as GNOME's own clock is set. 24h: 20:40. 12h: 8:40 PM, with AM or PM. Every time Isle shows follows it.</description>
+    </key>
     <key name="glass-tint" type="i">
       <range min="0" max="100"/>
       <default>0</default>

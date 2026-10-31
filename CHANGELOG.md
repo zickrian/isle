@@ -6,6 +6,64 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-11-01
+
+Sharp clipboard pictures, AM/PM and a 24/12-hour choice for the island's clock, and Glass no longer makes
+apps flicker beside Blur my Shell. To update: click Update on the new-version alert (or Settings → About →
+Update), then log out and back in.
+
+### Added
+
+- With a 12-hour clock, the island's time shows AM or PM beside it, a little smaller, in the closed
+  island and the open island's header (#25). A Clock choice in Settings → Appearance picks 24-hour
+  (20:40) or 12-hour (8:40 PM) for every time Isle shows, or follows GNOME's clock as before.
+
+### Fixed
+
+- Clipboard images are sharp on their cards, also on a 200% display (#24). Thumbnails are made for
+  the card's shape at twice its pixels, and a screenshot too small or thin to fill the card (a 1913×56
+  strip, a small icon) shows at its own pixels in the middle instead of blown up into a blur. Images
+  copied with an earlier version get the new thumbnails by themselves shortly after Isle starts.
+- With space below the island (Settings → Appearance), the top bar keeps its height and the closed
+  island is a little shorter instead, so the bar's other buttons and icons stay centred (#14).
+- A right or middle click on an empty part of the top bar no longer leaves a maximized window following the
+  pointer (#27). GNOME 50 and later start that drag with any button; while Isle is on, only the left button
+  drags a window down from the bar again, as before GNOME 50.
+- The assistant's command card shows whole, with its Run and Deny buttons: after a long run of steps it
+  could slip below the island's edge. Beside a card the oldest steps give way (all of them stay in the
+  conversation), and each step reads as one plain line, without bold or code marks.
+- With the Glass look, apps under the island no longer flicker when Blur my Shell blurs them (its
+  "liquid glass" and other pipelines) (#23). Glass copies only an app's own picture to blur behind the
+  island, not what other extensions add to its window.
+
+### Performance
+
+As light as 1.5.1 or lighter. Measured on GNOME 51 with an Intel GPU, the same 60 actions three times each
+(opening and closing the island, tabs, lyrics, the assistant, alerts, the Shelf), and a minute of each closed
+island at rest:
+
+| | 1.5.1 | 1.5.2 |
+|---|---|---|
+| Drawing work per frame, Black | 3.16 ms | 2.49 ms |
+| Drawing work per frame, Glass | 3.42 ms | 3.25 ms |
+| GNOME Shell CPU while the island works, Black | 24.2 % | 19.7 % |
+| GNOME Shell CPU while the island works, Glass | 25.2 % | 24.4 % |
+| Missed frames at 60 Hz, all actions | 9–10 | 9–10 |
+| GNOME Shell CPU, closed island with the clock | about 1 % | about 1 % |
+| isled at rest | 0 wake-ups a minute, 4–8 MB | 0 wake-ups a minute, 4–8 MB |
+| Memory after 100 opens and closes | no leak | no leak |
+
+A point or two of CPU either way is within what one run differs from the next. What keeps 1.5.2 light:
+
+- Glass copies only the picture of the apps that are under the island, not the rest of their windows, so it draws
+  less and never sets off another extension's effects a second time.
+- Clipboard thumbnails are made by isled on a thread of their own, never in GNOME Shell. They are made once for
+  the card's size, so GNOME Shell holds no bigger picture than the card shows; those from an earlier version are
+  made again only once, one at a time, 15 seconds after Isle starts.
+- AM/PM is part of the clock's own text, redrawn only when the minute changes; the clock choice adds no timer.
+- The assistant's card and steps are measured once per change; the steps that give way are only hidden.
+- As in 1.5.1, isled sleeps while nothing needs it, and the music bars rest while you are away from the computer.
+
 ## [1.5.1] - 2026-10-31
 
 A tidier closed island that fits what it shows, Glass made new with a slider from clear to dark,
@@ -1470,7 +1528,8 @@ The first release.
   dark, vivid ones bright.
 - Text is at least 12 px throughout.
 
-[Unreleased]: https://github.com/zickrian/isle/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/zickrian/isle/compare/v1.5.2...HEAD
+[1.5.2]: https://github.com/zickrian/isle/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/zickrian/isle/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/zickrian/isle/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/zickrian/isle/compare/v1.3.1...v1.4.0

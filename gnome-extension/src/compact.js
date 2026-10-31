@@ -557,7 +557,7 @@ export const CompactView = GObject.registerClass({
     /** Sets the clock's text; `watchClock` calls it again as the minute changes. */
     _tickClock() {
         const length = this._clock.text.length;
-        this._clock.text = Format.clockTime();
+        this._clock.clutter_text.set_markup(Format.clockMarkup());
         // Longer or shorter (12:59 to 1:00): the centre is measured again; not while being built.
         if (this._clock.text.length !== length && this._contentWidth)
             this._refit();

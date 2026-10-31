@@ -330,6 +330,11 @@ export default class IslePreferences extends ExtensionPreferences {
             'A little room between the closed island and the windows below');
         settings.bind('island-in-top-bar', gap, 'visible', Gio.SettingsBindFlags.GET);
         look.add(gap);
+        look.add(choiceRow(settings, 'clock-format', 'Clock', 'The time in the island and its pages', [
+            ['system', 'As GNOME'],
+            ['24h', '24-hour (20:40)'],
+            ['12h', '12-hour (8:40 PM)'],
+        ]));
         look.add(switchRow(settings, 'privacy-indicators', 'Privacy indicators', 'Dots when the camera, microphone or screen sharing is in use'));
         look.add(choiceRow(settings, 'island-monitor', 'Display', 'With more than one display, where the island is', [
             ['primary', 'Main display'],
@@ -916,7 +921,7 @@ function worldClocksGroup(settings, window) {
                 const when = [WorldClocks.dayText(timezone, now), WorldClocks.offsetText(timezone, now) || 'Same time as here']
                     .filter(Boolean).join(' · ');
                 row.subtitle = [country, when].filter(Boolean).join(' · ');
-                time.label = now.to_timezone(timezone).format(useTwelveHour() ? '%l:%M %p' : '%H:%M').trim();
+                time.label = now.to_timezone(timezone).format(useTwelveHour(settings) ? '%l:%M %p' : '%H:%M').trim();
             };
             tick();
             ticks.push(tick);
@@ -954,8 +959,11 @@ function worldClocksGroup(settings, window) {
     return group;
 }
 
-/** Whether GNOME's clock is set to 12 hours. */
-function useTwelveHour() {
+/** Whether times show with a 12-hour clock: as Isle's Clock setting says, else as GNOME's clock. */
+function useTwelveHour(settings) {
+    const format = settings.get_string('clock-format');
+    if (format !== 'system')
+        return format === '12h';
     return new Gio.Settings({schema_id: 'org.gnome.desktop.interface'}).get_string('clock-format') === '12h';
 }
 

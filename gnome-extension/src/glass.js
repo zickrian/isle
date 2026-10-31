@@ -98,15 +98,21 @@ function syncRound(actor) {
 // What a copy of a window follows of it: a clone draws its source without the source's own fade and motion.
 const MIRRORED = ['opacity', 'scale-x', 'scale-y', 'pivot-point', 'translation-x', 'translation-y'];
 
+/** What of a window is copied: its surfaces alone. Other extensions add to the window's actor (Blur my Shell's
+ * blur behind it reads the screen, and drawn a second time here its real one flickers, #23). */
+function surfaceOf(actor) {
+    return actor.get_children().find(child => child.constructor.$gtype?.name?.startsWith('MetaSurface')) ?? actor;
+}
+
 /** A copy that tells Clutter it draws only within `paintArea` (its own pixels), so a change in its source redraws
- * just that part of the screen; with `mirror`, it fades, scales and moves as its source does. */
+ * just that part of the screen; with `mirror` (an actor), it fades, scales and moves as that does. */
 const AreaClone = GObject.registerClass(
 class AreaClone extends Clutter.Clone {
-    _init(source, {mirror = false} = {}) {
+    _init(source, {mirror = null} = {}) {
         super._init({source});
         this._area = null;
         this._bindings = mirror
-            ? MIRRORED.map(name => source.bind_property(name, this, name, GObject.BindingFlags.SYNC_CREATE)) : [];
+            ? MIRRORED.map(name => mirror.bind_property(name, this, name, GObject.BindingFlags.SYNC_CREATE)) : [];
         this.connect('destroy', () => this._bindings.forEach(binding => binding.unbind()));
     }
 
@@ -247,6 +253,9 @@ class GlassBackdrop extends St.Widget {
             actor.connectObject(
                 'notify::allocation', () => this._queueSync(),
                 'notify::visible', () => this._queueSync(),
+                // Its surfaces can be replaced (an X11 window going full screen): copied anew.
+                'child-added', () => this._queueSync(),
+                'child-removed', () => this._queueSync(),
                 // A closed window's actor goes with its handlers: only forgotten here.
                 'destroy', () => {
                     this._watched.delete(actor);
@@ -266,8 +275,13 @@ class GlassBackdrop extends St.Widget {
         let below = this._wallpaper;
         for (const actor of under) {
             let clone = this._windows.get(actor);
+            const source = surfaceOf(actor);
+            if (clone && clone.source !== source) {
+                clone.destroy();
+                clone = null;
+            }
             if (!clone) {
-                clone = new AreaClone(actor, {mirror: true});
+                clone = new AreaClone(source, {mirror: actor});
                 this._windows.set(actor, clone);
                 this._layers.add_child(clone);
             }
@@ -303,7 +317,17 @@ class GlassBackdrop extends St.Widget {
         const bar = Main.layoutManager.panelBox;
         this._bar.visible = bar.mapped;
         place(this._bar, bar.x + bar.translation_x, bar.y + bar.translation_y);
-        this._windows.forEach((clone, actor) => place(clone, actor.x, actor.y));
+        // A window scales its surfaces up itself on a display scaled without scaled views (GNOME 46 at 200%).
+        this._windows.forEach((clone, actor) => {
+            // A window with no surfaces yet is copied whole, until they come (see `surfaceOf`).
+            if (clone.source === actor) {
+                place(clone, actor.x, actor.y);
+                return;
+            }
+            const scale = actor.get_child_transform?.()?.get_x_scale?.() || 1;
+            clone.set_size(clone.source.width * scale, clone.source.height * scale);
+            place(clone, actor.x + clone.source.x * scale, actor.y + clone.source.y * scale);
+        });
     }
 
     /**

@@ -12,7 +12,8 @@ import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
-import {VERTICAL} from '../compat.js';
+import {thumbSize} from '../clipRules.js';
+import {VERTICAL, onUiScale, uiScale} from '../compat.js';
 import * as Format from '../format.js';
 import {icon, iconButton, label, wrapLines} from '../widgets.js';
 import {SHELF_CAPACITY} from './files.js';
@@ -475,8 +476,16 @@ export const ClipsView = GObject.registerClass({
         switch (item.kind) {
         case 'image': {
             const body = new St.Widget({style_class: 'isle-clip-thumb', x_expand: true, y_expand: true});
-            if (item.thumb)
-                body.style = `background-image: url("${GLib.filename_to_uri(item.thumb, null).replace(/"/g, '%22')}");`;
+            if (item.thumb) {
+                const uri = GLib.filename_to_uri(item.thumb, null).replace(/"/g, '%22');
+                // Sized for the screen's pixels: 2 per CSS px on a 200% display, by St's scale or the monitor's.
+                const fit = () => {
+                    const density = uiScale() * Math.max(body.get_resource_scale() || 1, 1);
+                    body.style = `background-image: url("${uri}"); background-size: ${thumbSize(item.thumb_width, item.thumb_height, density)};`;
+                };
+                onUiScale(body, fit);
+                body.connect('resource-scale-changed', fit);
+            }
             const size = new St.Bin({
                 style_class: 'isle-clip-badge',
                 child: label(`${item.width}×${item.height}`, 'isle-clip-badge-label'),

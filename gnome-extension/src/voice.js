@@ -19,6 +19,7 @@ import {TILES, describeActions, failed, namesProject, outcomeOf, runnable, slots
 import {Bot} from './bot.js';
 import {ChatView, CommandCard, answerMarkup, elapsed} from './chat.js';
 import {isTerminal} from './clipboard.js';
+import {answerPlain} from './format.js';
 import {VERTICAL, eventActor, maximize, onUiScale, px, uiScale, unmaximize} from './compat.js';
 import {plainBody} from './notifications.js';
 import {cornerClose, icon, iconButton, pillButton, revealClose, wrapLines} from './widgets.js';
@@ -42,6 +43,10 @@ const MIN_HEIGHT = FACE_SIZE + ROW_PADDING;
 const MAX_HEIGHT = 230;
 /** The conversation, open above the pill, grows the island to at most this (px below the top bar). */
 const CHAT_MAX_HEIGHT = 420;
+/** What an open conversation keeps beside a tall command card: its header and a message. */
+const CHAT_MIN_HEIGHT = 100;
+/** The tallest the row grows for a command card, so its buttons show below a long command. */
+const CARD_TALLEST = 600;
 /** The pill grows to this with a command card in it. */
 const CARD_MAX_HEIGHT = 320;
 /** What comes into the pill fades in as its shape grows to it, rather than show cut off by the edge (ms). */
@@ -661,7 +666,8 @@ export const VoiceView = GObject.registerClass({
             const row = new St.BoxLayout({style_class: 'isle-voice-step'});
             row.add_child(new St.Icon({gicon: icon('isle-check-symbolic'), icon_size: 11, style_class: 'isle-voice-step-tick',
                 y_align: Clutter.ActorAlign.CENTER}));
-            const line = new St.Label({text: step, style_class: 'isle-voice-step-text', y_align: Clutter.ActorAlign.CENTER});
+            // As read, not as written: an AI's step may come with Markdown ("**done**").
+            const line = new St.Label({text: answerPlain(step).replace(/\s+/g, ' '), style_class: 'isle-voice-step-text', y_align: Clutter.ActorAlign.CENTER});
             line.clutter_text.ellipsize = Pango.EllipsizeMode.END;
             row.add_child(line);
             this._stepsBox.add_child(row);
@@ -833,10 +839,18 @@ export const VoiceView = GObject.registerClass({
         // Measured per label: the box's own answer is the size set below.
         const parts = [this._undo, this._heardButton, this._entry, this._ideas, this._text, this._card, this._stepsBox, this._still,
             this._hint, this._signIn, this._setUp];
-        const natural = parts.filter(part => part.visible).reduce((sum, part) => sum + part.get_preferred_height(width)[1], 0);
+        // Every step counted first: those a card hid last time may fit now (see `_fitCard`).
+        this._stepsBox.get_children().forEach(step => step.show());
+        let natural = parts.filter(part => part.visible).reduce((sum, part) => sum + part.get_preferred_height(width)[1], 0);
         this._fadeInNew(parts);
         // A command card needs room for its buttons.
-        const most = (this._card.visible ? CARD_MAX_HEIGHT : MAX_HEIGHT) * scale;
+        let most = (this._card.visible ? CARD_MAX_HEIGHT : MAX_HEIGHT) * scale;
+        if (this._card.visible)
+            natural = this._fitCard(width, natural, most - ROW_PADDING * scale);
+        // Its buttons always in sight: a card taller than that (a long command, read whole before Run) gets the
+        // room it needs, up to CARD_TALLEST.
+        if (this._card.visible)
+            most = Math.max(most, Math.min(natural + ROW_PADDING * scale, CARD_TALLEST * scale));
         // Set outright: the row kept an earlier, shorter height for them.
         this._texts.set_size(width, Math.min(natural, most - ROW_PADDING * scale));
         // Beside a line or two it sits in the middle; beside more, level with the first line.
@@ -846,9 +860,26 @@ export const VoiceView = GObject.registerClass({
         this._row.height = row;
         if (!this.chatOpen)
             return row;
-        const chat = this._chat.naturalHeight(this.preferredWidth, CHAT_MAX_HEIGHT * scale - row);
+        // Above a tall card the conversation keeps its header and a message, the island taller for it.
+        const chat = this._chat.naturalHeight(this.preferredWidth, Math.max(CHAT_MIN_HEIGHT * scale, CHAT_MAX_HEIGHT * scale - row));
         this._chat.height = chat;
         return row + chat;
+    }
+
+    /** Beside a command card, the oldest steps give way (the newest stays) until the card fits in `room`; returns
+     * the height then. The steps are all in the conversation still. */
+    _fitCard(width, natural, room) {
+        const steps = this._stepsBox.get_children();
+        if (natural <= room || !this._stepsBox.visible)
+            return natural;
+        const spacing = this._stepsBox.get_theme_node().get_length('spacing');
+        for (const step of steps.slice(0, -1)) {
+            if (natural <= room)
+                break;
+            natural -= step.get_preferred_height(width)[1] + spacing;
+            step.hide();
+        }
+        return natural;
     }
 
     // What comes into view fades in as the shape grows to it, rather than show cut off by its edge.

@@ -116,13 +116,9 @@
   font-weight: 500;
 }
 
-/* Closed island inside the top bar, like a notch: the bar is as tall as the island, so
- * maximised windows start below it. Comes after the compact bar's height so it wins. */
+/* Closed island inside the top bar, like a notch: maximised windows start below the bar, the island as tall
+ * or, with space below it (Settings), a little shorter. Comes after the compact bar's height so it wins. */
 #panel.isle-notch-bar { height: 32px; }
-/* With space below the island (Settings), the bar grows by GAP_PX in shell.js; its buttons keep the
- * island's 32 px band, the space left empty along the bottom. */
-#panel.isle-notch-gap { height: 36px; }
-#panel.isle-notch-gap .panel-button { margin-bottom: 4px; }
 
 /* Isle's bar is black or see-through in light and dark style alike: its text and icons stay white,
  * as GNOME's light style has them over the overview (it makes them near-black otherwise). */

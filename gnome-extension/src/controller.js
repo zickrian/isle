@@ -28,6 +28,7 @@ import {AudioOutputs} from './audio.js';
 import {CallMonitor} from './call.js';
 import {FocusMode} from './focusMode.js';
 import * as Format from './format.js';
+import {refreshClocks} from './wallClock.js';
 import {NotificationCenter} from './notifications.js';
 import {PrivacyMonitor} from './privacy.js';
 import {PeekView} from './peek.js';
@@ -156,6 +157,8 @@ export class Controller {
     constructor(extension) {
         this._extension = extension;
         this._settings = extension.getSettings();
+        // Before any view shows a time: 24 or 12 hours, or as GNOME's clock (Settings → Appearance → Clock).
+        Format.setClockFormat(this._settings.get_string('clock-format'));
         this._daemon = new Daemon();
         // Heard once everything listening is built (see `_connectAll`).
         this._daemon.hold();
@@ -494,6 +497,11 @@ export class Controller {
         this._settingsChanged.push(this._settings.connect('changed::app-usage-clear', () => this._syncAppUsage()));
         for (const key of ['island-theme', 'glass-tint'])
             this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => this._syncTheme()));
+        // Changed: the clocks on show change at once, the rest as they next draw.
+        this._settingsChanged.push(this._settings.connect('changed::clock-format', () => {
+            Format.setClockFormat(this._settings.get_string('clock-format'));
+            refreshClocks();
+        }));
         for (const provider of AGENT_PROVIDERS) {
             this._settingsChanged.push(this._settings.connect(`changed::agent-alerts-${provider}`, () =>
                 this._hookAgent(provider)));
@@ -681,9 +689,9 @@ export class Controller {
         // bar; on any other it hangs from the top of the screen like a notch.
         this._island.topInset = this._blendsIn ? this._topBar.height : 0;
         this._island.monitor = this._monitor;
-        // Without a top bar (another display) the open island's header is its own. In the bar, it keeps to the
-        // closed island's band, above the space below it.
-        this._expanded.topInset = this._onBar ? this._topBar.height - this._topBar.gap : px(HEADER_WITHOUT_BAR);
+        // Without a top bar (another display) the open island's header is its own; in the bar, the bar's height
+        // (the space below the closed island is the closed one's alone).
+        this._expanded.topInset = this._onBar ? this._topBar.height : px(HEADER_WITHOUT_BAR);
         this._topBar.clockShown = !this._onBar;
         this._render();
         if (this._monitor !== before)
@@ -957,7 +965,7 @@ export class Controller {
         const scale = uiScale();
         const top = this._onBar ? this._topBar.height : 0;
         const inBar = this._onBar && this._settings.get_boolean('island-in-top-bar');
-        // Inside the bar it leaves the bar's last few pixels free (Settings), open as well as closed.
+        // Closed inside the bar, it leaves the bar's last few pixels free (Settings); open, it fills the bar.
         const band = top - (inBar ? this._topBar.gap : 0);
         // Before measuring it: inside the bar it is smaller.
         this._compact.inBar = inBar;
@@ -969,7 +977,7 @@ export class Controller {
         case 'expanded':
             size = {
                 width: this._expanded.preferredWidth,
-                height: (this._onBar ? band : HEADER_WITHOUT_BAR * scale) + (PAGE_HEIGHT + BOTTOM_PADDING) * scale,
+                height: (this._onBar ? top : HEADER_WITHOUT_BAR * scale) + (PAGE_HEIGHT + BOTTOM_PADDING) * scale,
                 radius: EXPANDED_RADIUS * scale,
                 shoulder: EXPANDED_SHOULDER * scale,
             };

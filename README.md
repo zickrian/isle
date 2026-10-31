@@ -289,7 +289,7 @@ Click the gear right of the clock in the open island (or Isle's gear in the
 
 - **Island:** Isle's own black island, or Glass, clear dark glass that shows what
   is behind it (windows and wallpaper) blurred, with a slider from clear to dark smoked glass; the top bar on a slider from glass (default) to black;
-  a little space below the island inside the bar (on by default); privacy dots; which pages the open island has (Music,
+  a little space below the island inside the bar (on by default); a 24- or 12-hour clock (or as GNOME's); privacy dots; which pages the open island has (Music,
   Notifications, Timer, Reminders, Shelf, Calendar, Apps, AI Usage) and whether it
   has the AI assistant at all; world clocks, and their cities;
   the closed island inside the bar or hanging below it; with more than one
