@@ -969,7 +969,7 @@ export class Controller {
         case 'expanded':
             size = {
                 width: this._expanded.preferredWidth,
-                height: (this._onBar ? band : HEADER_WITHOUT_BAR * scale) + (PAGE_HEIGHT + BOTTOM_PADDING) * scale,
+                height: (this._onBar ? band : HEADER_WITHOUT_BAR * scale) + this._expanded.preferredHeight + BOTTOM_PADDING * scale,
                 radius: EXPANDED_RADIUS * scale,
                 shoulder: EXPANDED_SHOULDER * scale,
             };

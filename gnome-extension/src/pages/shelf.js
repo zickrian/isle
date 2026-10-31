@@ -8,7 +8,7 @@ import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 
-import {onUiScale} from '../compat.js';
+import {onUiScale, px} from '../compat.js';
 import {DropLight} from '../dropLight.js';
 import {Thumbnails} from '../thumbnails.js';
 import {icon, iconButton, label, pillButton, setEnabled} from '../widgets.js';
@@ -36,6 +36,8 @@ const ADDED_MS = 2200;
 const COLOR_WAIT_MS = 400;
 /** A dragged file's colour comes from its preview, read within this long or not at all. */
 const COLOR_LATE_MS = 1500;
+/** Default clipboard height in vertical mode when unset in Settings. */
+const VERTICAL_DEFAULT_HEIGHT = 360;
 
 /** The Shelf page; `_clips` and `_files` draw its two tabs. */
 export const ShelfPage = GObject.registerClass({
@@ -53,6 +55,7 @@ export const ShelfPage = GObject.registerClass({
         });
         onUiScale(this, scale => (this.layout_manager.spacing = 8 * scale));
         this.name = 'shelf';
+        this._defaultHeight = height;
         this._history = history;
         this._settings = settings;
         this._tab = 'clipboard';
@@ -83,6 +86,7 @@ export const ShelfPage = GObject.registerClass({
         });
 
         this._clips = new ClipsView(daemon);
+        this._clips.vertical = this._isVertical;
         this._clips.connect('activated', (_view, item, paste) => this._onActivated(item, paste));
         this._thumbnails = new Thumbnails();
         this._files = new FilesView(daemon, this._thumbnails);
@@ -108,13 +112,29 @@ export const ShelfPage = GObject.registerClass({
             if (this._dropping)
                 this._syncRefusal();
         });
-        this._settingsChanged = settings.connect('changed::clipboard-history', () => this._refresh('clips'));
+        this._settingsIds = [
+            settings.connect('changed::clipboard-history', () => this._refresh('clips')),
+            settings.connect('changed::clipboard-layout', () => {
+                this._clips.vertical = this._isVertical;
+                this._syncSize();
+                this.markCold({force: true});
+            }),
+            settings.connect('changed::clipboard-width', () => {
+                this._syncSize();
+                this.markCold({force: true});
+            }),
+            settings.connect('changed::clipboard-height', () => {
+                this._syncSize();
+                this.markCold({force: true});
+            }),
+        ];
         this.connect('destroy', () => {
             this._destroyed = true;
-            settings.disconnect(this._settingsChanged);
+            this._settingsIds.forEach(id => settings.disconnect(id));
             this._thumbnails.destroy();
             this._light.destroy();
         });
+        this._syncSize();
         this._updateClips();
         this._updateFilesHint();
         this.showTab('clipboard');
@@ -258,8 +278,38 @@ export const ShelfPage = GObject.registerClass({
             this._search.text = '';
             this._openSearch();
         }
-        if (changed)
+        if (changed) {
+            this._syncSize();
             this.emit('helper-area-changed');
+        }
+    }
+
+    /** Whether the clipboard tab stacks cards vertically. */
+    get _isVertical() {
+        return this._settings.get_string('clipboard-layout') === 'vertical';
+    }
+
+    /** The clipboard tab's height in CSS pixels. */
+    get _clipboardHeight() {
+        if (this._settings.get_user_value('clipboard-height'))
+            return this._settings.get_int('clipboard-height');
+        return this._isVertical ? VERTICAL_DEFAULT_HEIGHT : this._defaultHeight;
+    }
+
+    /** Island width while the Clipboard tab is open, or null for the standard width on Files. */
+    get preferredWidth() {
+        return this._tab === 'clipboard' ? px(this._settings.get_int('clipboard-width')) : null;
+    }
+
+    /** Island page height while the Clipboard tab is open, or null for the standard height on Files. */
+    get preferredHeight() {
+        return this._tab === 'clipboard' ? px(this._clipboardHeight) : null;
+    }
+
+    /** Applies the current tab's height and tells the island to resize. */
+    _syncSize() {
+        this.height = this.preferredHeight ?? px(this._defaultHeight);
+        this.emit('width-changed');
     }
 
     /** The Files tab while it is on screen, for the drag-and-drop helper to cover. */
@@ -478,13 +528,15 @@ export const ShelfPage = GObject.registerClass({
         this._clips.kind = kind;
     }
 
-    /** ← → move between cards; Esc empties the search before it can close the island. */
+    /** Arrows move between cards; Esc empties the search before it can close the island. */
     _onSearchKey(event) {
         switch (event.get_key_symbol()) {
         case Clutter.KEY_Left:
+        case Clutter.KEY_Up:
             this._clips.moveSelection(-1);
             return Clutter.EVENT_STOP;
         case Clutter.KEY_Right:
+        case Clutter.KEY_Down:
             this._clips.moveSelection(1);
             return Clutter.EVENT_STOP;
         case Clutter.KEY_Escape:

@@ -89,6 +89,7 @@ export const ExpandedView = GObject.registerClass({
         this._index = Math.max(0, pages.findIndex(page => page.available));
         this._active = false;
         this._width = px(EXPANDED_WIDTH);
+        this._height = px(PAGE_HEIGHT);
         /** Set once smooth scrolling is seen; its click-style copies are then dropped. */
         this._smoothScrolling = false;
         this._lastFlip = 0;
@@ -114,7 +115,8 @@ export const ExpandedView = GObject.registerClass({
         this.add_child(bottom);
         onUiScale(bottom, scale => {
             bottom.height = BOTTOM_PADDING * scale;
-            this._pagerArea.height = PAGE_HEIGHT * scale;
+            this._height = this.preferredHeight;
+            this._pagerArea.height = this._height;
         });
 
         for (const page of pages) {
@@ -327,7 +329,8 @@ export const ExpandedView = GObject.registerClass({
             y_expand: true,
         });
         for (const page of this._pages) {
-            page.x_expand = page.y_expand = true;
+            page.x_expand = true;
+            page.y_align = Clutter.ActorAlign.START;
             page.hide();
             this._pager.add_child(page);
         }
@@ -350,6 +353,11 @@ export const ExpandedView = GObject.registerClass({
     /** The width the island should have: the current page's, and never less than the header needs. */
     get preferredWidth() {
         return Math.max(this.page.preferredWidth ?? px(EXPANDED_WIDTH), this._headerWidth());
+    }
+
+    /** The page height the island should have: the current page's, or the standard height. */
+    get preferredHeight() {
+        return this.page.preferredHeight ?? px(PAGE_HEIGHT);
     }
 
     // The tabs and the status side by side with room between, so they never overlap,
@@ -553,15 +561,18 @@ export const ExpandedView = GObject.registerClass({
         return null;
     }
 
-    /** Tells the island when the width it should have changed. */
+    /** Tells the island when the size it should have changed. */
     _syncWidth() {
         // Compare with the width we set, not `this.width`: reading that makes
         // St style the actor, which fails before it is on the stage.
         const width = this.preferredWidth;
-        if (width === this._width)
+        const height = this.preferredHeight;
+        if (width === this._width && height === this._height)
             return;
         this._width = width;
+        this._height = height;
         this.width = width;
+        this._pagerArea.height = height;
         this.emit('width-changed');
         this._followRoom();
     }
