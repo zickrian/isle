@@ -371,18 +371,21 @@ stopped mid-session. (Settings → Timer → While Focusing → Do Not Disturb.)
 segmented control (switching crossfades).
 
 - **Clipboard**: what was copied, pinned items first, then newest first, as
-  cards (136 × 96): text
+  cards in a horizontal row (136 × 96) or a vertical stack (68 px tall;
+  Settings → Clipboard sets the layout, width and height): text
   (three lines; code in a monospace font), links (site and address), images
   (thumbnail with its size) and files (icon, name, "+2 more"). Each card shows
   the app it came from and how long ago. Click a card to copy it ("Copied"
-  flashes on it). On hover: pin (pinned items stay at the front and are
+  flashes on it), or paste it straight away when "Auto-paste on click" is on in
+  Settings → Clipboard. On hover: pin (pinned items stay at the front and are
   never cleared), a hand-off (text to Reminders; images and files to the Files
   tab) and ×. The bar holds type filters (text, links,
   images, files; the chosen one lit, the others dimmed), search (a round
   button that opens into a field, closing again when left empty) and
   Clear all (asks once more; pinned items are kept). Opened with Super+V, the search
-  field has the keyboard: ← → choose a card (white outline), Enter pastes it
-  into the window in front (Ctrl+Shift+V in terminals).
+  field has the keyboard: arrows choose a card (white outline), Enter pastes it
+  into the window in front (Ctrl+Shift+V in terminals; copies only when
+  "Auto-paste with keyboard" is off).
 - **Files**: at most 6 files, all in view with no scrolling; a seventh is
   refused until one is removed. Each file is a tile of one size: a 52 px
   square preview, as Files shows the file (a picture cut to a square; a

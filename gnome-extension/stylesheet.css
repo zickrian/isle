@@ -947,15 +947,21 @@
 .isle-shelf-hint.active { color: #ffffff; font-weight: 600; }
 
 .isle-clips-scroll { -st-hfade-offset: 18px; }
+.isle-clips-scroll-vertical { -st-hfade-offset: 0; -st-vfade-offset: 18px; }
 .isle-clips { spacing: 8px; }
 
 .isle-clip {
-  width: 136px;
-  height: 96px;
   border-radius: 12px;
   border: 2px solid transparent;
   background-color: #1c1c1e;
   color: #ffffff;
+}
+.isle-clip-horizontal {
+  width: 136px;
+  min-height: 96px;
+}
+.isle-clip-vertical {
+  height: 68px;
 }
 
 .isle-clip:hover { background-color: #242426; }
@@ -965,6 +971,8 @@
 .isle-clip-header { padding: 7px 9px; spacing: 5px; }
 .isle-clip-age { font-size: 12px; color: rgba(255, 255, 255, 0.5); }
 .isle-clip-body { padding: 28px 10px 8px 10px; spacing: 2px; }
+.isle-clip-files-row { spacing: 8px; }
+.isle-clip-files-row .isle-clip-file-name { padding-top: 0; }
 .isle-clip-text { font-size: 12px; }
 .isle-clip-code { font-family: monospace; font-size: 12px; }
 .isle-clip-host { font-size: 13px; font-weight: 700; }
@@ -972,13 +980,26 @@
 .isle-clip-file-name { font-size: 12px; font-weight: 600; padding-top: 4px; }
 .isle-clip-subtle { font-size: 12px; color: rgba(255, 255, 255, 0.5); }
 
-/* Images fill the card; header and size sit on dark pills over them. */
+/* Horizontal images fill the card; vertical images sit in a proportional preview box on the left. */
 .isle-clip-thumb { border-radius: 12px; background-size: cover; background-color: #2c2c2e; }
-.isle-clip-image .isle-clip-header {
+.isle-clip-thumb-box {
+  width: 76px;
+  height: 54px;
+  margin-left: 6px;
+  border-radius: 8px;
+  background-size: contain;
+  background-position: center;
+  background-color: #2c2c2e;
+}
+.isle-clip-horizontal.isle-clip-image .isle-clip-header {
   margin: 5px;
   padding: 3px 7px;
   border-radius: 999px;
   background-color: rgba(0, 0, 0, 0.6);
+}
+.isle-clip-vertical.isle-clip-image .isle-clip-header,
+.isle-clip-vertical.isle-clip-image .isle-clip-body {
+  padding-left: 92px;
 }
 
 .isle-clip-badge { margin: 5px; padding: 2px 6px; border-radius: 999px; background-color: rgba(0, 0, 0, 0.6); }
@@ -1251,6 +1272,7 @@
 /* Pictures and tiles that wait for a picture: frosted. */
 #isleIsland.isle-translucent .isle-art,
 #isleIsland.isle-translucent .isle-clip-thumb,
+#isleIsland.isle-translucent .isle-clip-thumb-box,
 #isleIsland.isle-translucent .isle-shelf-preview.thumbnail { background-color: rgba(255, 255, 255, 0.1); }
 #isleIsland.isle-translucent .isle-shelf-preview.thumbnail.whole { background-color: transparent; }
 #isleIsland.isle-translucent .isle-notification-glyph { background-color: rgba(255, 255, 255, 0.14); }
@@ -1429,6 +1451,7 @@
 #isleIsland.isle-glass-dark .isle-cal-target,
 #isleIsland.isle-glass-dark .isle-art,
 #isleIsland.isle-glass-dark .isle-clip-thumb,
+#isleIsland.isle-glass-dark .isle-clip-thumb-box,
 #isleIsland.isle-glass-dark .isle-shelf-preview.thumbnail,
 #isleIsland.isle-glass-dark .isle-notification-glyph { background-color: rgba(255, 255, 255, 0.08); }
 #isleIsland.isle-glass-dark .isle-shelf-preview.thumbnail.whole { background-color: transparent; }

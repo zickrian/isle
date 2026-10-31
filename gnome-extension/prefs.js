@@ -292,6 +292,33 @@ export default class IslePreferences extends ExtensionPreferences {
             ['isle', 'Isle’s clipboard history'],
             ['gnome', 'GNOME’s calendar and notifications'],
         ]));
+        history.add(choiceRow(settings, 'clipboard-layout', 'Layout', 'How copied items are arranged', [
+            ['horizontal', 'Horizontal'],
+            ['vertical', 'Vertical'],
+        ]));
+        const width = Adw.SpinRow.new_with_range(400, 1200, 20);
+        width.title = 'Width';
+        width.subtitle = 'In pixels';
+        settings.bind('clipboard-width', width, 'value', Gio.SettingsBindFlags.DEFAULT);
+        history.add(width);
+        const height = Adw.SpinRow.new_with_range(150, 800, 20);
+        height.title = 'Height';
+        height.subtitle = 'In pixels';
+        settings.bind('clipboard-height', height, 'value', Gio.SettingsBindFlags.DEFAULT);
+        const layoutChanged = settings.connect('changed::clipboard-layout', () => {
+            const vertical = settings.get_string('clipboard-layout') === 'vertical';
+            const current = settings.get_int('clipboard-height');
+            if (vertical && current === 150)
+                settings.set_int('clipboard-height', 360);
+            else if (!vertical && current === 360)
+                settings.reset('clipboard-height');
+        });
+        height.connect('destroy', () => settings.disconnect(layoutChanged));
+        history.add(height);
+        history.add(switchRow(settings, 'clipboard-paste-keyboard', 'Auto-paste with keyboard',
+            'Pressing Enter pastes into the active window; when off, it only copies'));
+        history.add(switchRow(settings, 'clipboard-paste-mouse', 'Auto-paste on click',
+            'Clicking an item pastes into the active window; when off, it only copies'));
         const clear = new Adw.ActionRow({title: 'Clear history', subtitle: 'Pinned items are kept'});
         const clearButton = new Gtk.Button({label: 'Clear…', valign: Gtk.Align.CENTER});
         clearButton.connect('clicked', () => confirmClear(window));

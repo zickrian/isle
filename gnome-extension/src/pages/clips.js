@@ -75,6 +75,7 @@ export const ClipsView = GObject.registerClass({
         this._searches = 0;
         this._selected = 0;
         this._keyboard = false;
+        this._vertical = false;
         /** Every item, pinned first; the cards of those that match `kind` and `query` show. */
         this._all = [];
         this._shown = [];
@@ -118,6 +119,32 @@ export const ClipsView = GObject.registerClass({
             const [ageLabel, age] = card._age;
             ageLabel.text = Format.ago(age);
         }
+    }
+
+    /** Switches between a horizontal row of cards and a vertical stack of cards. */
+    set vertical(vertical) {
+        vertical = Boolean(vertical);
+        if (vertical === this._vertical)
+            return;
+        this._vertical = vertical;
+        this._strip.layout_manager.orientation = vertical
+            ? Clutter.Orientation.VERTICAL
+            : Clutter.Orientation.HORIZONTAL;
+        if (vertical) {
+            this._strip.add_style_class_name('isle-clips-vertical');
+            this._scroll.add_style_class_name('isle-clips-scroll-vertical');
+            this._scroll.hscrollbar_policy = St.PolicyType.NEVER;
+            this._scroll.vscrollbar_policy = St.PolicyType.EXTERNAL;
+        } else {
+            this._strip.remove_style_class_name('isle-clips-vertical');
+            this._scroll.remove_style_class_name('isle-clips-scroll-vertical');
+            this._scroll.hscrollbar_policy = St.PolicyType.EXTERNAL;
+            this._scroll.vscrollbar_policy = St.PolicyType.NEVER;
+        }
+        for (const card of this._cards.values())
+            card.destroy();
+        this._cards.clear();
+        this._filter();
     }
 
     /** Shows only items of `kind` ('text', 'link', 'image', 'files'), or all. */
@@ -306,16 +333,26 @@ export const ClipsView = GObject.registerClass({
         // Arrowing faster than the cards are drawn.
         this._addCards(Infinity, this._selected + 1);
         // Keep the selected card in view.
-        // Cards just drawn have no position yet; all are the same width.
+        // Cards just drawn have no position yet; all are the same size along the strip.
         const first = this._cards.get(this._shown[0].id);
         const spacing = this._strip.get_theme_node().get_length('spacing');
-        const width = first.width;
-        const x = this._selected * (width + spacing);
-        const adjustment = this._scroll.hadjustment;
-        if (x < adjustment.value)
-            adjustment.ease(x, {duration: 150, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
-        else if (x + width > adjustment.value + adjustment.page_size)
-            adjustment.ease(x + width - adjustment.page_size, {duration: 150, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        if (this._vertical) {
+            const height = first.height;
+            const y = this._selected * (height + spacing);
+            const adjustment = this._scroll.vadjustment;
+            if (y < adjustment.value)
+                adjustment.ease(y, {duration: 150, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+            else if (y + height > adjustment.value + adjustment.page_size)
+                adjustment.ease(y + height - adjustment.page_size, {duration: 150, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        } else {
+            const width = first.width;
+            const x = this._selected * (width + spacing);
+            const adjustment = this._scroll.hadjustment;
+            if (x < adjustment.value)
+                adjustment.ease(x, {duration: 150, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+            else if (x + width > adjustment.value + adjustment.page_size)
+                adjustment.ease(x + width - adjustment.page_size, {duration: 150, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        }
     }
 
     /** Chooses the selected card, as Enter does. */
@@ -345,6 +382,8 @@ export const ClipsView = GObject.registerClass({
 
     /** Any wheel direction moves the strip sideways, once it overflows. */
     _onScroll(event) {
+        if (this._vertical)
+            return Clutter.EVENT_PROPAGATE;
         const adjustment = this._scroll.hadjustment;
         if (adjustment.upper <= adjustment.page_size)
             return Clutter.EVENT_PROPAGATE;
@@ -372,13 +411,14 @@ export const ClipsView = GObject.registerClass({
 
     /** Body, hover actions, header and a feedback layer, stacked. */
     _card(item) {
+        const modeClass = this._vertical ? 'isle-clip-vertical' : 'isle-clip-horizontal';
         const card = new St.Widget({
-            style_class: `isle-clip isle-clip-${item.kind}`,
+            style_class: `isle-clip ${modeClass} isle-clip-${item.kind}`,
             layout_manager: new Clutter.BinLayout(),
             reactive: true,
             track_hover: true,
-            x_expand: false,
-            y_expand: false,
+            x_expand: this._vertical,
+            y_expand: !this._vertical,
             // Long text must not spill out of the card.
             clip_to_allocation: true,
         });
@@ -474,9 +514,33 @@ export const ClipsView = GObject.registerClass({
     _body(item) {
         switch (item.kind) {
         case 'image': {
+            const uri = item.thumb ? `background-image: url("${GLib.filename_to_uri(item.thumb, null).replace(/"/g, '%22')}");` : null;
+            if (this._vertical) {
+                const layers = new St.Widget({layout_manager: new Clutter.BinLayout(), x_expand: true, y_expand: true});
+                const thumb = new St.Widget({
+                    style_class: 'isle-clip-thumb-box',
+                    x_expand: true,
+                    y_expand: true,
+                    x_align: Clutter.ActorAlign.START,
+                    y_align: Clutter.ActorAlign.CENTER,
+                });
+                if (uri)
+                    thumb.style = uri;
+                layers.add_child(thumb);
+                const meta = new St.BoxLayout({
+                    style_class: 'isle-clip-body isle-clip-files-row',
+                    x_expand: true,
+                    y_expand: true,
+                });
+                meta.add_child(label('Image', 'isle-clip-file-name', {y_align: Clutter.ActorAlign.CENTER}));
+                if (item.width && item.height)
+                    meta.add_child(label(`${item.width} × ${item.height}`, 'isle-clip-subtle', {y_align: Clutter.ActorAlign.CENTER}));
+                layers.add_child(meta);
+                return layers;
+            }
             const body = new St.Widget({style_class: 'isle-clip-thumb', x_expand: true, y_expand: true});
-            if (item.thumb)
-                body.style = `background-image: url("${GLib.filename_to_uri(item.thumb, null).replace(/"/g, '%22')}");`;
+            if (uri)
+                body.style = uri;
             const size = new St.Bin({
                 style_class: 'isle-clip-badge',
                 child: label(`${item.width}×${item.height}`, 'isle-clip-badge-label'),
@@ -492,9 +556,24 @@ export const ClipsView = GObject.registerClass({
             return layers;
         }
         case 'files': {
-            const box = new St.BoxLayout({...VERTICAL, style_class: 'isle-clip-body', x_expand: true, y_expand: true});
             const names = item.preview.split('\n');
             const [type] = Gio.content_type_guess(names[0], null);
+            if (this._vertical) {
+                const box = new St.BoxLayout({style_class: 'isle-clip-body isle-clip-files-row', x_expand: true, y_expand: true});
+                box.add_child(new St.Icon({
+                    gicon: Gio.content_type_get_icon(type),
+                    icon_size: 20,
+                    style_class: 'isle-clip-file-icon',
+                    y_align: Clutter.ActorAlign.CENTER,
+                }));
+                const name = label(names[0], 'isle-clip-file-name', {x_expand: true, y_align: Clutter.ActorAlign.CENTER});
+                name.clutter_text.ellipsize = Pango.EllipsizeMode.MIDDLE;
+                box.add_child(name);
+                if (names.length > 1)
+                    box.add_child(label(`+${names.length - 1} more`, 'isle-clip-subtle', {y_align: Clutter.ActorAlign.CENTER}));
+                return box;
+            }
+            const box = new St.BoxLayout({...VERTICAL, style_class: 'isle-clip-body', x_expand: true, y_expand: true});
             box.add_child(new St.Icon({gicon: Gio.content_type_get_icon(type), icon_size: 28, style_class: 'isle-clip-file-icon', x_align: Clutter.ActorAlign.START}));
             const name = label(names[0], 'isle-clip-file-name');
             name.clutter_text.ellipsize = Pango.EllipsizeMode.MIDDLE;
@@ -520,7 +599,8 @@ export const ClipsView = GObject.registerClass({
             // Leading blank lines and long runs of spaces waste the card.
             const shown = code ? item.preview.replace(/^\s*\n/, '') : item.preview.replace(/\s+/g, ' ').trim();
             // The card's height for its lines: else the text asks for one line and is cut there.
-            const text = label(shown.slice(0, 160), code ? 'isle-clip-text isle-clip-code' : 'isle-clip-text',
+            const limit = this._vertical ? 300 : 160;
+            const text = label(shown.slice(0, limit), code ? 'isle-clip-text isle-clip-code' : 'isle-clip-text',
                 {y_expand: true, y_align: Clutter.ActorAlign.FILL});
             wrapLines(text, Pango.EllipsizeMode.END);
             box.add_child(text);

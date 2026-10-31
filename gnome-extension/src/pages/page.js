@@ -34,7 +34,7 @@ export const Page = GObject.registerClass({
     _init(daemon, {height, ...params}) {
         super._init(params);
         if (height !== undefined)
-            onUiScale(this, scale => (this.height = height * scale));
+            onUiScale(this, scale => (this.height = this.preferredHeight ?? height * scale));
         this.daemon = daemon;
         this._active = false;
         this._timeouts = new Map();
@@ -100,6 +100,11 @@ export const Page = GObject.registerClass({
 
     /** Island width this page needs, or null for the standard width. */
     get preferredWidth() {
+        return null;
+    }
+
+    /** Island page height this page needs, or null for the standard height. */
+    get preferredHeight() {
         return null;
     }
 
