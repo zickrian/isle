@@ -241,6 +241,16 @@
       <summary>Clipboard height</summary>
       <description>Height of the clipboard page, in pixels.</description>
     </key>
+    <key name="clipboard-paste-keyboard" type="b">
+      <default>true</default>
+      <summary>Paste when chosen with the keyboard</summary>
+      <description>Pressing Enter on a clipboard item pastes it into the window in front; when off, it only copies the item.</description>
+    </key>
+    <key name="clipboard-paste-mouse" type="b">
+      <default>false</default>
+      <summary>Paste when clicked</summary>
+      <description>Clicking a clipboard item pastes it into the window in front; when off, it only copies the item.</description>
+    </key>
     <key name="clipboard-ignored-apps" type="as">
       <default>['org.keepassxc.KeePassXC.desktop', 'com.bitwarden.desktop.desktop', 'bitwarden.desktop', '1password.desktop', 'org.gnome.World.Secrets.desktop', 'org.gnome.seahorse.Application.desktop', 'proton-pass.desktop']</default>
       <summary>Apps whose copies are never kept</summary>

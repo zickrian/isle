@@ -315,6 +315,10 @@ export default class IslePreferences extends ExtensionPreferences {
         });
         height.connect('destroy', () => settings.disconnect(layoutChanged));
         history.add(height);
+        history.add(switchRow(settings, 'clipboard-paste-keyboard', 'Auto-paste with keyboard',
+            'Pressing Enter pastes into the active window; when off, it only copies'));
+        history.add(switchRow(settings, 'clipboard-paste-mouse', 'Auto-paste on click',
+            'Clicking an item pastes into the active window; when off, it only copies'));
         const clear = new Adw.ActionRow({title: 'Clear history', subtitle: 'Pinned items are kept'});
         const clearButton = new Gtk.Button({label: 'Clear…', valign: Gtk.Align.CENTER});
         clearButton.connect('clicked', () => confirmClear(window));

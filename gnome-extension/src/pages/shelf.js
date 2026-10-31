@@ -550,8 +550,9 @@ export const ShelfPage = GObject.registerClass({
         }
     }
 
-    /** Copies the item back to the clipboard, and with `paste` types it into the window behind. */
-    async _onActivated(item, paste) {
+    /** Copies the item back to the clipboard, and pastes it into the window behind when enabled for that input. */
+    async _onActivated(item, byKeyboard) {
+        const paste = this._settings.get_boolean(byKeyboard ? 'clipboard-paste-keyboard' : 'clipboard-paste-mouse');
         // The extension may have stopped while the item was fetched.
         if (!await this._history.copy(item, {touch: paste}) || this._destroyed)
             return;
