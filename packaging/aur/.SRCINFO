@@ -1,6 +1,6 @@
 pkgbase = isle-bin
 	pkgdesc = A notch-style island for the GNOME Shell top bar: music with synced lyrics, calls, a focus timer, a calendar, a file shelf, app usage and a voice assistant
-	pkgver = 1.5.2
+	pkgver = 1.5.3
 	pkgrel = 1
 	url = https://github.com/zickrian/isle
 	install = isle-bin.install
@@ -21,7 +21,7 @@ pkgbase = isle-bin
 	conflicts = isle
 	options = !strip
 	options = !debug
-	source_x86_64 = https://github.com/zickrian/isle/releases/download/v1.5.2/isle-1.5.2-x86_64-linux.tar.gz
-	sha256sums_x86_64 = 6133964867d3f91f5070c8b5a90da3880423d16b8805736dad4cf18361079362
+	source_x86_64 = https://github.com/zickrian/isle/releases/download/v1.5.3/isle-1.5.3-x86_64-linux.tar.gz
+	sha256sums_x86_64 = c59b42ccb8c032014784dd094f3d8dbc0b72cd95c2e79dd861875368e488b02b
 
 pkgname = isle-bin
