@@ -74,6 +74,21 @@
       <default>120</default>
       <summary>How long the pointer rests before the island opens, in milliseconds</summary>
     </key>
+    <key name="auto-hide" type="b">
+      <default>false</default>
+      <summary>Auto-hide the closed island</summary>
+      <description>Fade the closed island away after the pointer has been off it for a while. Move the pointer to the top centre, or click there, to bring it back; alerts, the open island and the assistant still show.</description>
+    </key>
+    <key name="auto-hide-delay" type="i">
+      <range min="1" max="60"/>
+      <default>3</default>
+      <summary>How long the closed island waits before hiding, in seconds</summary>
+    </key>
+    <key name="auto-hide-fullscreen-only" type="b">
+      <default>false</default>
+      <summary>Auto-hide only with an app filling the screen</summary>
+      <description>When on, the island auto-hides only while the app in front is fullscreen or maximized on the island's display; otherwise it stays visible.</description>
+    </key>
     <key name="island-monitor" type="s">
       <choices>
         <choice value="primary"/>
