@@ -347,6 +347,15 @@ export default class IslePreferences extends ExtensionPreferences {
         settings.connect('changed::open-on', byHover);
         byHover();
         look.add(delay);
+        look.add(switchRow(settings, 'auto-hide', 'Auto-hide',
+            'Fade the closed island away; hover or click the top centre to bring it back'));
+        const hideDelay = spinRow(settings, 'auto-hide-delay', 'Hide after', 'Seconds without the pointer on the island', 1, 60);
+        settings.bind('auto-hide', hideDelay, 'sensitive', Gio.SettingsBindFlags.GET);
+        look.add(hideDelay);
+        const onlyFullscreen = switchRow(settings, 'auto-hide-fullscreen-only', 'Only when an app fills the screen',
+            'Hide only while the app in front is fullscreen or maximized; otherwise stay visible');
+        settings.bind('auto-hide', onlyFullscreen, 'sensitive', Gio.SettingsBindFlags.GET);
+        look.add(onlyFullscreen);
         page.add(look);
         page.add(pagesGroup(settings, window));
         page.add(appUsageGroup(settings, window));

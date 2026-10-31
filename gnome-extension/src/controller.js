@@ -20,7 +20,7 @@ import {AppUsage} from './appUsage.js';
 import {paletteFor} from './bot.js';
 import {ClipboardHistory} from './clipboard.js';
 import {CompactView} from './compact.js';
-import {HAS_ACCENT, grabsKeyboard, inhibitScanout, onUiScale, px, uiScale} from './compat.js';
+import {HAS_ACCENT, grabsKeyboard, inhibitScanout, isMaximized, onUiScale, px, uiScale} from './compat.js';
 import {Daemon} from './daemon.js';
 import {BOTTOM_PADDING, ExpandedView, PAGE_HEIGHT} from './expanded.js';
 import {Island} from './island.js';
@@ -46,6 +46,7 @@ import {UsagePage} from './pages/usage.js';
 import {ReminderWatcher} from './reminders.js';
 import * as Theme from './theme.js';
 import {GREETING, InstalledApps, UNDO_MS, VoiceView, stopUnit, actionTypes, aiSettings, openSetUp, openSignIn, runActions, signInHint, stopPending, voiceContext} from './voice.js';
+import {autoHideWanted} from './visibilityRules.js';
 import {TextWriter} from './writer.js';
 
 /** While the pointer rests before the island opens (Settings: hover-delay), it moves at most this far (CSS px). */
@@ -163,6 +164,8 @@ export class Controller {
         /** When the island last asked for each agent session (`provider:session`); see `_onAgentEvent`. */
         this._askedAt = new Map();
         this._presentation = 'compact';
+        /** Whether auto-hide has faded the closed island away (see `_syncAutoHide`). */
+        this._autoHidden = false;
         /** Whether `_warmUp` shows the open island's view out of sight. */
         this._warmShown = false;
         /** A warm-up the island opened in the middle of, and whether it was of all (see `_warmUp`); else null. */
@@ -303,6 +306,8 @@ export class Controller {
                 this.collapse();
             this._passToAgentWindow(focus);
             this._syncMonitor();
+            // The app in front changed: with "only when an app fills the screen", it may hide or show again.
+            this._syncAutoHide();
         });
         // Hidden by a fullscreen window meanwhile: what waited shows now.
         this._island.connect('notify::visible', () => {
@@ -320,6 +325,7 @@ export class Controller {
         // animation (minimizing, say) is over, as some signals come as it starts.
         const sync = () => {
             this._syncScanout();
+            this._syncAutoHide();
             this._later('scanout', SCANOUT_SETTLE_MS, () => this._syncScanout());
         };
         this._scanoutWatches = [
@@ -475,6 +481,8 @@ export class Controller {
 
         this._settingsChanged = ['notch-depth', 'island-in-top-bar'].map(key =>
             this._settings.connect(`changed::${key}`, () => this._render()));
+        for (const key of ['auto-hide', 'auto-hide-delay', 'auto-hide-fullscreen-only'])
+            this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => this._syncAutoHide(true)));
         this._settingsChanged.push(this._settings.connect('changed::island-monitor', () => this._updateGeometry()));
         // On the display in use, it follows the window in front, once closed.
         this._focusMonitorChanged = global.display.connect('window-entered-monitor', () => this._syncMonitor());
@@ -694,7 +702,8 @@ export class Controller {
     /** GNOME sends a window covering the whole display straight to the screen, hiding the island that still
      * takes the pointer. Painting stays on while both show, as for GNOME's own menus and OSDs. */
     _syncScanout() {
-        const inhibit = !this._destroying && this._island.visible && this._windowCoversDisplay();
+        const inhibit = !this._destroying && this._island.visible && !this._autoHidden &&
+            this._windowCoversDisplay();
         if (inhibit === Boolean(this._scanoutInhibited))
             return;
         this._scanoutInhibited = inhibit;
@@ -725,6 +734,60 @@ export class Controller {
     // to another display: its rule (layout.js `_updateActorVisibility`), here.
     _syncFullscreen() {
         this._island.visible = !(global.window_group.visible && this._monitor?.inFullscreen);
+    }
+
+    // Auto-hide
+
+    /** Whether the island may fade away now: auto-hide on, resting closed, pointer away (and, if Settings
+     * say so, an app filling its display); see visibilityRules.js. */
+    get _autoHideWanted() {
+        return autoHideWanted({
+            enabled: this._settings.get_boolean('auto-hide'),
+            fullscreenOnly: this._settings.get_boolean('auto-hide-fullscreen-only'),
+            appFillsScreen: this._appFillsScreen(),
+            presentation: this._presentation,
+            hovered: this._island.hovered,
+            visible: this._island.visible,
+        });
+    }
+
+    /** Fades the closed island away after Settings' wait, unless it is in use; brings it back the moment it
+     * is needed again (an alert, the open island, the pointer). */
+    _syncAutoHide(restart = false) {
+        if (this._destroying)
+            return;
+        if (restart)
+            this._cancel('auto-hide');
+        if (!this._autoHideWanted) {
+            this._cancel('auto-hide');
+            this._setAutoHidden(false);
+            return;
+        }
+        if (this._autoHidden || this._timeouts.has('auto-hide'))
+            return;
+        this._later('auto-hide', this._settings.get_int('auto-hide-delay') * 1000, () => {
+            if (this._autoHideWanted)
+                this._setAutoHidden(true);
+        });
+    }
+
+    /** Fades the island out or back (see Island.setAutoHidden). */
+    _setAutoHidden(hidden) {
+        if (hidden === this._autoHidden)
+            return;
+        this._autoHidden = hidden;
+        this._island.setAutoHidden(hidden);
+        this._syncScanout();
+    }
+
+    /** Whether the app in front fills the island's display: fullscreen, or maximized on it. */
+    _appFillsScreen() {
+        const window = global.display.focus_window;
+        if (!window || window.minimized || !window.located_on_workspace(global.workspace_manager.get_active_workspace()))
+            return false;
+        if (window.get_monitor() !== this._monitor?.index)
+            return false;
+        return window.is_fullscreen() || isMaximized(window);
     }
 
     /** The display the island belongs on: the main one, or the one of the window in use (see Settings). */
@@ -948,6 +1011,8 @@ export class Controller {
         const presentation = this._voiceOpen ? 'voice'
             : this._expandWanted ? 'expanded' : this._alert ? 'peek' : 'compact';
         this._presentation = presentation;
+        // Alerts, the open island and the assistant are never auto-hidden; the resting island waits again.
+        this._syncAutoHide();
         if (presentation !== 'compact')
             this._putAwayWarm();
         else if (this._warmHeld !== null && !this._timeouts.has('warm'))
@@ -1145,6 +1210,8 @@ export class Controller {
 
     /** The pointer came or went: holds or times out alerts and answers, and opens or closes the island. */
     _onHoverChanged(moved = false) {
+        // Under the pointer, a hidden island comes back before it opens; away, its time to hide starts.
+        this._syncAutoHide();
         const unmoved = this._hoverUnmoved;
         this._hoverUnmoved = false;
         this._cancel('hover');

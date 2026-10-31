@@ -44,6 +44,11 @@ export function unmaximize(window) {
     return SHELL_MAJOR >= 49 ? window.unmaximize() : window.unmaximize(Meta.MaximizeFlags.BOTH);
 }
 
+/** Whether `window` is maximized both ways; GNOME 49 dropped `get_maximized` for `is_maximized`. */
+export function isMaximized(window) {
+    return SHELL_MAJOR >= 49 ? window.is_maximized() : window.get_maximized() === Meta.MaximizeFlags.BOTH;
+}
+
 /** Stops a window that covers a whole display going straight to the screen (scanout or X11 unredirection)
  * past what is drawn over it; `false` allows it again. Counted, so keep calls paired; GNOME 48 moved it. */
 export function inhibitScanout(inhibit) {
