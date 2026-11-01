@@ -570,7 +570,8 @@ export class Controller {
         this._settingsChanged.push(this._settings.connect('changed::voice-shortcut', () => (this._voice.shortcut = this._voiceShortcut)));
         for (const key of ['bot-shape', 'bot-color', 'bot-glow'])
             this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => this._syncBotLook()));
-        for (const key of ['usage-enabled', 'usage-claude', 'usage-codex', 'usage-grok', 'usage-warn', 'usage-critical'])
+        for (const key of ['usage-enabled', 'usage-claude', 'usage-codex', 'usage-grok', 'usage-agy',
+            'usage-agy-claude-gpt', 'usage-agy-argon', 'usage-warn', 'usage-critical'])
             this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => this._syncUsage()));
         for (const key of ['event-alerts', 'event-alert-minutes'])
             this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => this._syncEventAlerts()));
@@ -2481,6 +2482,9 @@ export class Controller {
             claude: this._settings.get_boolean('usage-claude'),
             codex: this._settings.get_boolean('usage-codex'),
             grok: this._settings.get_boolean('usage-grok'),
+            agy: this._settings.get_boolean('usage-agy'),
+            agy_claude_gpt: this._settings.get_boolean('usage-agy-claude-gpt'),
+            agy_argon: this._settings.get_boolean('usage-agy-argon'),
             // Off, a plan seen there starts no AI to list its models.
             assistant: this._settings.get_boolean('voice-assistant'),
             warn: this._settings.get_int('usage-warn'),

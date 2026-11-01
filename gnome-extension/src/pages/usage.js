@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 zickrian
 
-// Usage: how much of each AI plan's limits is used (Claude, ChatGPT as Codex saw it, Grok), a bar per
-// limit. One provider at a time, scrolled through like a widget stack; no tab without any.
+// Usage: how much of each AI plan's limits is used (Claude, ChatGPT as Codex saw it, Grok, Antigravity), a bar
+// per limit. One provider at a time, scrolled through like a widget stack; no tab without any.
 
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
@@ -19,7 +19,8 @@ import {Page} from './page.js';
 /** A limit warns (an alert) and then turns red at these shares; Settings may move them (see `setMarks`). */
 const MARKS = {warn: 80, critical: 95};
 /** Each provider's colour, for its bars. */
-const ACCENTS = {claude: [0.85, 0.47, 0.34], codex: [0.06, 0.64, 0.5], grok: [0.93, 0.94, 0.96]};
+const ACCENTS = {claude: [0.85, 0.47, 0.34], codex: [0.06, 0.64, 0.5], grok: [0.93, 0.94, 0.96],
+    agy: [0.3, 0.55, 1], 'agy-claude-gpt': [0.3, 0.55, 1], 'agy-argon': [0.3, 0.55, 1]};
 const FALLBACK = Palette.BLUE;
 /** How far a scroll goes before it moves to the next provider. */
 const WHEEL_STEP = 1;
@@ -33,7 +34,8 @@ const FILL_MS = 500;
 const css = ([r, g, b], alpha = 1) => `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${alpha})`;
 
 /** Each provider's logo (icons/), shown by its name. */
-const LOGOS = {claude: 'isle-claude', codex: 'isle-openai', grok: 'isle-grok'};
+const LOGOS = {claude: 'isle-claude', codex: 'isle-openai', grok: 'isle-grok',
+    agy: 'isle-agy', 'agy-claude-gpt': 'isle-agy', 'agy-argon': 'isle-agy'};
 
 /** The provider's logo, or a dot of its colour for one without. */
 function mark(id) {
@@ -193,8 +195,11 @@ class UsagePage extends Page {
         if (count < 2)
             return;
         for (let i = 0; i < count; i++) {
+            // Three Antigravity cards share a name: the plan says which one the dot goes to.
+            const provider = this._providers()[i];
+            const name = provider.plan ? `${provider.name} ${provider.plan}` : provider.name;
             const dot = new St.Button({style_class: `isle-usage-dot${i === index ? ' shown' : ''}`, can_focus: true,
-                accessible_name: this._providers()[i].name});
+                accessible_name: name});
             dot.connect('clicked', () => this._show(i));
             this._dots.add_child(dot);
         }
