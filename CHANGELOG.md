@@ -6,6 +6,14 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Antigravity's limits show in AI usage: Gemini's 5-hour window and the week, read with `agy`'s own
+  `/usage` (agy 1.1.11 or newer) in Isle's own folder, with the sign-in `agy` already has (its token
+  file, or the keyring). Its alert comes with Antigravity's blue logo. **Settings → AI Usage →
+  Antigravity** adds **Antigravity · Claude & GPT** (5 hours and the week) and **Antigravity · Argon**
+  (the week) cards, off until turned on.
+
 ### Fixed
 
 - The one-line install stopped at the first time GitHub timed out ("curl: (22) The requested URL returned error:

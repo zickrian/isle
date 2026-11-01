@@ -117,7 +117,7 @@ appear in the same place instead of in the middle of the screen.
 </td>
 <td width="50%" valign="top">
 <img src="docs/images/usage.png" alt="Claude plan usage: a bar for the 5-hour limit and one for the week" width="100%"><br>
-<b>AI usage.</b> How much of your Claude and ChatGPT plans' limits is used: one plan at a time with its logo, a bar per limit it has (5 hours, the week) and when each resets; scroll up or down, or click the dots, to switch. A warning comes as one nears its end. Only the ones you are signed in to show.
+<b>AI usage.</b> How much of your Claude, ChatGPT, Grok and Antigravity plans' limits is used: one plan at a time with its logo, a bar per limit it has (5 hours, the week) and when each resets; scroll up or down, or click the dots, to switch. A warning comes as one nears its end. Only the ones you are signed in to show.
 </td>
 </tr>
 <tr>
@@ -316,8 +316,9 @@ Click the gear right of the clock in the open island (or Isle's gear in the
   which model (only those your plan includes, with your plan's name), speech recognition, language, and whether it may use the text
   you selected (off by default) or read your notifications; how long a quiet
   conversation is kept, and clearing it now.
-- **AI Usage:** on or off, which plans to show, and when to warn; and
-  under **AI Agents**, a switch for each of Claude Code and Codex that is
+- **AI Usage:** on or off, which plans to show (Antigravity's Claude & GPT
+  and Argon cards are off until turned on), and when to warn; and
+  under **AI Agents**, a switch for each of [CC] and Codex that is
   installed (on by default; none listed when neither is).
 - **About:** the version and whether it is up to date (with how to update,
   and the switch for asking GitHub once a day), help, a bug report to copy
@@ -381,7 +382,7 @@ after 10 minutes, and a command is stopped after 30.
    | [Codex](https://github.com/openai/codex) (ChatGPT) | `npm i -g @openai/codex` | `codex login` | How Isle uses ChatGPT: your ChatGPT plan (Free works too, with lower limits), with the model your Codex uses |
    | [Grok](https://x.ai/build) | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok login` | Uses your Grok plan (Free works too); Isle runs it in its own folder, kept to answering |
    | [opencode](https://opencode.ai) | `curl -fsSL https://opencode.ai/install \| bash` | `opencode auth login` | Uses the providers you signed in to in opencode (your own API keys or subscriptions), with the model your opencode uses; Isle runs it in its own folders with every tool but web search turned off. No usage page: the providers bill you directly |
-   | [Antigravity](https://antigravity.google) | its installer | run `agy` | Its terms bar third-party tools from the service; Isle only runs the official `agy`, at your own risk |
+   | [Antigravity](https://antigravity.google) | its installer | run `agy` | Its terms bar third-party tools from the service; Isle only runs the official `agy`, at your own risk. Reading its limits in AI usage needs `agy` 1.1.11 or newer |
 
    Settings → Assistant lists only the models your plan includes, by their full names, with your plan's
    name. If your plan stops including the one you picked (a subscription that lapsed), Isle answers with
@@ -472,16 +473,22 @@ readable by you alone, and the AI's copy apart from your own chats with it.
 ## AI usage
 
 Isle finds your plans from the apps you are signed in to: **Claude** with
-Claude Code's sign-in, and **ChatGPT** with Codex's.
+[CC]'s sign-in, **ChatGPT** with Codex's, **Grok** with Grok's, and
+**Antigravity** with `agy`'s sign-in.
 It shows each limit your plan has (a 5-hour window, the week, a model's
 week), when it resets, and warns at 80% and 95% (set in Settings). A plan
 you are not signed in to does not show at all.
 
-Claude's numbers come from the same page Claude Code's `/usage` reads, and
+Claude's numbers come from the same page [CC]'s `/usage` reads, and
 ChatGPT's from the one Codex's `/status` reads; neither is a documented API,
-so they may change. Isle asks each every ten minutes (at
-most every two while the Usage page is open), and not while the screen is
-locked. Offline, as at login before the
+so they may change. Antigravity's come from `agy`'s own `/usage`, run as
+`agy --print /usage --output-format json` (agy 1.1.11 or newer) in Isle's own
+folder for agy, using the sign-in you already have (its token file, or the
+keyring). One read gives Gemini's limits, shown by default, and the
+**Claude & GPT** (5 hours and the week) and **Argon** (the week) cards once
+they are turned on under **Settings → AI Usage → Antigravity**. Isle asks
+each every ten minutes (at most every two while the Usage page is open),
+and not while the screen is locked. Offline, as at login before the
 network is up, it tries again within a minute; when Claude's server fails it
 waits longer each time. It never signs in or refreshes a sign-in itself, and
 with usage turned off it asks nothing at all. When ChatGPT can't be asked
@@ -540,9 +547,9 @@ Isle has no server and no telemetry; your clipboard history, reminders,
 events, timer, app usage and the assistant's chats stay in
 `~/.local/share/isle`, and speech is recognised on this computer. It goes
 online only for synced lyrics ([LRCLIB](https://lrclib.net)) and cover art,
-once per song (lyrics can be turned off in Settings); your Claude plan's
-usage (`api.anthropic.com`, with
-Claude Code's own sign-in); a look for a newer Isle on GitHub at most once a
+once per song (lyrics can be turned off in Settings); your AI plans' usage
+(each plan's own service, with that plan's own sign-in); a look for a newer
+Isle on GitHub at most once a
 day (also in Settings); the speech model, downloaded once from Hugging Face
 when you set up voice; and the voice assistant, whose requests go to the AI
 you picked and may include a web search by it. A meeting's link is read
@@ -638,7 +645,7 @@ else lives in Rust behind a D-Bus API.
 | Path | Contents |
 |---|---|
 | `crates/isle-core` | Platform-independent logic: LRC parsing, track-title clean-up, Pomodoro, tasks, calendar, shelf, clipboard history. Unit tested. |
-| `crates/isle-daemon` | `isled`, the D-Bus service; `src/assistant` is the voice assistant (speech, the three AIs, the agent loop, its tools), `src/usage.rs` the AI usage, `src/agents` the AI agents' hooks, `src/meeting.rs` meeting links, `src/updates.rs` the look for new versions, and `src/caller.rs` who may call what. |
+| `crates/isle-daemon` | `isled`, the D-Bus service; `src/assistant` is the voice assistant (speech, the four AIs, the agent loop, its tools), `src/usage.rs` the AI usage, `src/agents` the AI agents' hooks, `src/meeting.rs` meeting links, `src/updates.rs` the look for new versions, and `src/caller.rs` who may call what. |
 | `crates/isle-shelf` | `isle-shelf`, the files tray's drag-and-drop window. |
 | `crates/isle-whisper` | `isle-whisper`, the voice assistant's speech recognition: whisper.cpp, on the GPU through Vulkan or on the processor. |
 | `gnome-extension` | The GNOME Shell extension; `src/actionRules.js` holds the assistant's rules that need no GNOME, so they are tested anywhere. |
