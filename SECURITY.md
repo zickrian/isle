@@ -49,6 +49,7 @@ connects to the network only for these:
 | Claude plan usage | `api.anthropic.com/api/oauth/usage` | Claude Code's own sign-in token, read from Claude Code's credentials; Isle never signs in or refreshes it. Off when AI usage, or Claude in it, is turned off |
 | ChatGPT plan usage | `chatgpt.com/backend-api/wham/usage` | Codex's own sign-in token and account id, read from Codex's `auth.json`; Isle never signs in or refreshes it. Off when AI usage, or ChatGPT in it, is turned off |
 | Grok plan usage | Grok's own billing (`cli-chat-proxy.grok.com/v1`, or the address set in Grok's own config; https only) | Grok's own sign-in token and user id, read from Grok's sign-in; Isle never signs in or refreshes it. Off when AI usage, or Grok in it, is turned off |
+| Antigravity plan usage | Antigravity's own quota service, through the official `agy --print /usage --output-format json` (`agy` 1.1.11 or newer) | Antigravity's own sign-in, from its token file or the keyring; Isle never signs in or refreshes it. `agy` runs with Isle's own folder (`~/.local/share/isle/agy`) as its home, which shares your sign-in and its cached project id, nothing else. Off when AI usage, or Antigravity in it, is turned off |
 | Voice assistant | The AI command-line app you picked (Claude Code, Codex, Antigravity or Grok), which sends it to its own service under your plan | The text of your request (speech is turned into text on this computer), the context it needs (time, open apps and windows, reminders and events, which Linux and package managers this is), the output of the checks and commands it runs for you (with keys, tokens and passwords blanked), the conversation so far and, only if you allow it, the selected text or your notifications |
 | Web search by the assistant | Whatever the AI's own web search and page reading reach | Search words and page addresses the AI chooses for your request |
 | Package checks by the assistant | Your package managers' own servers (npm's registry, Snap and Flatpak stores, dnf's mirrors) | Package names it looks up, when a check like `npm view codex` or `snap find vlc` asks them |
@@ -168,8 +169,8 @@ Areas where a report is especially welcome:
   hidden or private files, or gain root without GNOME's password dialog.
 - The AI agents' hooks: a way for another program to answer an agent's
   permission, or to read what the agents ask.
-- The AI usage page: a sign-in token (Claude Code's, Codex's or Grok's) sent
-  anywhere but its own service, or written anywhere.
+- The AI usage page: a sign-in token (Claude Code's, Codex's, Grok's or
+  Antigravity's) sent anywhere but its own service, or written anywhere.
 - The calendar: an event sent to a calendar you didn't pick, or one you
   deleted in Isle left in your account's calendar.
 - The clipboard history in `~/.local/share/isle`: copies kept from apps on

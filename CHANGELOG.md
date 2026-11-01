@@ -6,6 +6,20 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Antigravity's limits show in AI usage: Gemini's 5-hour window and the week, read with `agy`'s own
+  `/usage` (agy 1.1.11 or newer) in Isle's own folder, with the sign-in `agy` already has (its token
+  file, or the keyring). Its alert comes with Antigravity's blue logo. **Settings → AI Usage →
+  Antigravity** adds **Antigravity · Claude & GPT** (5 hours and the week) and **Antigravity · Argon**
+  (the week) cards, off until turned on.
+
+### Fixed
+
+- Antigravity counts as signed in when `agy` keeps its token in the keyring and has finished its
+  onboarding, as newer `agy` versions do. Before, only its token file was read, so the assistant and
+  AI usage missed a keyring sign-in.
+
 ## [1.5.3] - 2026-11-01
 
 A quick fix for 1.5.2's clock. To update: click Update on the new-version alert (or Settings → About →

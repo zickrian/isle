@@ -518,7 +518,7 @@ banner does. Right-clicking an alert puts it away without opening it.
 | Assistant done in the background (resting the pointer holds it; it opens no page) | mic | the answer / Isle Assistant (· Click to read more, when cut) | – | as long as it takes to read, at most 8 s |
 | Isle's service stopped | warning | Isle's service isn't running | Restart | 8 s |
 | Newer Isle (once per version) | update | Isle 0.x is out | How | 8 s |
-| AI plan nearly used up | the plan's logo in a ring of its colour (Claude coral, ChatGPT green; red when nearly gone) | Claude / Weekly limit · resets Sat 09:30 | 86% | 8 s |
+| AI plan nearly used up | the plan's logo in a ring of its colour (Claude coral, ChatGPT green, Antigravity blue; red when nearly gone) | Claude / Weekly limit · resets Sat 09:30 | 86% | 8 s |
 | Event about to start (Settings: 1–60 min before, 5 by default) | video camera when it has a meeting link, else calendar | Weekly sync in 5 min / 17:30 – 18:00 · Google Meet | Join (blue), with a Meet, Zoom, Teams or Webex link | sticky |
 | Claude Code needs the user (off by default) | Claude's logo | Claude needs your OK / project · Allow Bash? (or "is waiting for you") | Show (its window) | sticky |
 | Claude Code or Codex is done (off by default) | its logo | Codex is done / project · the gist of its last message | Show | 8 s |
