@@ -327,7 +327,7 @@
     <key name="usage-enabled" type="b">
       <default>true</default>
       <summary>Show AI plan usage</summary>
-      <description>A Usage page and warnings for Claude (signed in with Claude Code), ChatGPT (as Codex last saw it) and Grok, when found.</description>
+      <description>A Usage page and warnings for Claude (signed in with Claude Code), ChatGPT (as Codex last saw it), Grok and Antigravity, when found.</description>
     </key>
     <key name="usage-claude" type="b">
       <default>true</default>
@@ -340,6 +340,18 @@
     <key name="usage-grok" type="b">
       <default>true</default>
       <summary>Show Grok's usage</summary>
+    </key>
+    <key name="usage-agy" type="b">
+      <default>true</default>
+      <summary>Show Antigravity's usage</summary>
+    </key>
+    <key name="usage-agy-claude-gpt" type="b">
+      <default>false</default>
+      <summary>Show Antigravity's Claude and GPT usage</summary>
+    </key>
+    <key name="usage-agy-argon" type="b">
+      <default>false</default>
+      <summary>Show Antigravity's Argon usage</summary>
     </key>
     <key name="usage-warn" type="i">
       <range min="50" max="99"/>
