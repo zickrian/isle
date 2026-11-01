@@ -78,9 +78,8 @@ impl Provider {
 
     /// Whether the user signed in to it, as far as its sign-in file tells.
     pub fn signed_in(self) -> bool {
-        let home = dirs::home_dir().unwrap_or_default();
         match self {
-            Provider::Agy => home.join(agy::LOGIN).exists(),
+            Provider::Agy => agy::signed_in(),
             Provider::Claude => super::claude::signed_in(),
             Provider::Codex => {
                 super::codex::user_auth().exists()
