@@ -7,6 +7,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use log::warn;
@@ -40,6 +41,7 @@ const OFFLINE_RETRIES: [Duration; 4] = [
 const CODEX_TAIL: u64 = 256 * 1024;
 /// Asked to refresh (the page opened), Claude is asked again only after this long.
 const CLAUDE_AT_MOST: Duration = Duration::from_secs(2 * 60);
+const AGY_AT_MOST: Duration = Duration::from_secs(30 * 60);
 const CLAUDE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Only Codex's newest session logs are looked at.
 const CODEX_FILES: usize = 8;
@@ -129,6 +131,7 @@ impl Default for Config {
 pub struct UsageService {
     usage: Usage,
     config: Config,
+    opened: AtomicBool,
     refresh: Arc<Notify>,
 }
 
@@ -140,6 +143,7 @@ impl UsageService {
             Self {
                 usage: Usage::default(),
                 config: Config::default(),
+                opened: AtomicBool::new(false),
                 refresh: refresh.clone(),
             },
             refresh,
@@ -161,6 +165,7 @@ impl UsageService {
 
     /// Reads the usage again now, Claude's too.
     fn refresh(&self) {
+        self.opened.store(true, Ordering::Relaxed);
         self.refresh.notify_one();
     }
 
@@ -202,20 +207,20 @@ pub async fn run(iface: InterfaceRef<UsageService>, refresh: Arc<Notify>) {
     // One answer holds every Antigravity pool, so the toggles need no new ask.
     let mut agy: Option<AgyUsage> = None;
     let mut asked_agy: Option<Instant> = None;
-    let mut agy_wait = CLAUDE_EVERY;
+    let mut agy_wait = AGY_AT_MOST;
     let mut agy_failures = 0;
-    let mut agy_last_error = None;
     let mut codex = CodexReader::default();
     // Unlocking wakes the loop, to ask Claude if it came due meanwhile.
     let mut locked = crate::system::locked();
-    // Until Settings sends its config, and while usage is off, no timer at all: `None`.
+    // No timer before Settings, while usage is off, or with only Antigravity enabled.
     let mut next = None;
+    let mut watch_lock = false;
     loop {
         let forced = match next {
-            None => {
-                refresh.notified().await;
-                true
-            }
+            None => tokio::select! {
+                () = refresh.notified() => true,
+                Ok(()) = locked.changed(), if watch_lock => false,
+            },
             Some(wait) => tokio::select! {
                 () = tokio::time::sleep(wait) => false,
                 () = refresh.notified() => true,
@@ -223,9 +228,16 @@ pub async fn run(iface: InterfaceRef<UsageService>, refresh: Arc<Notify>) {
             },
         };
         let paused = *locked.borrow_and_update();
-        let config = iface.get().await.config.clone();
+        let (config, opened) = {
+            let service = iface.get().await;
+            (
+                service.config.clone(),
+                service.opened.swap(false, Ordering::Relaxed),
+            )
+        };
         if !config.enabled {
             next = None;
+            watch_lock = false;
             publish(&iface, Usage::default()).await;
             continue;
         }
@@ -308,13 +320,13 @@ pub async fn run(iface: InterfaceRef<UsageService>, refresh: Arc<Notify>) {
         } else {
             grok = None;
         }
+        let agy_start = providers.len();
         if config.agy
+            && config.assistant
             && let Some(program) = agy_program()
         {
             let due = |every| asked_agy.is_none_or(|at: Instant| at.elapsed() >= every);
-            if (forced && agy_page_wait(agy_last_error).is_some_and(due))
-                || (!paused && due(agy_wait))
-            {
+            if opened && !paused && due(agy_wait) {
                 asked_agy = Some(Instant::now());
                 // A JSON shape not understood counts as a failed read, backing off as one.
                 let fresh = crate::assistant::agy_usage(&program)
@@ -322,7 +334,6 @@ pub async fn run(iface: InterfaceRef<UsageService>, refresh: Arc<Notify>) {
                     .and_then(|response| agy_live(&response, now_ms()));
                 let outcome = fresh.as_ref().map(|_| ()).map_err(|err| *err);
                 agy_failures = if outcome.is_ok() { 0 } else { agy_failures + 1 };
-                agy_last_error = outcome.err();
                 agy_wait = agy_wait_after(outcome, agy_failures);
                 agy = Some(match (fresh, agy.take()) {
                     (Ok(fresh), _) => fresh,
@@ -334,12 +345,14 @@ pub async fn run(iface: InterfaceRef<UsageService>, refresh: Arc<Notify>) {
                     },
                 });
             }
-            if let Some(agy) = &agy {
-                providers.extend(agy_providers(agy, &config));
+            match &agy {
+                Some(agy) => providers.extend(agy_providers(agy, &config)),
+                None => providers.push(agy_shell("")),
             }
         } else {
             agy = None;
         }
+        let agy_end = providers.len();
         if config.codex && paused && !forced {
             // Locked, nobody sees them: the last numbers stand until unlocking wakes the loop.
             providers.extend(codex.shown.clone());
@@ -382,19 +395,25 @@ pub async fn run(iface: InterfaceRef<UsageService>, refresh: Arc<Notify>) {
             .as_ref()
             .filter(|_| !paused)
             .map(|_| due_in(asked_grok, grok_wait));
-        let agy_due_in = agy
-            .as_ref()
-            .filter(|_| !paused)
-            .map(|_| due_in(asked_agy, agy_wait));
-        let remote_due = [claude_due_in, grok_due_in, agy_due_in]
+        let remote_due = [claude_due_in, grok_due_in].into_iter().flatten().min();
+        watch_lock = config.agy && !config.claude && !config.codex && !config.grok;
+        next = if watch_lock {
+            None
+        } else {
+            let now = now_ms();
+            let next_reset = [
+                next_reset(&providers[..agy_start], now),
+                next_reset(&providers[agy_end..], now),
+            ]
             .into_iter()
             .flatten()
             .min();
-        next = Some(next_wait(
-            config.codex && !paused && codex_signed_in(),
-            remote_due,
-            next_reset(&providers, now_ms()),
-        ));
+            Some(next_wait(
+                config.codex && !paused && codex_signed_in(),
+                remote_due,
+                next_reset,
+            ))
+        };
         publish(&iface, Usage { providers }).await;
     }
 }
@@ -988,29 +1007,16 @@ fn agy_note(err: AgyUsageError) -> &'static str {
     }
 }
 
-/// Antigravity's failures map onto Claude's, so both back off alike.
-fn agy_as_claude(err: AgyUsageError) -> ClaudeError {
-    match err {
-        // An old agy stays old until it is updated, as a failing server stays failing.
-        AgyUsageError::NeedsUpdate | AgyUsageError::Busy => ClaudeError::Busy,
-        AgyUsageError::SignIn => ClaudeError::SignIn,
-        AgyUsageError::Offline => ClaudeError::Offline,
-    }
-}
-
-/// How long until Antigravity is asked again; an `agy` too old to read its quota is not asked again for an
-/// hour, as updating it is the user's to do.
+/// How long to wait before another page-open read after an Antigravity outcome.
 fn agy_wait_after(outcome: Result<(), AgyUsageError>, failures: usize) -> Duration {
-    if let Err(AgyUsageError::NeedsUpdate) = outcome {
-        return CLAUDE_BACKOFF;
+    match outcome {
+        Ok(()) | Err(AgyUsageError::SignIn) => AGY_AT_MOST,
+        Err(AgyUsageError::Offline) => OFFLINE_RETRIES
+            .get(failures.saturating_sub(1))
+            .copied()
+            .unwrap_or(AGY_AT_MOST),
+        Err(AgyUsageError::NeedsUpdate | AgyUsageError::Busy) => CLAUDE_BACKOFF,
     }
-    let mapped = outcome.map_err(agy_as_claude);
-    wait_after(Some(mapped.as_ref().map(|_| ())), failures)
-}
-
-/// Antigravity's take on `page_wait`.
-fn agy_page_wait(last: Option<AgyUsageError>) -> Option<Duration> {
-    page_wait(last.map(agy_as_claude))
 }
 
 /// Antigravity with no limits to show, saying why.
@@ -1757,32 +1763,24 @@ mod tests {
     }
 
     #[test]
-    fn antigravity_backs_off_like_claude_and_waits_an_hour_to_be_updated() {
-        let wait = |err| agy_wait_after(Err(err), 1);
-        // Offline is tried again soon, then as usual; a server that failed, ever later.
-        assert_eq!(wait(AgyUsageError::Offline), OFFLINE_RETRIES[0]);
+    fn antigravity_waits_between_page_open_reads() {
+        assert_eq!(agy_wait_after(Ok(()), 0), AGY_AT_MOST);
+        assert_eq!(agy_wait_after(Err(AgyUsageError::SignIn), 1), AGY_AT_MOST);
+        for (index, retry) in OFFLINE_RETRIES.iter().enumerate() {
+            assert_eq!(
+                agy_wait_after(Err(AgyUsageError::Offline), index + 1),
+                *retry
+            );
+        }
         assert_eq!(
-            agy_wait_after(Err(AgyUsageError::Offline), 4),
-            OFFLINE_RETRIES[3]
+            agy_wait_after(Err(AgyUsageError::Offline), OFFLINE_RETRIES.len() + 1),
+            AGY_AT_MOST
         );
-        assert_eq!(wait(AgyUsageError::SignIn), CLAUDE_EVERY);
-        assert_eq!(wait(AgyUsageError::Busy), CLAUDE_EVERY * 2);
-        assert_eq!(agy_wait_after(Err(AgyUsageError::Busy), 9), CLAUDE_BACKOFF);
-        // An agy too old to read its quota is not asked again for an hour.
-        assert_eq!(wait(AgyUsageError::NeedsUpdate), CLAUDE_BACKOFF);
-        assert_eq!(agy_wait_after(Ok(()), 0), CLAUDE_EVERY);
-        // Opening the page asks at most every two minutes; a failing server or an old agy, not at all.
-        assert_eq!(agy_page_wait(None), Some(CLAUDE_AT_MOST));
+        assert_eq!(agy_wait_after(Err(AgyUsageError::Busy), 1), CLAUDE_BACKOFF);
         assert_eq!(
-            agy_page_wait(Some(AgyUsageError::SignIn)),
-            Some(CLAUDE_AT_MOST)
+            agy_wait_after(Err(AgyUsageError::NeedsUpdate), 1),
+            CLAUDE_BACKOFF
         );
-        assert_eq!(
-            agy_page_wait(Some(AgyUsageError::Offline)),
-            Some(OFFLINE_RETRIES[0])
-        );
-        assert_eq!(agy_page_wait(Some(AgyUsageError::Busy)), None);
-        assert_eq!(agy_page_wait(Some(AgyUsageError::NeedsUpdate)), None);
     }
 
     #[test]
