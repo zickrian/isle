@@ -228,6 +228,9 @@ class UsagePage extends Page {
         const count = this._providers().length;
         if (count < 2)
             return Clutter.EVENT_PROPAGATE;
+        // Compatibility copies must not count as another scroll.
+        if (event.get_flags() & Clutter.EventFlags.FLAG_POINTER_EMULATED)
+            return Clutter.EVENT_STOP;
         const now = GLib.get_monotonic_time() / 1000;
         const gesture = this._gesture;
         if (now - gesture.at > GESTURE_GAP_MS)
