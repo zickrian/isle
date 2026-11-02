@@ -149,6 +149,8 @@ const RimLight = shaderEffect('RimLight', RIM_UNIFORMS, rimCode(effectPoint('fra
 /** Cross-fade timings in milliseconds. */
 const FADE_OUT = 160;
 const FADE_IN = 320;
+/** How long auto-hide takes to fade the island out or back in. */
+const AUTO_HIDE_FADE = 180;
 /** The incoming view waits for the shape to make room before appearing. */
 const FADE_IN_DELAY = 120;
 /** How far (CSS px) the views slide as the shape grows or shrinks: they travel with it. Whole
@@ -179,6 +181,7 @@ export const Island = GObject.registerClass({
         /** Height of the top bar the island grows out of; 0 for none. */
         this._topInset = 0;
         this._hovered = false;
+        this._autoHidden = false;
         this._monitor = null;
         this._view = null;
         this._pointerAtMorph = null;
@@ -439,6 +442,37 @@ export const Island = GObject.registerClass({
             this._driver.start();
         }
         this._showView(view, growing);
+    }
+
+    /** Fades the closed island away for auto-hide, or back. Once out of sight its view hides too, so nothing
+     * ticks or dances unseen; back, the view shows before the island does. */
+    setAutoHidden(hidden) {
+        if (hidden === this._autoHidden)
+            return;
+        this._autoHidden = hidden;
+        this.remove_transition('opacity');
+        if (!St.Settings.get().enable_animations) {
+            this.opacity = hidden ? 0 : 255;
+            if (hidden)
+                this._view?.hide();
+            else
+                this._view?.show();
+            return;
+        }
+        if (hidden) {
+            this.ease({
+                opacity: 0,
+                duration: AUTO_HIDE_FADE,
+                mode: Clutter.AnimationMode.EASE_IN_QUAD,
+                onStopped: finished => {
+                    if (finished && this._autoHidden)
+                        this._view?.hide();
+                },
+            });
+            return;
+        }
+        this._view?.show();
+        this.ease({opacity: 255, duration: AUTO_HIDE_FADE, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
     }
 
     /** Shows `view` out of sight and reach (or hides it again) while the island rests closed, so its next

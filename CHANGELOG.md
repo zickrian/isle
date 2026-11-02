@@ -6,6 +6,13 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Auto-hide: Settings → Appearance → Auto-hide fades the closed island away after the pointer
+  leaves it (3 seconds by default, 1–60), and brings it back when the pointer reaches the top
+  centre or clicks there. It can wait for a fullscreen or maximized app instead, leaving the
+  island visible on the desktop.
+
 ## [1.5.3] - 2026-11-01
 
 A quick fix for 1.5.2's clock. To update: click Update on the new-version alert (or Settings → About →

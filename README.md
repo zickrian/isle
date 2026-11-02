@@ -294,7 +294,8 @@ Click the gear right of the clock in the open island (or Isle's gear in the
   has the AI assistant at all; world clocks, and their cities;
   the closed island inside the bar or hanging below it; with more than one
   display, on the main one or the one you are using; opening when the
-  pointer rests on it (and for how long) or only on a click.
+  pointer rests on it (and for how long) or only on a click; auto-hide, after
+  how long, and whether only while an app fills the screen.
 - **Alerts:** apps' notifications in the island (or GNOME's own banners
   instead); volume and brightness; charging, network, Bluetooth and Caps
   Lock, each on its own; new songs, sounds; lyrics online;
