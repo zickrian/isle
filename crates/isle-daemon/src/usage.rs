@@ -277,7 +277,7 @@ pub async fn run(iface: InterfaceRef<UsageService>, refresh: Arc<Notify>) {
                 };
             }
             providers.extend(claude.clone());
-        } else {
+        } else if config.claude {
             claude = None;
         }
         if config.grok && grok_auth().exists() {
@@ -317,7 +317,7 @@ pub async fn run(iface: InterfaceRef<UsageService>, refresh: Arc<Notify>) {
                 };
             }
             providers.extend(grok.clone());
-        } else {
+        } else if config.grok {
             grok = None;
         }
         let agy_start = providers.len();
@@ -349,7 +349,7 @@ pub async fn run(iface: InterfaceRef<UsageService>, refresh: Arc<Notify>) {
                 Some(agy) => providers.extend(agy_providers(agy, &config)),
                 None => providers.push(agy_shell("")),
             }
-        } else {
+        } else if config.agy && config.assistant {
             agy = None;
         }
         let agy_end = providers.len();
@@ -389,11 +389,11 @@ pub async fn run(iface: InterfaceRef<UsageService>, refresh: Arc<Notify>) {
         };
         let claude_due_in = claude
             .as_ref()
-            .filter(|_| !paused)
+            .filter(|_| config.claude && !paused)
             .map(|_| due_in(asked_claude, claude_wait));
         let grok_due_in = grok
             .as_ref()
-            .filter(|_| !paused)
+            .filter(|_| config.grok && !paused)
             .map(|_| due_in(asked_grok, grok_wait));
         let remote_due = [claude_due_in, grok_due_in].into_iter().flatten().min();
         watch_lock = config.agy && !config.claude && !config.codex && !config.grok;
@@ -605,6 +605,10 @@ fn claude_shell() -> Provider {
 
 /// Claude's limits now, with Claude Code's sign-in (read, never refreshed: that is Claude Code's to do).
 fn read_claude() -> Result<Provider, ClaudeError> {
+    #[cfg(test)]
+    if let Some(read) = lifecycle_tests::read_claude() {
+        return read;
+    }
     let text = std::fs::read_to_string(claude_sign_in()).map_err(|_| ClaudeError::SignIn)?;
     let sign_in: Value = serde_json::from_str(&text).map_err(|_| ClaudeError::SignIn)?;
     let oauth = &sign_in["claudeAiOauth"];
@@ -744,6 +748,10 @@ fn grok_page_wait(last: Option<GrokError>) -> Option<Duration> {
 
 /// Grok's allowance now, with Grok's sign-in (read, never refreshed: that is Grok's to do).
 fn read_grok() -> Result<Provider, GrokError> {
+    #[cfg(test)]
+    if let Some(read) = lifecycle_tests::read_grok() {
+        return read;
+    }
     Ok(grok_live(&grok_billing()?, now_ms()))
 }
 
@@ -1810,5 +1818,570 @@ mod tests {
             ),
             Err(err) => println!("agy: {err:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Child, Command, Stdio};
+    use std::sync::Mutex;
+
+    use serde_json::json;
+    use zbus::{Connection, Proxy, connection};
+
+    use super::*;
+
+    const PATH: &str = "/io/github/zickrian/isle";
+    const INTERFACE: &str = "io.github.zickrian.isle.Usage1";
+    const ROOT: &str = "ISLE_USAGE_TEST_ROOT";
+
+    struct Reads {
+        claude: Result<Provider, ClaudeError>,
+        grok: Result<Provider, GrokError>,
+        claude_calls: usize,
+        grok_calls: usize,
+    }
+
+    static READS: Mutex<Option<Reads>> = Mutex::new(None);
+
+    pub(super) fn read_claude() -> Option<Result<Provider, ClaudeError>> {
+        let mut reads = READS.lock().unwrap();
+        let reads = reads.as_mut()?;
+        reads.claude_calls += 1;
+        Some(reads.claude.clone())
+    }
+
+    pub(super) fn read_grok() -> Option<Result<Provider, GrokError>> {
+        let mut reads = READS.lock().unwrap();
+        let reads = reads.as_mut()?;
+        reads.grok_calls += 1;
+        Some(reads.grok.clone())
+    }
+
+    fn isolated(name: &str) -> Option<PathBuf> {
+        if let Some(root) = std::env::var_os(ROOT) {
+            return Some(root.into());
+        }
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "isle-usage-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        for dir in ["user", "bin", "claude", "codex", "grok", "tmp", "runtime"] {
+            std::fs::create_dir_all(root.join(dir)).unwrap();
+        }
+        std::fs::set_permissions(
+            root.join("runtime"),
+            std::os::unix::fs::PermissionsExt::from_mode(0o700),
+        )
+        .unwrap();
+        let status = Command::new(std::env::current_exe().unwrap())
+            .env_clear()
+            .args([
+                "--exact",
+                &format!("usage::lifecycle_tests::{name}"),
+                "--nocapture",
+            ])
+            .env(ROOT, &root)
+            .env("HOME", root.join("user"))
+            .env("PATH", root.join("bin"))
+            .env("XDG_DATA_HOME", root.join("data"))
+            .env("XDG_CONFIG_HOME", root.join("config"))
+            .env("XDG_STATE_HOME", root.join("state"))
+            .env("XDG_CACHE_HOME", root.join("cache"))
+            .env("TMPDIR", root.join("tmp"))
+            .env("XDG_RUNTIME_DIR", root.join("runtime"))
+            .env("CLAUDE_CONFIG_DIR", root.join("claude"))
+            .env("CODEX_HOME", root.join("codex"))
+            .env("GROK_HOME", root.join("grok"))
+            .status()
+            .unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(status.success(), "isolated usage lifecycle failed: {name}");
+        None
+    }
+
+    struct Bus {
+        daemon: Child,
+        address: String,
+    }
+
+    impl Bus {
+        fn start() -> Self {
+            let mut daemon = Command::new("/usr/bin/dbus-daemon")
+                .args(["--session", "--nofork", "--print-address=1"])
+                .arg(format!(
+                    "--address=unix:tmpdir={}",
+                    std::env::temp_dir().display()
+                ))
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect("usage lifecycle tests need dbus-daemon");
+            let mut address = String::new();
+            BufReader::new(daemon.stdout.take().unwrap())
+                .read_line(&mut address)
+                .unwrap();
+            Self {
+                daemon,
+                address: address.trim().to_owned(),
+            }
+        }
+
+        async fn connect(&self) -> Connection {
+            connection::Builder::address(self.address.as_str())
+                .unwrap()
+                .build()
+                .await
+                .unwrap()
+        }
+    }
+
+    impl Drop for Bus {
+        fn drop(&mut self) {
+            let _ = self.daemon.kill();
+            let _ = self.daemon.wait();
+        }
+    }
+
+    struct Service {
+        server: Connection,
+        client: Connection,
+        task: tokio::task::JoinHandle<()>,
+        _bus: Bus,
+    }
+
+    impl Service {
+        async fn start() -> Self {
+            let bus = Bus::start();
+            let server = bus.connect().await;
+            let client = bus.connect().await;
+            let (service, refresh) = UsageService::new();
+            server.object_server().at(PATH, service).await.unwrap();
+            let iface = server
+                .object_server()
+                .interface::<_, UsageService>(PATH)
+                .await
+                .unwrap();
+            let task = tokio::spawn(run(iface, refresh));
+            Self {
+                server,
+                client,
+                task,
+                _bus: bus,
+            }
+        }
+
+        async fn proxy(&self) -> Proxy<'_> {
+            Proxy::new(
+                &self.client,
+                self.server.unique_name().unwrap(),
+                PATH,
+                INTERFACE,
+            )
+            .await
+            .unwrap()
+        }
+
+        async fn configure(&self, config: &Value) {
+            self.proxy()
+                .await
+                .call::<_, _, ()>("SetConfig", &(config.to_string(),))
+                .await
+                .unwrap();
+        }
+
+        async fn refresh(&self) {
+            self.proxy()
+                .await
+                .call::<_, _, ()>("Refresh", &())
+                .await
+                .unwrap();
+        }
+
+        async fn usage(&self) -> Value {
+            let text: String = self.proxy().await.get_property("Usage").await.unwrap();
+            serde_json::from_str(&text).unwrap()
+        }
+
+        async fn wait_for(&self, description: &str, matches: impl Fn(&Value) -> bool) -> Value {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                let usage = self.usage().await;
+                if matches(&usage) {
+                    return usage;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "{description}: last publication {usage}"
+                );
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }
+
+        async fn expect(&self, providers: &Value) {
+            self.wait_for("expected exact cached providers", |usage| {
+                &usage["providers"] == providers
+            })
+            .await;
+        }
+    }
+
+    impl Drop for Service {
+        fn drop(&mut self) {
+            self.task.abort();
+        }
+    }
+
+    fn config() -> Value {
+        json!({"enabled": true, "claude": false, "codex": false, "grok": false,
+            "agy": true, "agy_claude_gpt": true, "agy_argon": true, "assistant": true})
+    }
+
+    fn fake_agy(root: &Path, fail: bool) {
+        let onboarding = root.join("user/.gemini/antigravity-cli/cache/onboarding.json");
+        std::fs::create_dir_all(onboarding.parent().unwrap()).unwrap();
+        std::fs::write(onboarding, r#"{"onboardingComplete":true}"#).unwrap();
+        let response = json!({"status": "SUCCESS", "command": {"name": "usage", "data": {
+        "groups": [
+            {"name": "Gemini", "buckets": [{"id": "gemini-5h", "window": "5h", "remaining_fraction": 0.75}]},
+            {"name": "Claude and GPT", "buckets": [{"id": "3p-weekly", "window": "weekly", "remaining_fraction": 0.5}]},
+            {"name": "Argon", "buckets": [{"id": "gemini-argon-wtu-weekly", "window": "weekly", "remaining_fraction": 0.25}]}
+        ]}}});
+        let answer = if fail {
+            r#"{"status":"ERROR","error":"quota service busy"}"#.to_owned()
+        } else {
+            response.to_string()
+        };
+        let script = format!(
+            "#!/bin/sh\nprintf x >> '{0}/all-calls'\nif [ \"$1\" = --version ]; then printf '1.4.12\\n'; exit 0; fi\n[ \"$1\" = --print ] && [ \"$2\" = /usage ] || exit 2\nprintf x >> '{0}/usage-calls'\nprintf '%s\\n' '{answer}'\n",
+            root.display()
+        );
+        let program = root.join("bin/agy");
+        std::fs::write(&program, script).unwrap();
+        std::fs::set_permissions(program, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+    }
+
+    fn calls(root: &Path, file: &str) -> usize {
+        std::fs::read(root.join(file)).unwrap_or_default().len()
+    }
+
+    async fn toggle(service: &Service, config: &mut Value, key: &str, cached: &Value) {
+        config[key] = json!(false);
+        service.configure(config).await;
+        service.expect(&json!([])).await;
+        service.refresh().await;
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        service.expect(&json!([])).await;
+        config[key] = json!(true);
+        service.configure(config).await;
+        service.expect(cached).await;
+        service.refresh().await;
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        service.expect(cached).await;
+    }
+
+    #[tokio::test]
+    async fn antigravity_visibility_preserves_cached_pools_and_cooldown() {
+        let Some(root) = isolated("antigravity_visibility_preserves_cached_pools_and_cooldown")
+        else {
+            return;
+        };
+        fake_agy(&root, false);
+        let service = Service::start().await;
+        let mut config = config();
+        service.configure(&config).await;
+        service
+            .wait_for("unread Antigravity shell", |usage| {
+                usage["providers"][0]["id"] == "agy"
+            })
+            .await;
+        assert_eq!(
+            calls(&root, "all-calls"),
+            0,
+            "configuration must not invoke agy"
+        );
+        service.refresh().await;
+        let first = service
+            .wait_for("three populated Antigravity pools", |usage| {
+                usage["providers"][2]["updated_ms"]
+                    .as_i64()
+                    .is_some_and(|at| at > 0)
+            })
+            .await;
+        let cached = first["providers"].clone();
+        let expected = [
+            ("agy", "5 hours", 25.0),
+            ("agy-claude-gpt", "Week", 50.0),
+            ("agy-argon", "Week", 75.0),
+        ];
+        assert_eq!(cached.as_array().unwrap().len(), expected.len());
+        let updated = cached[0]["updated_ms"].as_i64().unwrap();
+        for (provider, (id, label, percent)) in cached.as_array().unwrap().iter().zip(expected) {
+            assert_eq!(provider["id"], id);
+            assert_eq!(provider["updated_ms"], updated);
+            assert_eq!(
+                provider["windows"],
+                json!([{"label": label, "percent": percent, "resets_at_ms": 0}])
+            );
+        }
+        assert_eq!(calls(&root, "usage-calls"), 1);
+        for (key, hidden) in [
+            ("agy_claude_gpt", "agy-claude-gpt"),
+            ("agy_argon", "agy-argon"),
+        ] {
+            config[key] = json!(false);
+            service.configure(&config).await;
+            let shown = Value::Array(
+                cached
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|p| p["id"] != hidden)
+                    .cloned()
+                    .collect(),
+            );
+            service.expect(&shown).await;
+            config[key] = json!(true);
+            service.configure(&config).await;
+            service.expect(&cached).await;
+            assert_eq!(calls(&root, "usage-calls"), 1);
+        }
+        for key in ["enabled", "agy", "assistant"] {
+            let before = calls(&root, "all-calls");
+            toggle(&service, &mut config, key, &cached).await;
+            assert_eq!(
+                calls(&root, "all-calls"),
+                before,
+                "{key} bypassed the CLI gate/cooldown"
+            );
+            assert_eq!(calls(&root, "usage-calls"), 1);
+        }
+        std::fs::remove_file(root.join("user/.gemini/antigravity-cli/cache/onboarding.json"))
+            .unwrap();
+        service.configure(&config).await;
+        service.expect(&json!([])).await;
+        service.refresh().await;
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        service.expect(&json!([])).await;
+        assert_eq!(
+            calls(&root, "usage-calls"),
+            1,
+            "signed-out cache must not trigger a read"
+        );
+        std::fs::write(
+            root.join("user/.gemini/antigravity-cli/cache/onboarding.json"),
+            r#"{"onboardingComplete":true}"#,
+        )
+        .unwrap();
+        service.configure(&config).await;
+        service
+            .expect(&serde_json::to_value(vec![agy_shell("")]).unwrap())
+            .await;
+        assert_eq!(
+            calls(&root, "usage-calls"),
+            1,
+            "sign-in must not bypass cooldown"
+        );
+    }
+
+    #[tokio::test]
+    async fn antigravity_visibility_preserves_error_backoff() {
+        let Some(root) = isolated("antigravity_visibility_preserves_error_backoff") else {
+            return;
+        };
+        fake_agy(&root, true);
+        let service = Service::start().await;
+        let mut config = config();
+        service.configure(&config).await;
+        service.refresh().await;
+        let first = service
+            .wait_for("Antigravity failure note", |usage| {
+                usage["providers"][0]["note"] == agy_note(AgyUsageError::Busy)
+            })
+            .await;
+        let cached = first["providers"].clone();
+        assert_eq!(cached[0]["updated_ms"], 0);
+        assert_eq!(cached[0]["windows"], json!([]));
+        for key in ["enabled", "agy", "assistant"] {
+            toggle(&service, &mut config, key, &cached).await;
+            assert_eq!(calls(&root, "usage-calls"), 1, "{key} reset error backoff");
+        }
+    }
+
+    #[tokio::test]
+    async fn subscription_visibility_preserves_cached_reads_and_backoff() {
+        let Some(_root) = isolated("subscription_visibility_preserves_cached_reads_and_backoff")
+        else {
+            return;
+        };
+        for failed in [false, true] {
+            let claude = Provider {
+                windows: vec![Window {
+                    label: "5 hours".into(),
+                    percent: 37.0,
+                    resets_at_ms: 0,
+                }],
+                updated_ms: 1_234,
+                ..claude_shell()
+            };
+            let grok = Provider {
+                windows: vec![Window {
+                    label: "Week".into(),
+                    percent: 63.0,
+                    resets_at_ms: 0,
+                }],
+                updated_ms: 2_345,
+                ..grok_shell()
+            };
+            *READS.lock().unwrap() = Some(Reads {
+                claude: if failed {
+                    Err(ClaudeError::Busy)
+                } else {
+                    Ok(claude.clone())
+                },
+                grok: if failed {
+                    Err(GrokError::Busy)
+                } else {
+                    Ok(grok.clone())
+                },
+                claude_calls: 0,
+                grok_calls: 0,
+            });
+            for (id, auth, expected) in [
+                ("claude", claude_sign_in(), claude),
+                ("grok", grok_auth(), grok),
+            ] {
+                std::fs::create_dir_all(auth.parent().unwrap()).unwrap();
+                std::fs::write(&auth, "{}").unwrap();
+                let service = Service::start().await;
+                let mut config = config();
+                config["agy"] = json!(false);
+                config[id] = json!(true);
+                service.configure(&config).await;
+                let first = service
+                    .wait_for("subscription initial read", |usage| {
+                        usage["providers"][0]["id"] == id
+                    })
+                    .await;
+                let cached = first["providers"].clone();
+                let mut expected = expected;
+                if failed {
+                    expected.windows.clear();
+                    expected.updated_ms = 0;
+                    expected.note = if id == "claude" {
+                        ClaudeError::Busy.note()
+                    } else {
+                        GrokError::Busy.note()
+                    }
+                    .into();
+                }
+                assert_eq!(cached, serde_json::to_value(vec![expected]).unwrap());
+                for key in ["enabled", id] {
+                    toggle(&service, &mut config, key, &cached).await;
+                }
+                {
+                    let reads = READS.lock().unwrap();
+                    let reads = reads.as_ref().unwrap();
+                    assert_eq!(
+                        if id == "claude" {
+                            reads.claude_calls
+                        } else {
+                            reads.grok_calls
+                        },
+                        1,
+                        "{id} bypassed cooldown/backoff"
+                    );
+                }
+                std::fs::remove_file(&auth).unwrap();
+                service.configure(&config).await;
+                service.expect(&json!([])).await;
+                std::fs::write(&auth, "{}").unwrap();
+                service.configure(&config).await;
+                service.refresh().await;
+                tokio::time::sleep(Duration::from_millis(40)).await;
+                service.expect(&json!([])).await;
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn antigravity_missing_program_invalidates_cached_account() {
+        let Some(root) = isolated("antigravity_missing_program_invalidates_cached_account") else {
+            return;
+        };
+        fake_agy(&root, false);
+        let service = Service::start().await;
+        let config = config();
+        service.configure(&config).await;
+        service.refresh().await;
+        service
+            .wait_for("initial Antigravity pools", |usage| {
+                usage["providers"][2]["updated_ms"]
+                    .as_i64()
+                    .is_some_and(|at| at > 0)
+            })
+            .await;
+        std::fs::remove_file(root.join("bin/agy")).unwrap();
+        service.configure(&config).await;
+        service.expect(&json!([])).await;
+        fake_agy(&root, false);
+        service.configure(&config).await;
+        service
+            .expect(&serde_json::to_value(vec![agy_shell("")]).unwrap())
+            .await;
+        service.refresh().await;
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        service
+            .expect(&serde_json::to_value(vec![agy_shell("")]).unwrap())
+            .await;
+        assert_eq!(calls(&root, "usage-calls"), 1);
+    }
+
+    #[tokio::test]
+    async fn codex_local_subscription_survives_visibility_toggles() {
+        let Some(root) = isolated("codex_local_subscription_survives_visibility_toggles") else {
+            return;
+        };
+        let sessions = root.join("codex/sessions");
+        std::fs::create_dir_all(&sessions).unwrap();
+        let event = json!({"timestamp": "2026-11-02T00:00:00Z", "payload": {"rate_limits": {
+            "plan_type": "plus", "primary": {"window_minutes": 300, "used_percent": 31},
+            "secondary": {"window_minutes": 10080, "used_percent": 47}
+        }}});
+        std::fs::write(sessions.join("test.jsonl"), event.to_string()).unwrap();
+        let service = Service::start().await;
+        let mut config = config();
+        config["agy"] = json!(false);
+        config["codex"] = json!(true);
+        service.configure(&config).await;
+        let first = service
+            .wait_for("local Codex subscription", |usage| {
+                usage["providers"][0]["id"] == "codex"
+            })
+            .await;
+        let cached = first["providers"].clone();
+        assert_eq!(
+            cached[0]["windows"],
+            json!([
+                {"label": "5 hours", "percent": 31.0, "resets_at_ms": 0},
+                {"label": "Week", "percent": 47.0, "resets_at_ms": 0}
+            ])
+        );
+        assert_eq!(cached[0]["updated_ms"], rfc3339_ms("2026-11-02T00:00:00Z"));
+        for key in ["enabled", "codex"] {
+            toggle(&service, &mut config, key, &cached).await;
+        }
+        config["assistant"] = json!(false);
+        service.configure(&config).await;
+        service.refresh().await;
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        service.expect(&cached).await;
+        assert!(
+            !root.join("codex/auth.json").exists(),
+            "Codex fixture must remain offline"
+        );
     }
 }

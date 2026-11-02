@@ -20,6 +20,8 @@ All notable changes to Isle are listed here. The format follows
 ### Fixed
 
 - Scrolling AI usage no longer skips providers when a wheel click or swipe is reported twice.
+- AI usage restores cached limits after provider off/on without bypassing request cooldowns.
+  Antigravity's Gemini, Claude & GPT and Argon cards also survive turning the voice assistant off/on.
 - Antigravity counts as signed in when `agy` keeps its token in the keyring and has finished its
   onboarding.
 - The one-line install stopped at the first time GitHub timed out ("curl: (22) The requested URL returned error:

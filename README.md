@@ -492,6 +492,9 @@ the Usage page opens or `Usage1.Refresh()` is called, with a 30-minute
 cooldown after success or a sign-in failure. Offline failures use shorter
 backoffs; busy or update-required failures wait an hour. A later refresh is
 needed to try again; there are no automatic Antigravity retries.
+Switching a plan off hides its cards without discarding the last readings
+from memory. Turning it back on keeps the same cooldown and restores those
+readings; Antigravity also keeps them while the voice assistant is off.
 Other plans are asked every ten minutes (at most every two while the Usage
 page is open), and not while the screen is locked. Offline, as at login before
 the network is up, they try again within a minute; when Claude's server fails it

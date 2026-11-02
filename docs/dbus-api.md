@@ -305,6 +305,11 @@ failures wait an hour. All retries require another `Refresh()`; none are
 automatic. An Antigravity-only configuration starts no usage timer; other
 enabled providers retain their timers. Turned off, nothing runs.
 
+Disabling a provider hides its cards but retains its last readings in memory;
+re-enabling it preserves the request cooldown and error backoff. Antigravity
+also retains its readings while `assistant` is false. A missing sign-in or
+program still prevents its cards from being shown.
+
 | Member | Signature | |
 |---|---|---|
 | `SetConfig(s config)` | | `{enabled, claude, codex, grok, agy, agy_claude_gpt, agy_argon, assistant, warn, critical}`, from Settings; off until set. `agy` is on by default; `agy_claude_gpt` and `agy_argon` are off until turned on in Settings, and a plan turned off here is not shown. `assistant` false: a plan seen here starts no AI to list its models, and Antigravity usage is not read. `SetConfig` never starts `agy`; a `Refresh()` is needed. |
