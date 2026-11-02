@@ -47,6 +47,8 @@ pub struct NowPlaying {
     pub can_go_previous: bool,
     pub can_play_pause: bool,
     pub can_seek: bool,
+    /// A browser's media that is over (at its end, or paused a minute): the closed island leaves it out.
+    pub resting: bool,
 }
 
 /// Within this, a position sampled again is the same moment of the song.
@@ -109,6 +111,8 @@ pub enum Wish {
     /// The island shows the position: read the player again while it plays, or stop. With who asked:
     /// gone from the bus (GNOME Shell stopped or crashed), it stops too.
     Watching(bool, Option<OwnedUniqueName>),
+    /// Put the shown player away until it plays again (the Music page's ×).
+    Dismiss,
 }
 
 /// The Media1 D-Bus object: the watcher fills it, the extension reads and controls through it.
@@ -204,6 +208,11 @@ impl MediaService {
     /// Shows and controls the player named `name` (from `Players`), until another starts playing.
     fn choose(&self, name: &str) -> fdo::Result<()> {
         self.wish(Wish::Player(name.to_owned()))
+    }
+
+    /// Puts the shown player away until it plays again: another one shows, or none.
+    fn dismiss(&self) -> fdo::Result<()> {
+        self.wish(Wish::Dismiss)
     }
 
     /// Whether lyrics are looked up online (LRCLIB); off, the lyrics say so instead.

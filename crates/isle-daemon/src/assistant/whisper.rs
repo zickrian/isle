@@ -268,10 +268,35 @@ impl Whisper {
         self.stdin
             .write_all(format!("{request}\n").as_bytes())
             .await?;
-        Ok(self.read().await?["text"]
-            .as_str()
-            .unwrap_or_default()
-            .to_owned())
+        let reply = self.read().await?;
+        let text = reply["text"].as_str().unwrap_or_default().to_owned();
+        if text.trim().is_empty() {
+            // Why "Didn't catch that": no speech found in it, or what Whisper made of it not counted as said.
+            // Never the words themselves: only how many, and how unlike speech each part sounded.
+            let set_aside: Vec<String> = reply["dropped"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|part| {
+                    let words = part["text"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .split_whitespace()
+                        .count();
+                    format!(
+                        "{words} words at {:.2}",
+                        part["no_speech"].as_f64().unwrap_or(f64::NAN)
+                    )
+                })
+                .collect();
+            info!(
+                "speech recognition found no words: {:.1} s of audio, {} ms of it speech, set aside as not speech: [{}]",
+                audio.len() as f32 / super::mic::RATE as f32,
+                reply["speech_ms"],
+                set_aside.join(", ")
+            );
+        }
+        Ok(text)
     }
 }
 

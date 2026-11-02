@@ -80,10 +80,9 @@ export class NotificationCenter extends Signals.EventEmitter {
             this.emit('seen-changed');
     }
 
-    /** Dismisses every notification the user may dismiss. */
+    /** Dismisses every notification, a resident one (an app's "recording saved") too, as GNOME's Clear does. */
     clearAll() {
-        // Resident notifications (e.g. a running download) cannot be dismissed.
-        for (const notification of this.notifications.filter(n => !n.resident))
+        for (const notification of this.notifications)
             notification.destroy(MessageTray.NotificationDestroyedReason.DISMISSED);
     }
 

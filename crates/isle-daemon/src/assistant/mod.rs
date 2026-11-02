@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 zickrian
 
-//! The voice assistant: turns a request into text and lets the AI the user picked (agy, Claude Code, Codex
-//! or Grok) answer it step by step, also once the island closes. Nothing runs between requests.
+//! The voice assistant: turns a request into text and lets the AI the user picked (agy, Claude Code, Codex,
+//! Grok or opencode) answer it step by step, also once the island closes. Nothing runs between requests.
 
 mod agenda;
 mod agent;
@@ -22,6 +22,7 @@ mod grok;
 mod mic;
 mod models;
 mod music;
+mod opencode;
 mod sign_in;
 mod system;
 mod tasks;
@@ -33,7 +34,7 @@ use std::time::Duration;
 use chrono::NaiveDate;
 
 use isle_core::voice::{Endpointer, Verdict, meter, rms};
-use log::warn;
+use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::{mpsc, oneshot};
@@ -161,13 +162,14 @@ struct State {
 #[serde(default)]
 pub struct Context {
     apps: Vec<String>,
-    /// The AI picked in Settings ("auto", "agy", "claude", "codex", "grok"), and the model picked for each
+    /// The AI picked in Settings ("auto", "agy", "claude", "codex", "grok", "opencode"), and the model picked for each
     /// ("" for its own default).
     provider: String,
     agy_model: String,
     claude_model: String,
     codex_model: String,
     grok_model: String,
+    opencode_model: String,
     whisper_model: String,
     language: String,
     /// How long a quiet conversation is kept ("day", "idle-30m", "idle-2h"; see chat.rs).
@@ -377,7 +379,8 @@ fn context(json: &str) -> fdo::Result<Context> {
 #[interface(name = "io.github.zickrian.isle.Assistant1")]
 impl AssistantService {
     /// Records a request and answers it; `context` is JSON
-    /// `{apps, provider, agy_model, claude_model, codex_model, grok_model, whisper_model, language, selection, …}`.
+    /// `{apps, provider, agy_model, claude_model, codex_model, grok_model, opencode_model, whisper_model, language,
+    /// selection, …}`.
     async fn listen(
         &self,
         context_json: &str,
@@ -567,6 +570,7 @@ impl Session {
             Provider::Claude => &context.claude_model,
             Provider::Codex => &context.codex_model,
             Provider::Grok => &context.grok_model,
+            Provider::Opencode => &context.opencode_model,
         };
         let catalog = self
             .catalogs
@@ -582,6 +586,8 @@ impl Session {
                 .unwrap_or_else(|| "sonnet".into()),
             Provider::Codex => codex::user_model().unwrap_or_default(),
             Provider::Grok => grok::user_model().unwrap_or_default(),
+            // opencode's, the model the user's own opencode would use.
+            Provider::Opencode => opencode::user_model().unwrap_or_default(),
             Provider::Agy => String::new(),
         };
         let usable = |model: &str| {
@@ -597,7 +603,8 @@ impl Session {
             return (wanted, None);
         }
         // The plan's default, else another model it has. Never "" for Claude (its default may be Fable);
-        // "" is Codex's and Grok's own default when nothing else is left, and agy's is always on its plan.
+        // "" is Codex's, Grok's and opencode's own default when nothing else is left, and agy's is always on
+        // its plan.
         let claude = if provider == Provider::Claude {
             models::CLAUDE_ALIASES.as_slice()
         } else {
@@ -1652,7 +1659,7 @@ async fn start_brain(
     let provider = Provider::pick(wanted).ok_or_else(|| {
         Failure::from((
             "No AI is set up",
-            "Install Claude Code, Codex, Grok or Antigravity (agy) and sign in, then pick it in Settings.",
+            "Install Claude Code, Codex, Grok, opencode or Antigravity (agy) and sign in, then pick it in Settings.",
         ))
     })?;
     if session.provider != Some(provider) {
@@ -1701,6 +1708,11 @@ enum Recorded {
 /// Below this level a chunk is digital silence, as from a muted microphone.
 const SILENT_RMS: f32 = 1e-4;
 
+/// An RMS level (0..1) in dB below full scale.
+fn decibels(rms: f32) -> f32 {
+    20.0 * rms.max(1e-6).log10()
+}
+
 /// Records until the user stops speaking; `None` when nothing was said.
 async fn record(
     iface: &InterfaceRef<AssistantService>,
@@ -1743,13 +1755,28 @@ async fn record(
                     Verdict::Listening => {}
                     Verdict::Done => break,
                     Verdict::NoSpeech if loudest < SILENT_RMS => return Ok(Recorded::Muted),
-                    Verdict::NoSpeech => return Ok(Recorded::Nothing),
+                    Verdict::NoSpeech => {
+                        // Said in the log, for a microphone too quiet to tell from the room.
+                        info!(
+                            "heard no speech: loudest {:.0} dB, the room {:.0} dB",
+                            decibels(loudest),
+                            decibels(endpointer.room())
+                        );
+                        return Ok(Recorded::Nothing);
+                    }
                 }
             }
             command = commands.recv() => match command {
                 // Tapped to finish: answer what was said, if anything was.
                 Some(Command::Stop) if endpointer.heard_speech() => break,
-                Some(Command::Stop) => return Ok(Recorded::Nothing),
+                Some(Command::Stop) => {
+                    info!(
+                        "stopped before any speech was heard: loudest {:.0} dB, the room {:.0} dB",
+                        decibels(loudest),
+                        decibels(endpointer.room())
+                    );
+                    return Ok(Recorded::Nothing);
+                }
                 Some(Command::End | Command::Cancel) | None => return Err(Command::End),
                 // Typed instead: the recording gives way to it.
                 Some(ask @ Command::Ask(..)) => return Err(ask),
@@ -2008,6 +2035,12 @@ pub fn report() -> String {
             Some(path) if provider.signed_in() => {
                 format!("  {name}: {} (signed in)", path.display())
             }
+            // OpenCode's free models need no sign-in.
+            Some(path) if provider == Provider::Opencode => format!(
+                "  {name}: {} (free models; `{}` for your own providers)",
+                path.display(),
+                provider.sign_in_command()
+            ),
             Some(path) => format!(
                 "  {name}: {} (not signed in: run `{}`)",
                 path.display(),

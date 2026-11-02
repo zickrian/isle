@@ -148,6 +148,12 @@ class UsagePage extends Page {
         return Math.max(0, index);
     }
 
+    /** Isle's 12/24-hour setting changed: "Updated 20:40" as it says now, while on show. */
+    clockChanged() {
+        if (this.active)
+            this._update();
+    }
+
     /** Rebuilds the card if its content changed, else just its times. */
     _update() {
         const available = this.available;

@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 zickrian
 
-// A call in any app (WhatsApp, Telegram, Meet in a browser…): an app holding the microphone,
-// the window it runs in, and the microphone's mute. Event driven, like privacy.js.
+// A call in any app (WhatsApp, Telegram, Meet in a browser…): a call app, or a browser on a call's page,
+// holding the microphone; the window it runs in, and the microphone's mute. Event driven, like privacy.js.
 
 import GLib from 'gi://GLib';
-import Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 
@@ -13,11 +12,15 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as Signals from 'resource:///org/gnome/shell/misc/signals.js';
 import {getMixerControl} from 'resource:///org/gnome/shell/ui/status/volume.js';
 
-import {BROWSERS, callStreamOf, callWindowIndex, isEngineName, serviceOf, streamOwner} from './callServices.js';
+import {BROWSERS, callStreamOf, callWindowIndex, isCallApp, isEngineName, serviceOf, webCallShown} from './callServices.js';
 import {LEVEL_METERS} from './privacy.js';
 
 /** The microphone must be held this long to count: sites open it briefly to ask for permission. */
 const START_DELAY_MS = 2000;
+/** The microphone held by no call yet known (a browser, or who holds it still asked): looked at again this often (ms). */
+const NOT_CALL_RECHECK_MS = 3000;
+/** `_isCall`'s answer while it can't yet tell. */
+const MAYBE = 'maybe';
 /** A tab named after a call service only names the call this early on (µs), while it is the call's tab. */
 const SERVICE_GRACE_US = 15 * 1000 * 1000;
 /** A call outlasts the microphone closing this long, as apps reopen it to switch devices. */
@@ -80,7 +83,6 @@ export class CallMonitor extends Signals.EventEmitter {
         /** The call service the call's window named, kept for the whole call. */
         this._service = null;
         this._streamName = null;
-        this._heldSince = 0;
         this._timeouts = {start: 0, end: 0, recheck: 0, standIn: 0};
         /** The call's window is a guess made as its own closed, until its tab shows where it went. */
         this._standIn = false;
@@ -92,9 +94,8 @@ export class CallMonitor extends Signals.EventEmitter {
         /** When (µs) the call's window last stopped showing the call: closed, or another tab in front. */
         this._lostAt = 0;
         this._windowNamed = false;
-        /** The app found holding a stream its keys don't name (see `_ownerApp`): {index, app, pending}. */
-        this._owner = null;
-        this._cancellable = new Gio.Cancellable();
+        /** Each recording seen, by index: {since, heldIn, pending, app, binary} (see `_held`, `_ownerApp`). */
+        this._holders = new Map();
 
         this._mixerIds = [
             ...['stream-added', 'stream-removed'].map(signal => this._mixer.connect(signal, () => this._sync())),
@@ -105,6 +106,8 @@ export class CallMonitor extends Signals.EventEmitter {
         this._windowCreatedId = global.display.connect('window-created', (_display, window) => this._watchWindow(window, true));
         // The camera makes it a video call; screen sharing hides the preview.
         this._privacyId = privacy.connect('changed', () => this._changed());
+        // Who holds each recording comes from privacy.js's one look at the sound server.
+        this._streamsId = privacy.connect('streams-changed', () => this._onOwnersKnown());
         this._watchSource();
         this._sync();
     }
@@ -130,6 +133,7 @@ export class CallMonitor extends Signals.EventEmitter {
             return false;
         return this._mixer.get_source_outputs().some(stream =>
             !LEVEL_METERS.includes(stream.get_application_id()) && stream !== this._stream &&
+            !this._privacy.isSpeakerCapture(stream) &&
             !(this.app && appMatches(this.app, streamKeys(stream))));
     }
 
@@ -158,52 +162,100 @@ export class CallMonitor extends Signals.EventEmitter {
             this.emit('changed');
     }
 
-    /** The microphone stream of a call, or null: the call's own while it is still there. */
-    _callStream() {
+    /** The recordings a call could be on: none while Settings turn calls off, and never a level meter's, Isle's own,
+     * a recorder's or one recording a speaker (an equaliser, #35). */
+    _candidates() {
         if (!this._settings.get_boolean('call-activity'))
-            return null;
-        const streams = this._mixer.get_source_outputs().filter(stream => {
+            return [];
+        return this._mixer.get_source_outputs().filter(stream => {
             const appId = stream.get_application_id();
-            if (LEVEL_METERS.includes(appId) || appId === OWN_APP_ID)
+            if (LEVEL_METERS.includes(appId) || appId === OWN_APP_ID || this._privacy.isSpeakerCapture(stream))
                 return false;
             return !streamKeys(stream).some(key => RECORDERS.some(recorder => key.includes(recorder)));
         });
-        return callStreamOf(streams, this._stream);
     }
 
-    /** Starts a call once the microphone is held long enough, and ends it a while after it is let go. */
+    /** What is known of recording `stream`, noted the first time it is seen: when, and the window then in front. */
+    _held(stream) {
+        const index = stream.get_index();
+        let holder = this._holders.get(index);
+        if (!holder) {
+            holder = {since: GLib.get_monotonic_time(), heldIn: global.display.focus_window, pending: true, app: null, binary: null};
+            this._holders.set(index, holder);
+        }
+        return holder;
+    }
+
+    /** Starts a call once a call's recording is held long enough, and ends it a while after it is let go. */
     _sync() {
-        const stream = this._callStream();
-        this._stream = stream;
-        if (stream) {
-            this._cancel('end');
-            if (this.active) {
-                // Another app may have started or stopped recording too.
+        const streams = this._candidates();
+        for (const index of [...this._holders.keys()]) {
+            if (!streams.some(stream => stream.get_index() === index))
+                this._holders.delete(index);
+        }
+        streams.forEach(stream => this._held(stream));
+        if (this.active) {
+            // Its own recording while there; else another call's (an app reopening the microphone on a new device).
+            const stream = callStreamOf(streams.filter(other => other === this._stream || this._isCall(other) === true), this._stream);
+            if (stream) {
+                this._stream = stream;
+                this._cancel('end');
                 this._identify(stream);
                 this.emit('changed');
-            } else if (!this._timeouts.start) {
-                this._heldSince = GLib.get_monotonic_time();
-                this._later('start', START_DELAY_MS, () => this._begin());
+            } else if (!this._timeouts.end) {
+                // Turned off in the settings, it ends at once.
+                this._later('end', this._settings.get_boolean('call-activity') ? END_DELAY_MS : 0, () => this._end());
             }
             return;
         }
-        this._cancel('start');
-        // Turned off in the settings, it ends at once.
-        if (this.active && !this._timeouts.end)
-            this._later('end', this._settings.get_boolean('call-activity') ? END_DELAY_MS : 0, () => this._end());
+        if (!streams.length)
+            this._cancel('start');
+        else if (!this._timeouts.start)
+            this._later('start', START_DELAY_MS, () => this._begin());
     }
 
-    /** The microphone is still held after the delay: the call is on. */
+    /** The microphone held past the delay: a call if a call app or a call's page holds one of its recordings (a
+     * call started while dictation holds it too). Looked at again only while something is still unknown. */
     _begin() {
-        const stream = this._callStream();
-        if (!stream)
+        const verdicts = this._candidates().map(stream => [stream, this._isCall(stream)]);
+        const stream = verdicts.find(([, verdict]) => verdict === true)?.[0];
+        if (!stream) {
+            if (verdicts.some(([, verdict]) => verdict === MAYBE))
+                this._later('start', NOT_CALL_RECHECK_MS, () => this._begin());
             return;
+        }
+        this._stream = stream;
         this.active = true;
-        this.since = this._heldSince;
+        this.since = this._held(stream).since;
         global.display.list_all_windows().forEach(window => this._watchWindow(window));
         this._identify(stream);
         this.emit('started');
         this.emit('changed');
+    }
+
+    /** Whether `stream` is a call's (true): a voice engine's (Discord's), a call app's, or a browser's with a window on a
+     * call's page; MAYBE while who holds it is still asked or a browser's page may still come; else false. */
+    _isCall(stream) {
+        if (isEngineName(stream.get_name()))
+            return true;
+        // By its names, and by the process the sound server says holds it: an Electron app (Slack, Teams) may
+        // call its stream "Chromium".
+        const keys = streamKeys(stream);
+        const apps = [this._appSystem.get_running().find(candidate => appMatches(candidate, keys)),
+            this._ownerApp(stream)].filter(Boolean);
+        const holder = this._held(stream);
+        if (apps.some(app => isCallApp(app.get_name(), app.get_id())) || [...keys, holder.binary].some(key => isCallApp(key)))
+            return true;
+        // A browser's: only its own windows count (a Meet tab in Firefox is no call in Chrome).
+        const family = [...apps.flatMap(app => [app.get_id(), app.get_name()]), ...keys, holder.binary]
+            .map(name => (name ?? '').match(BROWSERS)?.[0]).find(Boolean);
+        if (!family)
+            return holder.pending ? MAYBE : false;
+        const windows = global.display.list_all_windows().filter(window =>
+            window.get_window_type() === Meta.WindowType.NORMAL && !window.is_skip_taskbar() &&
+            (window.get_wm_class() ?? '').toLowerCase().includes(family.toLowerCase()));
+        // In front as the microphone opened, not since: switching to WhatsApp Web mid-dictation is no call.
+        return webCallShown(windows.map(window => ({title: window.get_title(), focused: window === holder.heldIn}))) || MAYBE;
     }
 
     /** Clears the call and its window. */
@@ -217,7 +269,7 @@ export class CallMonitor extends Signals.EventEmitter {
         this._lostAt = 0;
         this.app = null;
         this._streamName = null;
-        this._owner = null;
+        this._stream = null;
         this._setWindow(null);
         this._service = null;
         this.emit('changed');
@@ -226,12 +278,16 @@ export class CallMonitor extends Signals.EventEmitter {
     /** Finds the app and window of `stream`; returns whether they changed. */
     _identify(stream) {
         const keys = streamKeys(stream);
-        const app = this._appSystem.get_running().find(candidate => appMatches(candidate, keys)) ??
-            this._ownerApp(stream);
+        const named = this._appSystem.get_running().find(candidate => appMatches(candidate, keys));
+        const owner = this._ownerApp(stream);
+        // A call app holding a stream named after a browser ("Chromium", an Electron app's) is the call's.
+        const ownerCalls = owner && isCallApp(owner.get_name(), owner.get_id()) &&
+            !(named && isCallApp(named.get_name(), named.get_id()));
+        const app = ownerCalls ? owner : named ?? owner;
         this._streamName = stream.get_name() || null;
         // A voice engine's (Discord's) is no browser tab's: no title names it before the sound server names
         // its app (see `_ownerFound`).
-        if (!app && this._owner?.pending && isEngineName(this._streamName))
+        if (!app && this._held(stream).pending && isEngineName(this._streamName))
             return false;
         const service = this._service;
         const window = this._chooseWindow(app);
@@ -242,41 +298,26 @@ export class CallMonitor extends Signals.EventEmitter {
         return true;
     }
 
-    /** The app holding `stream` when its names say none (Discord's is "WEBRTC VoiceEngine"): by the process
-     * the sound server says holds it, asked once a stream; null until it answers. */
+    /** The app holding `stream` when its names say none (Discord's is "WEBRTC VoiceEngine"): by the process the
+     * sound server says holds it (privacy.js asks it once per change); null until it answers. */
     _ownerApp(stream) {
-        const index = stream.get_index();
-        if (this._owner?.index === index)
-            return this._owner.app;
-        this._owner = {index, app: null, pending: true};
-        try {
-            const launcher = new Gio.SubprocessLauncher({flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE});
-            launcher.setenv('LC_ALL', 'C', true);
-            const process = launcher.spawnv(['pactl', 'list', 'source-outputs']);
-            process.communicate_utf8_async(null, this._cancellable, (_process, result) => {
-                let text = null;
-                try {
-                    [, text] = process.communicate_utf8_finish(result);
-                } catch {}
-                this._ownerFound(stream, index, streamOwner(text, index));
-            });
-        } catch {
-            // No pactl: the call apps running are all there is to go by.
-            this._ownerFound(stream, index, null);
+        const holder = this._held(stream);
+        if (holder.pending) {
+            const owner = this._privacy.ownerOf(stream.get_index());
+            if (owner !== undefined) {
+                holder.pending = false;
+                holder.binary = owner?.binary ?? null;
+                holder.app = this._appOfProcess(owner) ?? (isEngineName(stream.get_name()) ? this._onlyCallApp() : null);
+            }
         }
-        return this._owner.app;
+        return holder.app;
     }
 
-    /** Takes the app the sound server named for `stream`, else the one call app running, and shows it. */
-    _ownerFound(stream, index, owner) {
-        if (this._cancellable.is_cancelled() || this._owner?.index !== index)
-            return;
-        this._owner.pending = false;
-        const engine = isEngineName(stream.get_name());
-        this._owner.app = this._appOfProcess(owner) ?? (engine ? this._onlyCallApp() : null);
-        // A voice engine's waited for this: placed now, by the windows' titles if no app was found.
-        if ((this._owner.app || engine) && this.active && this._stream === stream && this._identify(stream))
+    /** The sound server said who holds each recording: a call waiting for that is placed, or begins. */
+    _onOwnersKnown() {
+        if (this.active && this._stream && this._identify(this._stream))
             this.emit('changed');
+        this._sync();
     }
 
     /** The app of process `pid`, or of a parent of it (a voice engine may run in a helper), else the one
@@ -468,7 +509,6 @@ export class CallMonitor extends Signals.EventEmitter {
     destroy() {
         // Tell no one about changes made while tearing down.
         this.disconnectAll();
-        this._cancellable.cancel();
         this._cancel('start');
         this._cancel('end');
         this._cancel('recheck');
@@ -480,5 +520,6 @@ export class CallMonitor extends Signals.EventEmitter {
         this._mixerIds.forEach(id => this._mixer.disconnect(id));
         this._settings.disconnect(this._settingsId);
         this._privacy.disconnect(this._privacyId);
+        this._privacy.disconnect(this._streamsId);
     }
 }

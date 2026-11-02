@@ -182,6 +182,7 @@ export const Island = GObject.registerClass({
         this._topInset = 0;
         this._hovered = false;
         this._autoHidden = false;
+        this._band = 0;
         this._monitor = null;
         this._view = null;
         this._pointerAtMorph = null;
@@ -444,9 +445,10 @@ export const Island = GObject.registerClass({
         this._showView(view, growing);
     }
 
-    /** Fades the closed island away for auto-hide, or back. Once out of sight its view hides too, so nothing
-     * ticks or dances unseen; back, the view shows before the island does. */
-    setAutoHidden(hidden) {
+    /** Fades the closed island away for auto-hide (its view hidden then, so nothing ticks unseen), or back.
+     * Hidden, only its top `band` px take the pointer (see `vfunc_pick`). */
+    setAutoHidden(hidden, band = 0) {
+        this._band = band;
         if (hidden === this._autoHidden)
             return;
         this._autoHidden = hidden;
@@ -473,6 +475,19 @@ export const Island = GObject.registerClass({
         }
         this._view?.show();
         this.ease({opacity: 255, duration: AUTO_HIDE_FADE, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+    }
+
+    /** Faded away, the island leaves what is under it to the pointer: only its top band brings it back. */
+    vfunc_pick(context) {
+        if (!this._autoHidden) {
+            // Clutter picks the children itself only for a class that keeps its own pick: here, they are picked too.
+            super.vfunc_pick(context);
+            for (const child of this.get_children())
+                child.pick(context);
+            return;
+        }
+        if (this._band > 0)
+            this.pick_box(context, new Clutter.ActorBox({x1: 0, y1: 0, x2: this.width, y2: this._band}));
     }
 
     /** Shows `view` out of sight and reach (or hides it again) while the island rests closed, so its next

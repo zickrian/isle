@@ -8,7 +8,7 @@ mod bluetooth;
 mod camera;
 mod network;
 mod power;
-mod sleep;
+pub mod sleep;
 
 use std::time::Duration;
 

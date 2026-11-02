@@ -160,7 +160,7 @@ fn main() -> ExitCode {
             })
             .and_then(|bytes| model.transcribe(&protocol::samples(&bytes), &args.language));
         say(&match reply {
-            Ok(text) => protocol::text(&text),
+            Ok(heard) => protocol::text(&heard),
             Err(err) => protocol::error(&err),
         });
     }

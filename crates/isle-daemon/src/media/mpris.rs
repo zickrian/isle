@@ -42,6 +42,10 @@ const ART_RETRY: Duration = Duration::from_secs(5 * 60);
 /// doubles with every failure for the same track, up to [`LYRICS_RETRY_MAX`].
 const LYRICS_RETRY: Duration = Duration::from_secs(30);
 const LYRICS_RETRY_MAX: Duration = Duration::from_secs(10 * 60);
+/// A browser's media paused this long (a video or voice note over, its tab still open) leaves the closed island.
+const REST_AFTER: Duration = Duration::from_secs(60);
+/// Paused this close to its end, a browser's media is over: it leaves the closed island at once.
+const END_MARGIN_US: i64 = 1_000_000;
 /// While the island shows the position, the playing player is read this often: MPRIS signals no progress.
 const POLL: Duration = Duration::from_secs(1);
 /// Sooner, to confirm a read that fell behind (see [`reconcile`]), or to see a stall end.
@@ -113,6 +117,8 @@ enum Event {
     },
     /// Whoever turned watching on left the bus.
     WatcherGone(OwnedUniqueName),
+    /// A browser's media has been paused for [`REST_AFTER`]: published again, it rests.
+    Rest,
 }
 
 /// Everything read from one player's `GetAll`.
@@ -160,6 +166,10 @@ struct Entry {
     length_tries: u8,
     /// A length re-read is already waiting.
     length_waiting: bool,
+    /// Since when it is not playing; `None` while it plays.
+    paused_at: Option<Instant>,
+    /// Put away with the Music page's ×, until it plays again.
+    dismissed: bool,
 }
 
 impl Drop for Entry {
@@ -303,6 +313,7 @@ pub async fn watch(
                 Event::GapOver => watcher.gap_check = None,
                 Event::Polled { name, read } => watcher.polled(&name, read),
                 Event::WatcherGone(name) => watcher.watcher_gone(&name),
+                Event::Rest => {}
             },
             else => return Ok(()),
         }
@@ -311,24 +322,35 @@ pub async fn watch(
 }
 
 /// The player to show: the one picked by hand while it has something to show, else one with a track
-/// (playing first), else the one playing, else the one that played last (each with when it started).
+/// (playing first), else the one playing, else the one that played last (each with when it started, and
+/// whether it rests: see [`rests`]).
 fn pick<'a, N: PartialEq + 'a>(
-    players: impl Iterator<Item = (&'a N, &'a Snapshot, u64)> + Clone,
+    players: impl Iterator<Item = (&'a N, &'a Snapshot, u64, bool)> + Clone,
     chosen: Option<&N>,
 ) -> Option<&'a N> {
     if let Some((name, ..)) = players
         .clone()
-        .find(|&(name, snapshot, _)| Some(name) == chosen && shows(snapshot))
+        .find(|&(name, snapshot, ..)| Some(name) == chosen && shows(snapshot))
     {
         return Some(name);
     }
-    // A player stopped with nothing in it never hides a paused song.
+    // A player stopped with nothing in it, or a tab's video that is over, never hides a paused song.
     players
-        .max_by_key(|&(_, s, started)| {
+        .max_by_key(|&(_, s, started, resting)| {
             let track = s.status != "Stopped" && shows(s);
-            (track, s.status == "Playing", started)
+            (track, !resting, s.status == "Playing", started)
         })
         .map(|(name, ..)| name)
+}
+
+/// Whether a player's media is over for the closed island: a browser's (a video or voice note in a tab) at its
+/// end, or paused for [`REST_AFTER`]. A music app's paused song stays until it closes.
+fn rests(browser: bool, snapshot: &Snapshot, paused_at: Option<Instant>) -> bool {
+    let ended =
+        snapshot.length_us > 0 && snapshot.position_us >= snapshot.length_us - END_MARGIN_US;
+    browser
+        && snapshot.status != "Playing"
+        && (ended || paused_at.is_some_and(|at| at.elapsed() >= REST_AFTER))
 }
 
 /// Whether the island has anything to show for a player: with no title, it says "Nothing playing".
@@ -475,6 +497,8 @@ impl Watcher {
             listener,
             length_tries: 0,
             length_waiting: false,
+            paused_at: None,
+            dismissed: false,
         })
     }
 
@@ -610,6 +634,19 @@ impl Watcher {
             entry.length_tries = 0;
             entry.length_waiting = false;
         }
+        if snapshot.status == "Playing" {
+            entry.paused_at = None;
+            entry.dismissed = false;
+        } else if entry.paused_at.is_none() {
+            entry.paused_at = Some(Instant::now());
+            if entry.browser {
+                let events = self.events.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(REST_AFTER).await;
+                    let _ = events.send(Event::Rest);
+                });
+            }
+        }
         let needs_length = snapshot.status == "Playing" && snapshot.length_us <= 0;
         if !needs_length {
             entry.length_tries = 0;
@@ -651,7 +688,11 @@ impl Watcher {
         let players = self
             .players
             .iter()
-            .map(|(name, entry)| (name, &entry.snapshot, entry.started_playing));
+            .filter(|(_, entry)| !entry.dismissed)
+            .map(|(name, entry)| {
+                let resting = rests(entry.browser, &entry.snapshot, entry.paused_at);
+                (name, &entry.snapshot, entry.started_playing, resting)
+            });
         pick(players, self.chosen.as_ref())
     }
 
@@ -671,6 +712,16 @@ impl Watcher {
             }
             Wish::Lyrics(_) => {}
             Wish::Watching(watching, by) => self.set_watching(watching, by),
+            Wish::Dismiss => {
+                if let Some(name) = self.active_name().cloned() {
+                    if self.chosen.as_ref() == Some(&name) {
+                        self.chosen = None;
+                    }
+                    if let Some(entry) = self.players.get_mut(&name) {
+                        entry.dismissed = true;
+                    }
+                }
+            }
         }
     }
 
@@ -681,7 +732,7 @@ impl Watcher {
         let mut choices: Vec<PlayerChoice> = self
             .players
             .iter()
-            .filter(|(_, entry)| shows(&entry.snapshot))
+            .filter(|(_, entry)| shows(&entry.snapshot) && !entry.dismissed)
             .map(|(name, entry)| PlayerChoice {
                 name: name.to_string(),
                 identity: entry.identity.clone(),
@@ -724,6 +775,7 @@ impl Watcher {
                     can_go_previous: s.can_go_previous,
                     can_play_pause: s.can_play_pause,
                     can_seek: s.can_seek,
+                    resting: rests(entry.browser, s, entry.paused_at),
                 };
                 let art_url = s.art_url.clone();
                 let active = (entry.player.clone(), s.track_id.clone());
@@ -1447,7 +1499,39 @@ mod tests {
 
     use tokio::time::Instant;
 
-    use super::{LyricsStep, Snapshot, TrackQuery, file_title, lyrics_step, pick};
+    use super::{
+        LyricsStep, REST_AFTER, Snapshot, TrackQuery, file_title, lyrics_step, pick, rests,
+    };
+
+    #[test]
+    fn a_browsers_media_rests_once_over_a_music_apps_never() {
+        let paused = |position_us| Snapshot {
+            status: "Paused".into(),
+            title: "Voice note".into(),
+            length_us: 30_000_000,
+            position_us,
+            ..Snapshot::default()
+        };
+        let just_now = Some(Instant::now());
+        let a_minute_ago = Instant::now().checked_sub(REST_AFTER);
+        // At its end: at once. Paused midway: after a minute.
+        assert!(rests(true, &paused(29_500_000), just_now));
+        assert!(!rests(true, &paused(10_000_000), just_now));
+        assert!(rests(true, &paused(10_000_000), a_minute_ago));
+        // Playing, or a music app (Spotify), stays.
+        let playing = Snapshot {
+            status: "Playing".into(),
+            ..paused(29_500_000)
+        };
+        assert!(!rests(true, &playing, a_minute_ago));
+        assert!(!rests(false, &paused(29_500_000), a_minute_ago));
+        // No length known: only the minute counts.
+        let unknown = Snapshot {
+            length_us: 0,
+            ..paused(0)
+        };
+        assert!(!rests(true, &unknown, just_now));
+    }
 
     /// Each as (name, status, title, when it last started playing).
     const PLAYERS: [(&str, &str, &str, u64); 3] = [
@@ -1460,6 +1544,15 @@ mod tests {
         players: &[(&'static str, &str, &str, u64)],
         chosen: Option<&'static str>,
     ) -> Option<&'static str> {
+        pick_resting(players, chosen, &[])
+    }
+
+    /// As `pick_among`, the players named in `resting` resting.
+    fn pick_resting(
+        players: &[(&'static str, &str, &str, u64)],
+        chosen: Option<&'static str>,
+        resting: &[&str],
+    ) -> Option<&'static str> {
         let players: Vec<_> = players
             .iter()
             .map(|&(name, status, title, started)| {
@@ -1471,8 +1564,25 @@ mod tests {
                 (name, snapshot, started)
             })
             .collect();
-        let players = players.iter().map(|(name, s, started)| (name, s, *started));
+        let players = players
+            .iter()
+            .map(|(name, s, started)| (name, s, *started, resting.contains(name)));
         pick(players, chosen.as_ref()).copied()
+    }
+
+    #[test]
+    fn a_tabs_video_that_is_over_gives_way_to_a_paused_song() {
+        let players = [
+            ("spotify", "Paused", "Song", 3),
+            ("chromium", "Paused", "Video", 5),
+        ];
+        assert_eq!(pick_among(&players, None), Some("chromium"));
+        assert_eq!(pick_resting(&players, None, &["chromium"]), Some("spotify"));
+        // Alone, it is still the one shown (on the Music page, with its ×).
+        assert_eq!(
+            pick_resting(&players[1..], None, &["chromium"]),
+            Some("chromium")
+        );
     }
 
     fn shot(title: &str, position_us: i64, sampled_at_ms: i64, length_us: i64) -> Snapshot {

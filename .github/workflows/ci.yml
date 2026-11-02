@@ -133,6 +133,7 @@ jobs:
           sudo apt-get update && sudo apt-get install -y libglib2.0-bin gjs
           glib-compile-schemas --strict --dry-run gnome-extension/schemas
           gjs -m tests/extension/format.gjs.js
+          gjs -m tests/extension/downloads.gjs.js
 
   package:
     name: Release packages

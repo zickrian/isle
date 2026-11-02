@@ -6,12 +6,103 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-03
+
+Send files between the Shelf and your phone, auto-hide, alerts over full-screen apps, a black top bar beside
+your windows, and opencode in the assistant. Calls, music and notifications behave better too. To update:
+click Update on the new-version alert (or Settings → About → Update), then log out and back in.
+
 ### Added
 
-- Auto-hide: Settings → Appearance → Auto-hide fades the closed island away after the pointer
-  leaves it (3 seconds by default, 1–60), and brings it back when the pointer reaches the top
-  centre or clicks there. It can wait for a fullscreen or maximized app instead, leaving the
-  island visible on the desktop.
+- **Send files to and from your phone (#28).** In the Shelf, open Files → Phone and scan the QR code with
+  your phone's camera. A page opens in the phone's browser (any phone, nothing to install) where you can save
+  the Shelf's files and send photos and files to the Shelf. The island asks before each phone gets in, with a
+  4-digit code the phone shows too. Sharing works only on your own network, behind a secret link, and stops
+  by itself after 10 idle minutes, when you press Stop, lock the screen, or the network changes. A violet dot
+  on the closed island shows while you share. If a firewall (ufw) blocks phones, the island shows the one
+  command that lets them in. See SECURITY.md.
+- **Save to Downloads.** Files the Shelf keeps itself (from your phone, or a copied picture) have a ↓ button
+  that saves a copy in your Downloads folder. It never overwrites a file you have.
+- **Auto-hide (#19, #22).** Settings → Appearance → Auto-hide: Always (after the pointer leaves it for a few
+  seconds), With the top bar (when another extension hides the top bar), or Beside windows (while a window is
+  maximized or reaches the top). Alerts, the open island and the assistant still show. Point at its place in
+  the top bar to bring it back. Off by default. Based on Ashish Ranjan's pull request #20, thank you!
+- **Alerts over full-screen apps (#22).** Settings → Alerts → Over full-screen apps: notifications, calls and
+  timers show over a video or game, then the island hides again. Off by default.
+- **Black top bar beside windows (#26).** Settings → Appearance: with a see-through or grey top bar, the bar
+  turns black while a window touches it (maximized or tiled to the top), so a bright wallpaper doesn't
+  distract you while you work. Off by default.
+- **opencode in the assistant (#4).** The fifth AI, found by itself once opencode is installed; pick it in
+  Settings → Assistant. The Model list only offers what your opencode can use: the models you used last (the
+  last one is the default), those of each provider you signed in to with `opencode auth login` (for example
+  GPT with your ChatGPT account), OpenCode's free models, and your Zen or Go plan's. opencode runs in Isle's
+  own folders and can't run commands, change files or read your files: like the other AIs it only answers,
+  and anything that changes your computer waits for you to press Run. Needs opencode 1.4.8 or newer. There is
+  no usage card for it, as OpenCode has no way for apps to read a plan's usage.
+
+### Changed
+
+- **Notifications show more of their text (#29).** Up to three lines under the title, instead of one line cut
+  short. Click one to read it all.
+
+### Fixed
+
+- **Calls (#35).** Only a real call shows as a call: a call app (WhatsApp, Telegram, Discord, Zoom, Slack,
+  Teams…) or a browser on a call page (Meet, Zoom, Teams…). Dictation, voice assistants, and apps that record
+  their own sound (Swiftify's equaliser, visualizers) no longer show a green phone. The call preview shows the
+  right window.
+- **Music (#36).** A video or voice note in a browser tab (WhatsApp Web, X, YouTube) no longer stays in the
+  closed island after it ends. Once it's over, or paused for a minute, the island goes back to the clock, or
+  to the song paused in your music app. Songs paused in a music app stay as before. The Music page also has a
+  × to hide something paused until it plays again.
+- **Notifications.** Every notification can be removed with × or Clear, as in GNOME. One an app keeps (a
+  recorder's "Finish Recording") couldn't be before. Turning Notifications off in Settings also removes the
+  ones already in the island.
+- **Glass (#31).** With the Glass look and a see-through top bar, the bar no longer flickers with Blur my
+  Shell's panel blur.
+- **Shelf.** Opening the Shelf with files in it no longer shows their names doubled, as if bold, for a moment.
+- **Assistant.**
+  - Antigravity (agy 1.4 and later) shows as signed in again, with all its models in Settings.
+  - When the assistant doesn't catch what you said, the log now says why (#37), without your words. See it
+    with `journalctl --user -u isled`.
+  - An AI agent's switch in Settings no longer turns itself off at login.
+  - Turning the assistant off or on with the island open resizes it at once.
+- **Settings.**
+  - Changing the clock format updates the Calendar and Usage pages at once.
+  - Drop-down choices show in full, nothing is cut in a narrow window, and Settings updates when something
+    is changed elsewhere.
+  - Rows that don't apply (clipboard history with the Shelf page off, the shortcut with the assistant off)
+    are greyed out.
+  - "You're up to date" only shows once GitHub has actually answered.
+  - Reset all settings resets the timer's lengths too.
+- **Uninstall** also removes Isle's folders for Grok and opencode and its other leftovers.
+
+### Performance
+
+As light as 1.5.3. Measured on GNOME 51 with an Intel GPU, the same 22 actions (opening and closing the
+island, tabs, lyrics, the assistant, alerts, the Shelf), and each closed island at rest:
+
+| | 1.5.3 | 1.6.0 |
+|---|---|---|
+| Drawing work per frame (p95), Black | 4.23 ms | 4.58 ms |
+| Drawing work per frame (p95), Glass | 4.29 ms | 3.43 ms |
+| GNOME Shell CPU while the island works, Black | 17.7 % | 16.2 % |
+| GNOME Shell CPU while the island works, Glass | 17.6 % | 14.7 % |
+| Closed island with the clock | 4–6 frames a minute | 4–6 frames a minute |
+| Closed island with a timer | 62–64 frames a minute | 62 frames a minute |
+| isled at rest | 0 wake-ups a minute, 4–8 MB | 0 wake-ups a minute, 4–9 MB |
+| isled sharing with a phone connected | – | 16 wake-ups a minute, 0 % CPU, about 9 MB |
+| Memory after 100 opens and closes | no leak | no leak |
+
+A few tenths of a millisecond or a point or two of CPU either way is within what one run differs from the
+next. What keeps 1.6.0 light:
+
+- Phone sharing runs only while you share: no server, port or timer otherwise, and it stops by itself after 10
+  idle minutes. The phone's page asks for news once every 25 seconds and does nothing else in between.
+- Auto-hide listens to the window signals Isle already had, with no timer while it is off; the black bar
+  beside windows watches windows only while it is turned on.
+- Call detection asks PulseAudio once per new stream, shared with the privacy dots, never on a timer.
+- opencode runs only while it answers, like the other AIs.
 
 ## [1.5.3] - 2026-11-01
 
@@ -1547,7 +1638,8 @@ The first release.
   dark, vivid ones bright.
 - Text is at least 12 px throughout.
 
-[Unreleased]: https://github.com/zickrian/isle/compare/v1.5.3...HEAD
+[Unreleased]: https://github.com/zickrian/isle/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/zickrian/isle/compare/v1.5.3...v1.6.0
 [1.5.3]: https://github.com/zickrian/isle/compare/v1.5.2...v1.5.3
 [1.5.2]: https://github.com/zickrian/isle/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/zickrian/isle/compare/v1.5.0...v1.5.1

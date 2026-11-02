@@ -38,7 +38,7 @@ export default class IslePreferences extends ExtensionPreferences {
         window.add(this._clipboardPage(settings, window));
         window.add(this._timerPage(settings, window));
         window.add(this._voicePage(settings, window));
-        window.add(this._usagePage(settings));
+        window.add(this._usagePage(settings, window));
         window.add(this._aboutPage(settings, window));
         // A page asked for by the island (its Update button: About), once, also while open.
         const showAsked = () => {
@@ -93,6 +93,9 @@ export default class IslePreferences extends ExtensionPreferences {
             const state = ['update-shown', 'prefs-page', 'focus-dnd-owned', 'focus-dnd-declined'];
             for (const key of settings.settings_schema.list_keys().filter(key => !state.includes(key)))
                 settings.reset(key);
+            // The timer's lengths, kept by isled: an empty config is its defaults.
+            Gio.DBus.session.call(DAEMON, DAEMON_PATH, POMODORO_INTERFACE, 'SetConfig', new GLib.Variant('(s)', ['{}']),
+                null, Gio.DBusCallFlags.NONE, -1, null, null);
         }));
         reset.add(resetRow);
         page.add(reset);
@@ -100,7 +103,7 @@ export default class IslePreferences extends ExtensionPreferences {
     }
 
     // AI plan usage: only the providers signed in on this computer are listed.
-    _usagePage(settings) {
+    _usagePage(settings, window) {
         const page = new Adw.PreferencesPage({title: 'AI Usage', icon_name: 'power-profile-performance-symbolic'});
         const found = usageProviders();
         const group = new Adw.PreferencesGroup({
@@ -116,13 +119,19 @@ export default class IslePreferences extends ExtensionPreferences {
         const warn = spinRow(settings, 'usage-warn', 'Warn at', 'Share of a limit, in %', 50, 99);
         const critical = spinRow(settings, 'usage-critical', 'Warn again at', 'Share of a limit, in %', 50, 100);
         // The second warning never comes before the first.
-        settings.connect('changed::usage-warn', () => {
-            if (settings.get_int('usage-critical') < settings.get_int('usage-warn'))
-                settings.set_int('usage-critical', settings.get_int('usage-warn'));
-        });
-        settings.connect('changed::usage-critical', () => {
-            if (settings.get_int('usage-critical') < settings.get_int('usage-warn'))
-                settings.set_int('usage-warn', settings.get_int('usage-critical'));
+        const ordered = [
+            settings.connect('changed::usage-warn', () => {
+                if (settings.get_int('usage-critical') < settings.get_int('usage-warn'))
+                    settings.set_int('usage-critical', settings.get_int('usage-warn'));
+            }),
+            settings.connect('changed::usage-critical', () => {
+                if (settings.get_int('usage-critical') < settings.get_int('usage-warn'))
+                    settings.set_int('usage-warn', settings.get_int('usage-critical'));
+            }),
+        ];
+        window.connect('close-request', () => {
+            ordered.forEach(id => settings.disconnect(id));
+            return false;
         });
         for (const row of found.length ? [...rows, warn, critical] : []) {
             settings.bind('usage-enabled', row, 'sensitive', Gio.SettingsBindFlags.GET);
@@ -159,18 +168,22 @@ export default class IslePreferences extends ExtensionPreferences {
         });
         group.add(switchRow(settings, 'voice-assistant', 'AI Assistant',
             'The shortcut and the ✦ in the open island. Off: Isle never asks an AI'));
-        group.add(shortcutRow(settings, 'voice-shortcut', 'Shortcut', 'Opens the assistant and listens'));
+        const shortcut = shortcutRow(settings, 'voice-shortcut', 'Shortcut', 'Opens the assistant and listens');
+        settings.bind('voice-assistant', shortcut, 'sensitive', Gio.SettingsBindFlags.GET);
+        group.add(shortcut);
 
         // Automatic is the first signed in, else the first installed: as isled picks (brain.rs `pick`).
         const automatic = installed.find(p => signedIn(p.id)) ?? installed[0];
         // Only the AIs installed here are offered; with none, the assistant says how to get one.
         const provider = choiceRow(settings, 'voice-provider', 'AI', installed.length
             ? 'Answers with your own sign-in; Isle runs its actions'
-            : 'Install Claude Code, Codex, Grok or Antigravity (agy), and sign in', [
+            : 'Install Claude Code, Codex, Grok, opencode or Antigravity (agy), and sign in', [
             ['auto', automatic ? `Automatic (${automatic.name})` : 'None installed'],
             ...installed.map(({id, name}) => [id, name]),
         ]);
-        const model = new Adw.ComboRow({title: 'Model'});
+        // A long list (opencode's, every provider's models) can be searched by name; a long name wraps.
+        const model = new Adw.ComboRow({title: 'Model', factory: valueItem(), list_factory: wrappingItems(),
+            expression: new Gtk.PropertyExpression(Gtk.StringObject, null, 'string')});
         let modelChoices = [];
         let modelKey = null;
         // Swapping the list moves the selection; that must not write a model of its own.
@@ -200,12 +213,19 @@ export default class IslePreferences extends ExtensionPreferences {
             // A pick the plan no longer allows stays (it comes back once allowed), marked as not used now.
             if (!modelChoices.some(([id]) => id === value)) {
                 const known = entry?.models?.length > 0;
-                const shown = value[0].toUpperCase() + value.slice(1);
-                modelChoices.push([value, known ? `${shown} · not on your plan` : shown]);
+                // opencode's ids are "provider/model", as opencode spells them.
+                const shown = current.noPlan ? value : value[0].toUpperCase() + value.slice(1);
+                // opencode has no plan: a model its providers no longer list is just not there now.
+                const missing = current.noPlan ? 'not available now' : 'not on your plan';
+                modelChoices.push([value, known ? `${shown} · ${missing}` : shown]);
             }
-            const about = entry?.plan ? `${current.planName} ${entry.plan} · ${current.about}`
-                : current.about[0].toUpperCase() + current.about.slice(1);
-            model.subtitle = entry || catalog.loaded ? about : 'Checking which models your plan includes…';
+            // "Claude Max", "ChatGPT Plus"; a plan that names its AI already as it is ("SuperGrok").
+            const named = current.planName && entry?.plan?.toLowerCase().includes(current.planName.toLowerCase());
+            const plan = named ? entry.plan : [current.planName, entry?.plan].filter(Boolean).join(' ');
+            const about = entry?.plan ? `${plan} · ${current.about}` : current.about[0].toUpperCase() + current.about.slice(1);
+            const checking = current.noPlan ? 'Finding your providers’ models…' : 'Checking which models your plan includes…';
+            model.subtitle = entry || catalog.loaded ? about : checking;
+            model.enable_search = modelChoices.length > 12;
             model.model = Gtk.StringList.new(modelChoices.map(([, label]) => label));
             model.selected = Math.max(0, modelChoices.findIndex(([id]) => id === value));
         };
@@ -216,11 +236,17 @@ export default class IslePreferences extends ExtensionPreferences {
             if (modelKey && value !== undefined && value !== settings.get_string(modelKey))
                 settings.set_string(modelKey, value);
         });
-        const changed = settings.connect('changed::voice-provider', syncModel);
+        // The AI, or its model set elsewhere (the assistant itself, Reset all settings): the row follows.
+        const followModel = key => {
+            if (key === modelKey && modelChoices[model.selected]?.[0] !== settings.get_string(key))
+                syncModel();
+        };
+        const changed = [settings.connect('changed::voice-provider', syncModel),
+            ...AI_PROVIDERS.map(p => settings.connect(`changed::${p.modelKey}`, (_settings, key) => followModel(key)))];
         catalog.connect(syncModel);
         // Closed, not just destroyed: the settings' handler would keep the row (and this) alive.
         window.connect('close-request', () => {
-            settings.disconnect(changed);
+            changed.forEach(id => settings.disconnect(id));
             catalog.destroy();
             return false;
         });
@@ -269,10 +295,10 @@ export default class IslePreferences extends ExtensionPreferences {
 
         const notes = new Adw.PreferencesGroup({
             title: 'About the AIs',
-            description: 'Claude Code and Codex answer within your Claude or ChatGPT plan\'s limits. Antigravity\'s ' +
-                'terms bar third-party tools from its service; Isle only runs the official agy app, but use it at ' +
-                'your own risk. Each runs kept to answering: commands and file changes go through Isle, which ' +
-                'asks you first.',
+            description: 'Claude Code and Codex answer within your Claude or ChatGPT plan\'s limits; opencode with ' +
+                'the providers you signed in to in opencode. Antigravity\'s terms bar third-party tools from its ' +
+                'service; Isle only runs the official agy app, but use it at your own risk. Each is kept to ' +
+                'answering: commands and file changes go through Isle, which asks you first.',
         });
         page.add(notes);
         return page;
@@ -286,12 +312,27 @@ export default class IslePreferences extends ExtensionPreferences {
             title: 'Clipboard History',
             description: 'Super+V opens it. Everything stays on this computer.',
         });
-        history.add(switchRow(settings, 'clipboard-history', 'Keep clipboard history',
-            'Text, links, images and files you copy. Passwords from password managers are never kept.'));
-        history.add(choiceRow(settings, 'super-v', 'Super+V', 'GNOME’s calendar shortcut', [
+        const keep = switchRow(settings, 'clipboard-history', 'Keep clipboard history',
+            'Text, links, images and files you copy. Passwords from password managers are never kept.');
+        history.add(keep);
+        const superV = choiceRow(settings, 'super-v', 'Super+V', 'GNOME’s calendar shortcut', [
             ['isle', 'Isle’s clipboard history'],
             ['gnome', 'GNOME’s calendar and notifications'],
-        ]));
+        ]);
+        history.add(superV);
+        // The history lives on the Shelf page: with that page off, nothing is kept and Super+V is GNOME's.
+        const byShelf = () => {
+            const off = settings.get_strv('hidden-pages').includes('shelf');
+            keep.sensitive = superV.sensitive = !off;
+            history.description = off ? 'Off while the Shelf page is off (Island → Pages).'
+                : 'Super+V opens it. Everything stays on this computer.';
+        };
+        const shelfChanged = settings.connect('changed::hidden-pages', byShelf);
+        window.connect('close-request', () => {
+            settings.disconnect(shelfChanged);
+            return false;
+        });
+        byShelf();
         const clear = new Adw.ActionRow({title: 'Clear history', subtitle: 'Pinned items are kept'});
         const clearButton = new Gtk.Button({label: 'Clear…', valign: Gtk.Align.CENTER});
         clearButton.connect('clicked', () => confirmClear(window));
@@ -319,7 +360,8 @@ export default class IslePreferences extends ExtensionPreferences {
         ]));
         look.add(glassRow(settings, window));
         look.add(topBarRow(settings, window));
-        look.add(switchRow(settings, 'compact-top-bar', 'Compact top bar', 'A slimmer top bar that frames the island like a bezel'));
+        look.add(blackBesideWindowsRow(settings, window));
+        look.add(switchRow(settings, 'compact-top-bar', 'Compact top bar', 'Smaller text and spacing in the top bar; slimmer too with the island below it'));
         look.add(switchRow(settings, 'island-in-top-bar', 'Island inside the top bar',
             'Like a notch: the closed island never covers windows'));
         // One of the two, as the island sits: below the bar, or inside it.
@@ -349,18 +391,23 @@ export default class IslePreferences extends ExtensionPreferences {
         delay.subtitle = 'In milliseconds';
         settings.bind('hover-delay', delay, 'value', Gio.SettingsBindFlags.DEFAULT);
         const byHover = () => (delay.sensitive = settings.get_string('open-on') === 'hover');
-        settings.connect('changed::open-on', byHover);
+        const openOnChanged = settings.connect('changed::open-on', byHover);
+        delay.connect('destroy', () => settings.disconnect(openOnChanged));
         byHover();
         look.add(delay);
-        look.add(switchRow(settings, 'auto-hide', 'Auto-hide',
-            'Fade the closed island away; hover or click the top centre to bring it back'));
+        look.add(choiceRow(settings, 'auto-hide', 'Auto-hide', 'Hide the closed island; alerts still show, and pointing at its place brings it back', [
+            ['off', 'Off'],
+            ['always', 'Always'],
+            ['top-bar', 'With the top bar'],
+            ['windows', 'Beside windows'],
+        ]));
+        // The wait only counts where the island hides on its own: not with a bar that hides.
         const hideDelay = spinRow(settings, 'auto-hide-delay', 'Hide after', 'Seconds without the pointer on the island', 1, 60);
-        settings.bind('auto-hide', hideDelay, 'sensitive', Gio.SettingsBindFlags.GET);
+        const waits = () => (hideDelay.sensitive = ['always', 'windows'].includes(settings.get_string('auto-hide')));
+        const waitsChanged = settings.connect('changed::auto-hide', waits);
+        hideDelay.connect('destroy', () => settings.disconnect(waitsChanged));
+        waits();
         look.add(hideDelay);
-        const onlyFullscreen = switchRow(settings, 'auto-hide-fullscreen-only', 'Only when an app fills the screen',
-            'Hide only while the app in front is fullscreen or maximized; otherwise stay visible');
-        settings.bind('auto-hide', onlyFullscreen, 'sensitive', Gio.SettingsBindFlags.GET);
-        look.add(onlyFullscreen);
         page.add(look);
         page.add(pagesGroup(settings, window));
         page.add(appUsageGroup(settings, window));
@@ -373,6 +420,8 @@ export default class IslePreferences extends ExtensionPreferences {
         settings.bind('gnome-banners', notifications, 'active', Gio.SettingsBindFlags.INVERT_BOOLEAN);
         alerts.add(notifications);
         alerts.add(switchRow(settings, 'replace-osd', 'Volume and brightness', 'Show them in the island instead of the centre of the screen'));
+        alerts.add(switchRow(settings, 'alerts-over-fullscreen', 'Over full-screen apps',
+            'Alerts show over a video or game, then hide again; off, they wait until it leaves full screen'));
         alerts.add(switchRow(settings, 'alert-power', 'Charging and battery', 'Plugged in, unplugged, full and low'));
         alerts.add(switchRow(settings, 'alert-network', 'Network', 'When the connection drops'));
         alerts.add(switchRow(settings, 'alert-bluetooth', 'Bluetooth', 'Devices connecting, with their battery'));
@@ -455,24 +504,53 @@ export default class IslePreferences extends ExtensionPreferences {
             }
             return false;
         });
+        // Each row, by its key, with the property it shows: set anew when isled's config changes.
+        const rows = [];
         const number = (key, title, min, max) => {
             const row = Adw.SpinRow.new_with_range(min, max, 1);
             row.title = title;
             row.value = config[key];
             row.connect('notify::value', () => {
+                if (config[key] === row.value)
+                    return;
                 config[key] = row.value;
                 save();
             });
+            rows.push([key, row, 'value']);
             return row;
         };
         const toggle = (key, title, subtitle) => {
             const row = new Adw.SwitchRow({title, subtitle, active: config[key]});
             row.connect('notify::active', () => {
+                if (config[key] === row.active)
+                    return;
                 config[key] = row.active;
                 save();
             });
+            rows.push([key, row, 'active']);
             return row;
         };
+        // Changed elsewhere (Reset all settings): the rows follow, unless a change here is still to be saved.
+        const configChanged = proxy.connect('g-properties-changed', (_proxy, changed) => {
+            // Only the lengths: the timer starting or ending a phase changes State, and leaves the rows be.
+            if (!changed.deepUnpack().Config)
+                return;
+            let next;
+            try {
+                next = JSON.parse(proxy.get_cached_property('Config')?.unpack() ?? 'null');
+            } catch {
+                return;
+            }
+            if (!next || saveId)
+                return;
+            config = next;
+            for (const [key, row, property] of rows)
+                row[property] = config[key];
+        });
+        window.connect('close-request', () => {
+            proxy.disconnect(configChanged);
+            return false;
+        });
 
         group.add(number('focus_minutes', 'Focus (minutes)', 1, 180));
         group.add(number('short_break_minutes', 'Short break (minutes)', 1, 60));
@@ -642,7 +720,7 @@ function lookGroup(settings) {
             });
     });
     const colors = pickerRow(settings, 'bot-color', 'Colour', Object.entries(COLORS).map(([color, {label}]) =>
-        [color, botTile(26, {shape: 'circle', palette: paletteFor(color)}).area, label]), {custom: customColor, perLine: 6, least: 6});
+        [color, botTile(26, {shape: 'circle', palette: paletteFor(color)}).area, label]), {custom: customColor, perLine: 6, least: 4});
     syncCustom();
     group.add(colors);
 
@@ -713,7 +791,6 @@ function switchRow(settings, key, title, subtitle) {
     return row;
 }
 
-/** The top bar beside the island, from glass to black, on a slider; the island itself stays black. */
 /** How dark the Glass look is, Clear to Dark; shown only while the island is glass. */
 function glassRow(settings, window) {
     const row = new Adw.ActionRow({title: 'Glass'});
@@ -760,6 +837,7 @@ function glassRow(settings, window) {
     return row;
 }
 
+/** The top bar beside the island, from glass to black, on a slider. */
 function topBarRow(settings, window) {
     const row = new Adw.ActionRow({title: 'Top bar'});
     const scale = new Gtk.Scale({
@@ -811,13 +889,32 @@ function topBarRow(settings, window) {
     return row;
 }
 
+/** Whether the bar turns black beside a window that reaches it; only for a bar that is not black already. */
+function blackBesideWindowsRow(settings, window) {
+    const row = switchRow(settings, 'top-bar-black-with-windows', 'Black top bar beside windows',
+        'While a window reaches the top bar, maximized or tiled, the bar turns black');
+    // Unset, the older Glass or Black choice says (as TopBar.opacity in shell.js).
+    const sync = () => {
+        const opacity = settings.get_user_value('top-bar-opacity') ? settings.get_int('top-bar-opacity')
+            : settings.get_string('top-bar-style') === 'black' ? 100 : 0;
+        row.sensitive = opacity < 100;
+    };
+    const changed = ['top-bar-opacity', 'top-bar-style'].map(key => settings.connect(`changed::${key}`, sync));
+    window.connect('close-request', () => {
+        changed.forEach(id => settings.disconnect(id));
+        return false;
+    });
+    sync();
+    return row;
+}
+
 /** The open island's pages that can be left out, in tab order, with what goes with each. */
 const PAGES = [
     ['music', 'Music', 'audio-x-generic-symbolic', 'The player and lyrics, and the song in the closed island'],
     ['notifications', 'Notifications', 'preferences-system-notifications-symbolic', 'The list to look back at, and its unread dot; alerts show either way'],
     ['focus', 'Timer', 'alarm-symbolic', 'Pomodoro focus sessions and breaks'],
     ['reminders', 'Reminders', 'object-select-symbolic', 'Your to-do list'],
-    ['shelf', 'Shelf', 'edit-paste-symbolic', 'Clipboard history (Super+V) and the files tray'],
+    ['shelf', 'Shelf', 'edit-paste-symbolic', 'Clipboard history (Super+V), the files tray and sharing with a phone'],
     ['calendar', 'Calendar', 'x-office-calendar-symbolic', 'The month, its events and world clocks'],
 ];
 
@@ -949,6 +1046,8 @@ function worldClocksGroup(settings, window) {
     group.add(add);
     settings.bind('world-clocks', add, 'sensitive', Gio.SettingsBindFlags.GET);
     const changed = shell.connect('changed::locations', refresh);
+    // Isle's 12/24-hour setting changed: the times again now, not at the next minute.
+    const clockChanged = settings.connect('changed::clock-format', () => ticks.forEach(tick => tick()));
     // At each minute's turn by the clock, so a suspend or a changed clock is caught up at the next.
     let timer = 0;
     const next = () => {
@@ -961,6 +1060,7 @@ function worldClocksGroup(settings, window) {
     next();
     window.connect('close-request', () => {
         shell.disconnect(changed);
+        settings.disconnect(clockChanged);
         GLib.Source.remove(timer);
         return false;
     });
@@ -1026,6 +1126,9 @@ const AI_PROVIDERS = [
         about: 'what ChatGPT answers with, quickly'},
     {id: 'grok', name: 'Grok', planName: 'Grok', command: 'grok', modelKey: 'voice-grok-model',
         about: 'what Grok answers with, quickly'},
+    // Its plan is named whole ("OpenCode Go", "Free models"); its list: recent, free and plan models.
+    {id: 'opencode', name: 'opencode', planName: '', command: 'opencode', modelKey: 'voice-opencode-model',
+        about: 'your recent opencode models, your providers’, the free ones and your plan’s', noPlan: true},
     {id: 'agy', name: 'Antigravity', planName: 'Antigravity', command: 'agy', modelKey: 'voice-agy-model',
         about: 'what Antigravity answers with'},
 ];
@@ -1139,10 +1242,32 @@ function signedIn(id) {
     }
     case 'codex':
         return exists(codexHome(), 'auth.json') || env('OPENAI_API_KEY');
-    case 'grok':
-        return exists(grokHome(), 'auth.json') || env('XAI_API_KEY');
+    case 'grok': {
+        if (env('XAI_API_KEY'))
+            return true;
+        // As isled reads it (grok.rs `sign_in_from`): an entry with a token and a user id.
+        try {
+            const [, bytes] = GLib.file_get_contents(GLib.build_filenamev([grokHome(), 'auth.json']));
+            const auth = JSON.parse(new TextDecoder().decode(bytes)) ?? {};
+            return Object.values(auth).some(entry => entry?.key && entry?.user_id);
+        } catch {
+            return false;
+        }
+    }
+    case 'opencode': {
+        // As isled counts them: API keys and OAuth sign-ins, never an empty file.
+        try {
+            const [, bytes] = GLib.file_get_contents(GLib.build_filenamev([GLib.get_user_data_dir(), 'opencode', 'auth.json']));
+            const auth = JSON.parse(new TextDecoder().decode(bytes)) ?? {};
+            return Object.values(auth).some(entry => ['api', 'oauth'].includes(entry?.type));
+        } catch {
+            return false;
+        }
+    }
     case 'agy':
-        return exists(GLib.get_home_dir(), '.gemini/antigravity-cli/antigravity-oauth-token');
+        // Before agy 1.4, and since.
+        return exists(GLib.get_home_dir(), '.gemini/antigravity-cli/antigravity-oauth-token') ||
+            exists(GLib.get_home_dir(), '.gemini/jetski-standalone-oauth-token');
     default:
         return false;
     }
@@ -1159,7 +1284,7 @@ function findProgram(command) {
         GLib.build_filenamev([env('VOLTA_HOME', `${home}/.volta`), 'bin']),
         env('PNPM_HOME', `${home}/.local/share/pnpm`),
         ...['.local/share/fnm/aliases/default/bin', '.fnm/aliases/default/bin', '.claude/local', '.grok/bin',
-            '.local/share/mise/shims', '.asdf/shims', '.yarn/bin', '.linuxbrew/bin', '.nix-profile/bin']
+            '.opencode/bin', '.local/share/mise/shims', '.asdf/shims', '.yarn/bin', '.linuxbrew/bin', '.nix-profile/bin']
             .map(dir => GLib.build_filenamev([home, dir])),
         '/home/linuxbrew/.linuxbrew/bin', '/run/current-system/sw/bin',
     ];
@@ -1207,12 +1332,37 @@ function usageProviders() {
     return providers;
 }
 
+/** Items of a drop-down's list that wrap a long name rather than cutting it. */
+function wrappingItems() {
+    const factory = new Gtk.SignalListItemFactory();
+    factory.connect('setup', (_factory, item) => item.set_child(new Gtk.Label({
+        xalign: 0, wrap: true, wrap_mode: Pango.WrapMode.WORD_CHAR, max_width_chars: 36,
+    })));
+    factory.connect('bind', (_factory, item) => {
+        item.get_child().label = item.get_item().get_string();
+    });
+    return factory;
+}
+
+/** A drop-down's chosen item beside its title, whole: never cut (the row's title wraps instead), as the
+ * row doesn't grow taller for a value on more lines. */
+function valueItem() {
+    const factory = new Gtk.SignalListItemFactory();
+    factory.connect('setup', (_factory, item) => item.set_child(new Gtk.Label({xalign: 1})));
+    factory.connect('bind', (_factory, item) => {
+        item.get_child().label = item.get_item().get_string();
+    });
+    return factory;
+}
+
 /** A drop-down for a string key with `choices`: [[value, label], …]. */
 function choiceRow(settings, key, title, subtitle, choices) {
     const row = new Adw.ComboRow({
         title,
         subtitle,
         model: Gtk.StringList.new(choices.map(([, label]) => label)),
+        factory: valueItem(),
+        list_factory: wrappingItems(),
     });
     const sync = () => {
         const index = choices.findIndex(([value]) => value === settings.get_string(key));
@@ -1243,7 +1393,8 @@ function shortcutRow(settings, key, title, subtitle) {
     const row = new Adw.ActionRow({title, subtitle, activatable: true});
     const shown = new Gtk.ShortcutLabel({disabled_text: 'Off', valign: Gtk.Align.CENTER});
     const sync = () => (shown.accelerator = settings.get_strv(key)[0] ?? '');
-    settings.connect(`changed::${key}`, sync);
+    const changed = settings.connect(`changed::${key}`, sync);
+    row.connect('destroy', () => settings.disconnect(changed));
     sync();
     row.add_suffix(shown);
     row.connect('activated', () => recordShortcut(row.get_root(), accelerator =>
@@ -1555,7 +1706,8 @@ function updateRows(settings, window, version, dir) {
             update.label = 'Update';
             show('software-update-available-symbolic', ['accent'], `Isle ${checked.latest} is out`,
                 'Your tasks, events and settings stay', [update]);
-        } else if (checked?.at_ms) {
+        } else if (checked?.at_ms && checked.latest) {
+            // Only once GitHub answered: a look that failed stamps the time too, with no version.
             show('object-select-symbolic', ['success'], 'You’re up to date', `Checked ${checkedWhen(checked.at_ms)}`);
         } else {
             show('software-update-available-symbolic', ['dim-label'], 'Not checked yet', 'Isle asks GitHub once a day');

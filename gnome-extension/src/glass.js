@@ -191,7 +191,8 @@ class GlassBackdrop extends St.Widget {
             return;
         this._on = true;
         this._wallpaper = new AreaClone(Main.layoutManager._backgroundGroup);
-        this._bar = new AreaClone(Main.layoutManager.panelBox);
+        // The bar alone, not its box: Blur my Shell puts its blur there, and copied it flickers (#31, as #23).
+        this._bar = new AreaClone(Main.panel);
         this._layers.add_child(this._wallpaper);
         this._layers.add_child(this._bar);
         // Each let go of when either side goes, so nothing is left behind as the shell shuts down.
@@ -201,6 +202,7 @@ class GlassBackdrop extends St.Widget {
         // A bar that hides or slides away (another extension) shows here as it is.
         Main.layoutManager.panelBox.connectObject('notify::allocation', later, 'notify::mapped', later,
             'notify::translation-y', later, this);
+        Main.panel.connectObject('notify::allocation', later, this);
         // The overview hides the windows; the island shows its colour alone there.
         Main.overview.connectObject('showing', () => this._syncVisible(), 'hidden', () => this._syncVisible(), this);
         this._queueSync();
@@ -214,7 +216,7 @@ class GlassBackdrop extends St.Widget {
         if (this._later)
             global.compositor.get_laters().remove(this._later);
         this._later = 0;
-        for (const object of [global.window_group, global.display, Main.layoutManager.panelBox, Main.overview])
+        for (const object of [global.window_group, global.display, Main.layoutManager.panelBox, Main.panel, Main.overview])
             object.disconnectObject(this);
         this._watched.forEach(actor => actor.disconnectObject(this));
         this._watched.clear();
@@ -316,7 +318,7 @@ class GlassBackdrop extends St.Widget {
         place(this._wallpaper, 0, 0);
         const bar = Main.layoutManager.panelBox;
         this._bar.visible = bar.mapped;
-        place(this._bar, bar.x + bar.translation_x, bar.y + bar.translation_y);
+        place(this._bar, bar.x + bar.translation_x + Main.panel.x, bar.y + bar.translation_y + Main.panel.y);
         // A window scales its surfaces up itself on a display scaled without scaled views (GNOME 46 at 200%).
         this._windows.forEach((clone, actor) => {
             // A window with no surfaces yet is copied whole, until they come (see `surfaceOf`).

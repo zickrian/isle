@@ -25,6 +25,10 @@ const IN_CALL = [/\b[a-z]{3}-[a-z]{4}-[a-z]{3}\b/, /\b(call|calling|meeting|hudd
 /** Names a voice engine gives the microphone stream in place of its app's ("WEBRTC VoiceEngine", Discord's). */
 const ENGINE_NAMES = /webrtc|voice ?engine/i;
 
+/** Apps made for calls, by their names or ids: holding the microphone, they are in one (or recording a voice note).
+ * Anything else that holds it (dictation, a voice assistant, a recorder) is the microphone in use, not a call. */
+const CALL_APPS = /discord|vesktop|webcord|legcord|armcord|zoom|slack|teams|skype|telegram|signal|whatsapp|zapzap|whatsie|wasistlos|\belement\b|mumble|teamspeak|jitsi|webex|viber|jami|linphone|org\.gnome\.calls|ferdium|rambox|beeper|mattermost|rocket\.chat|\bwire\b|nextcloud|caprine|\bdino\b|nheko|neochat|zoiper/i;
+
 /** Browsers, whose tabs hold web calls (Meet, Zoom, Teams on the web...). */
 export const BROWSERS = /chrom|firefox|brave|edge|vivaldi|opera|epiphany|librewolf|zen/i;
 
@@ -50,6 +54,29 @@ export function streamOwner(text, index) {
         return {pid: pid > 0 ? pid : 0, binary: property('application.process.binary')};
     }
     return null;
+}
+
+/** Of `pactl list source-outputs` (in the C locale), the indices of the outputs that record a speaker's sound, not a
+ * microphone (an app's equaliser or visualizer, #35): PipeWire marks each with `stream.capture.sink`. */
+export function sinkCaptures(text) {
+    const indices = new Set();
+    for (const block of (text ?? '').split(/^Source Output #/m).slice(1)) {
+        if (/^\s*stream\.capture\.sink = "true"/m.test(block))
+            indices.add(Number.parseInt(block, 10));
+    }
+    return indices;
+}
+
+/** Whether an app named `name` (or with id `id`) is made for calls. */
+export function isCallApp(name, id) {
+    return CALL_APPS.test(name ?? '') || CALL_APPS.test(id ?? '');
+}
+
+/** Whether a browser's `windows` ({title, focused}) show a web call: one on a call service's page that shows a
+ * call under way, or was in front as the microphone opened (`focused`). WhatsApp Web open behind is none. */
+export function webCallShown(windows) {
+    return windows.some(({title, focused}) => Boolean(serviceOf(title)) &&
+        (focused || IN_CALL.some(pattern => pattern.test(title))));
 }
 
 /** The call service a window title names, or null. */

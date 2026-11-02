@@ -672,6 +672,12 @@ export const CalendarPage = GObject.registerClass({
         return true;
     }
 
+    /** Isle's 12/24-hour setting changed: the times on show, and the field's example, as it says now. */
+    clockChanged() {
+        this._tickWorld();
+        this._refresh();
+    }
+
     /** Brings month and list up to date; `force` draws while closed (see `warmUp`). */
     _refresh(force = false) {
         if (!this.active && !force)

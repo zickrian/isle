@@ -14,6 +14,7 @@ disagrees with this document is a bug in one or the other; fix both together.
 | know where my time goes | time the app in front, if I turn it on, and show it today, over the last seven days or the last 30 |
 | not forget small tasks | write them down in one line, tick them off; tasks survive reboots and power cuts |
 | move files between apps | park files on the island and drag them out later |
+| move files to and from my phone | scan a code on the island and use the phone's browser: no app, no cable, no account |
 | know when something changes | show short, consistent alerts: charging, battery, losing the connection, earbuds, volume, brightness, Caps Lock |
 | still get my notifications now that the clock is gone | show GNOME's notifications in the island, keep them in a list, and offer Do Not Disturb right there |
 | know when I am being watched or recorded | show privacy dots for the camera, microphone and screen sharing, and a timer while the screen records |
@@ -59,7 +60,11 @@ with what it shows (a time going from 9:59 to 10:00 too) at its sides, the
 clock staying where it is, and a sign that comes in fades in.
 
 The top bar is slimmed to a thin bezel (status icons and the tray stay in
-it) and see-through like glass, with no colour of its own. The island has
+it) and see-through like glass, with no colour of its own. Settings → Appearance
+→ Black top bar beside windows (off by default) turns a see-through or grey bar
+black while an app's window on the main display reaches it (its top within 5 px
+of the bar: maximized, tiled or moved up there), not in the overview; the bar
+eases between the two as GNOME's does, and the island stays where it is. The island has
 two looks, chosen in Settings → Appearance → Island ("Black, or clear glass
 that shows what is behind it, blurred"); Black is the default:
 
@@ -201,17 +206,26 @@ with the wheel or touchpad and never show a scrollbar.
 - Where it is: on the main display, in its top bar; or (Settings) on the display of the window in use,
   moving there once closed. A display without the top bar has the island hang from its top edge, with
   a header of its own when open, and GNOME's clock comes back to the main top bar meanwhile.
-- Auto-hide (Settings → Appearance, off by default): after the pointer has been off the closed island
-  for the chosen wait (3 s by default), it fades away, clock and activities with it. Moving the pointer
-  to the top centre where it rests, or clicking there, brings it back; alerts, the open island and the
-  assistant still show. With "Only when an app fills the screen" on, it hides only while the app in
-  front is fullscreen or maximized on its display, and stays visible on the desktop.
+- Auto-hide (Settings → Appearance, off by default): **Always**, after the pointer has been off the
+  closed island for the chosen wait (3 s by default); **With the top bar**, at once as another
+  extension hides the bar (Hide Top Bar, Just Perfection) and back with it; **Beside windows**, after
+  the wait while an app's window under it reaches the top (its top within 5 px of the bar:
+  maximized, tiled or moved up there), not in the overview. It fades out (180 ms), clock and
+  activities with it, and the clock's place in the bar stays empty. Hidden, only its top band (the
+  bar's height, or 2 px at a display's top without the bar or with the bar hidden by another
+  extension) takes the pointer: pointing there brings it back without opening it (it opens once the
+  pointer moves on it and rests again), and what is below takes clicks as if it weren't there; on X11
+  (GNOME 49 and older) that holds in the top bar only, as a display without it keeps the island's
+  input region. Alerts, the open island and the assistant still show.
+- Over a full-screen app the island is GNOME's to hide, and alerts wait until the app leaves full
+  screen; with Settings → Alerts → Over full-screen apps on, it stays there hidden instead and shows
+  only for alerts (and the open island or assistant asked for), never on pointing.
 - Centre: the clock (24- or 12-hour as Settings → Appearance → Clock says, by default as GNOME's clock; with 12 hours a smaller, dimmer AM or PM beside it), exactly centred; while the screen records,
   how long it has been recording in its place. A call keeps the clock (its length is on the open
   island).
 - One island, one sign on each side of the clock. Left: the first activity that applies, in the order
-  screen recording → a call → music (a song playing or paused, until its player closes; none with the
-  Music page left out) → the timer (a session or break under way); with none, a white dot while
+  screen recording → a call → music (a song playing or paused, until its player closes; a browser's
+  video or voice note until it is over, at its end or paused a minute; none with the Music page left out) → the timer (a session or break under way); with none, a white dot while
   notifications are unseen. Right, first that applies:
   1. a warning (Isle's service stopped; a click offers to restart it);
   2. the bot, 18 px, in the look chosen, blinking and glancing every few seconds (the assistant works
@@ -236,10 +250,12 @@ with the wheel or touchpad and never show a scrollbar.
   The timer's glyph, ring and time are white while focusing and green on a break, and dim while
   paused. The bars dance only while the song plays and the closed island is on screen, and rest
   after a minute without input; paused, they rest and dim, and the cover stays until the player
-  closes.
+  closes (a browser's, until it is over). While paused, × on the Music page puts the player away until
+  it plays again.
 - Privacy dots, in the same island after the right side's sign: green camera, orange microphone,
   blue screen sharing (7 px, 4 px apart). On a call the microphone's dot shows only while another app
-  records too. Settings → Appearance → Privacy indicators.
+  records too. Settings → Appearance → Privacy indicators. While the Shelf is shared with a phone, a
+  violet dot joins them (whatever that setting says), so sharing is never forgotten.
 - Do Not Disturb: a small moon before the time (or the recording's length), the time still centred,
   whatever the sides hold.
 
@@ -261,13 +277,23 @@ Pages sit 20 px in from the island's sides and from its bottom (cards' 12 px cor
 the island's 32); on each page rows and columns line up on shared edges, and buttons and switches
 come in one size each (text buttons 25 px tall, an alert's own included).
 
-**Call**, with round controls. A call is an app holding the
-microphone for over 2 s (sites open it briefly to ask for permission), in
-any app or browser: WhatsApp, Telegram, Meet, Zoom, Discord… Level meters
-and recorders (OBS, Audacity, Sound Recorder…) do not count. The app is
-found from the microphone stream ("Google Chrome", "firefox", an app id),
-then its window: one titled after a call service first ("Meet - …",
-"WhatsApp"), else the app's latest. The call ends 4 s after the microphone
+**Call**, with round controls. A call is the microphone held for over 2 s
+(sites open it briefly to ask for permission) by a call app (WhatsApp,
+Telegram, Signal, Zoom, Discord, Slack, Teams, Element, Mumble…) or by a
+browser with one of its own windows on a call service's page ("Meet - …",
+"Zoom", "Microsoft Teams") that shows a call under way (a Meet code, "call",
+"meeting") or was in front as the microphone opened. Every recording is
+looked at, so a call started while dictation holds the microphone is still
+found. Anything else holding the microphone (dictation, a voice assistant,
+level meters, recorders such as OBS or Audacity, an app recording its own
+sound for an equaliser) is the microphone in use, not a call; a browser's is
+looked at again every 3 s while held, as a call's page may come. Who holds
+each recording comes from one `pactl list source-outputs` per change, which
+also keeps the microphone's dot off until it is known what a new recording
+records.
+The app is found from the microphone stream ("Google Chrome", "firefox", an
+app id), then its window: one titled after a call service first, showing a
+call under way before one in front, else the app's latest. The call ends 4 s after the microphone
 closes, so an app reopening it (switching devices) keeps the same call.
 
 On the left, a live preview of the call's window (rounded 14 px, 128 px
@@ -337,8 +363,9 @@ holds up no other.
 **Notifications**, as cards: a heading "Notifications" with
 **Do Not Disturb** (a bell, or a moon on purple while on; the accent on Glass) and a **Clear**
 pill on its right. Below, newest first, a card each, 6 px apart: the app's
-icon (a symbolic one on a grey tile), the title in bold and its text in
-grey on one line, how long ago on the right, and its buttons ("Reply",
+icon (a symbolic one on a grey tile), the title in bold on one line and
+its text in grey under it on up to three lines (the third ending in "…"
+when there is more), how long ago on the right, and its buttons ("Reply",
 "Mark as read") under them, whole, going on to another line when they
 don't fit; under the pointer the card lights and × takes the time's place.
 Cards past the edge fade out as the list scrolls. Click a card to open
@@ -374,7 +401,8 @@ across the lock screen, and is turned off on the next start if the shell
 stopped mid-session. (Settings → Timer → While Focusing → Do Not Disturb.)
 
 **Shelf** (title "Shelf"): things to keep close, in two tabs on a
-segmented control (switching crossfades).
+segmented control (switching crossfades), and a third, Phone, while sharing
+with a phone.
 
 - **Clipboard**: what was copied, pinned items first, then newest first, as
   cards (136 × 96): text
@@ -397,10 +425,18 @@ segmented control (switching crossfades).
   round × always on its corner, and the name below, shortened in the
   middle. Click a tile to copy the file ("copied" shows on it): pictures
   as the image itself, so chat apps and AI chats paste an image, other
-  files as a file; double-click to open it. The bar says what the tab is
+  files as a file; double-click to open it. A file the Shelf keeps itself
+  (sent from the phone, a clipboard picture: the copies × deletes) also has
+  a round ↓, the ×'s twin over the preview's other corner, shown under the
+  pointer: it saves a copy into Downloads (never over a file: "Photo
+  (2).jpg"), copied off the shell's thread however big, then the alert
+  "Saved to Downloads" with Show (the file manager on it, else the folder),
+  or "Couldn't save to Downloads" and why (no longer on the Shelf, not
+  enough space, Downloads can't be written to). The bar says what the tab is
   for ("No files on the shelf · Drop files here, then drag them into any app", in the island's
   words and the helper's alike), how full it is ("3
-  of 5 · click to copy, or drag into any app"), or "Full · remove a file to
+  of 6 · click to copy, or drag into any app"; with a file of its own, "3 of
+  6 · click to copy, ↓ to save, or drag out"), or "Full · remove a file to
   add another". With `isle-shelf` installed, the helper draws this tab in a
   see-through window placed exactly over it, tile for tile as the island
   draws it: drag a file out to any app (a chat, an email, a folder).
@@ -417,6 +453,97 @@ segmented control (switching crossfades).
   two bottom corners and fades after about 2 s, and the bar says "Added".
   Without the helper the island's own tiles do all but take drops, with an
   install hint when empty.
+- **Phone** (sharing with a phone): a **Phone** pill (a phone outline and
+  "Phone") at the end of the Files tab's bar starts sharing and opens a Phone
+  tab after Files, there only while sharing. On its right, its top on the
+  tab bar's and its right on the page's 20 px inset, a QR code: black on a
+  white, rounded card, two modules of white round it, each module whole
+  device pixels (4 px at 100%, 8 at 200%; 132 px square). On its left, one
+  column from the top, under the tab bar and on the tabs' left edge, each
+  block 6 px under the one before; nothing centred, nothing cut, nothing
+  past the page's bottom:
+  - Not connected: "Scan with your phone" (15 px semibold), then three
+    numbered steps (12 px, a number in a small round chip): "Same Wi-Fi as
+    this computer, or its hotspot" (in orange, "This network looks public ·
+    use your phone's hotspot" or "Open Wi-Fi: others nearby could see the
+    files · try a hotspot", on such a network), "Scan the code with the
+    camera", "Allow it here with the code it shows". At the bottom, its
+    right on Stop's: "Can't scan? Send the link another way" with **Copy
+    link**, or, while ufw may keep phones out and none got through, "Phone
+    can't connect? ufw may block it" with **Copy fix** (the `ufw allow`
+    command); "Copied" a moment.
+  - A phone asking: in place of the title and steps, a row per phone (two at
+    most; the next as one is answered): "Code 4821" (bold, the digits its
+    page shows big) over "iPhone · Safari · 192.168.1.40" in grey, then
+    Deny and a white Allow that answer that phone alone.
+  - Phones in: the title, then a row each: a green dot, "iPhone · Safari ·
+    192.168.1.40" and a round × (three phones at most, asking included; with
+    three, the title makes room). A phone whose page closed or went quiet (90
+    s; 4 after a goodbye; never while it picks files to send) is still in:
+    its row dims, its dot greys, "· away" follows, its × still there. ×
+    takes the phone off: its row turns in place into a dim "✓ iPhone ·
+    Safari disconnected" (same row, same edge, the × kept as room), stays 3
+    s, fades and folds away, the rows under it sliding up; with the last
+    gone, the steps come back. Three rows at most of any kind: a row saying
+    goodbye goes at once when a new one needs its room, and a phone back
+    while its row says goodbye gets a fresh row. Stop takes every row away at
+    once, so starting again shows the steps.
+  - Under the rows, while connected and with room, the network's note in
+    orange with a warning sign ("Only share on a network you trust" when
+    NetworkManager can't tell).
+
+  **Stop** at the end of the bar ends it; the tab goes and Files shows. A
+  phone that asks also gets an alert (below); answered in either place,
+  both go. Files sent from the phone land on the Files tab, as dropped ones
+  do (the shelf's six at most), in the shelf's own folder. Sharing stops by
+  itself after 10 minutes without a download, an upload, a phone picking
+  files or an Allow (a page left open doesn't count), when the screen locks, when the computer sleeps, when Isle is
+  turned off, and when this computer's address goes (another network, Wi-Fi
+  off: then the alert "Phone sharing stopped · This computer's network
+  changed"). A new start is a new code and a new address; the old one never
+  works again (see SECURITY.md).
+
+  The phone's page (served by `isled`, one file, nothing from the internet):
+  black, rounded, the system's font, mobile first, one 20 px gutter with
+  every card and button on the same edges, 12 px between a section's parts
+  and 36 px between sections. Isle's bot is on it, drawn on a canvas as the
+  island draws it (its white body lit from the top left, the violet, blue
+  and cyan glow, eyes that blink and follow the finger): attentive by the
+  code, a moment of joy as it is let in and as each file lands, sleepy when
+  sharing stops, sad when turned down or taken off, puzzled when it can't
+  reach the computer. Connected, it sits small at the top beside
+  "Connected · to your computer's Shelf". **From your computer** ("Tap ↓ to
+  save."): the Shelf's files as cards (a picture's preview or its kind's
+  icon; the name whole over as many lines as it needs, size · kind, a round
+  ↓). On an iPhone or iPad a picture's ↓ opens it on the page, full size,
+  with "Press and hold the picture, then Save to Photos." and ×; other files
+  are downloaded. Empty: "Nothing on the Shelf yet." **Send to your
+  computer** ("Room for 4 more files, up to 4 GB each."): a big white "+
+  Choose photos or files" (the phone's own picker), then a card per file
+  sent, newest pick on top: waiting, a bar and the percentage while it
+  goes, a green ✓ "on the Shelf", a red ✕ and why ("No room: the Shelf holds
+  6 files" for those picked past the room, "Too big to send", "Not enough
+  space on the computer"), or "Stopped" when sharing ended under it. With no
+  room the button dims and the line says "The Shelf is full. Remove
+  something on your computer to send more." Until allowed: the bot big,
+  "Allow this phone", "Press Allow on your computer if it shows this code."
+  and the code (46 px, spaced). Endings, each final at once (transfers
+  marked Stopped, every button off, nothing more asked): "Sharing stopped ·
+  It was turned off on your computer." (sleepy); "Disconnected · This
+  phone was removed on your computer." with "To connect again, scan a new
+  code from Isle." (sad, then calm); "Not allowed · Your computer said no."
+  (sad). Then "No answer" (Ask again), "Too many phones" (Try again), "One
+  moment · This phone asked a moment ago. Try again in 85 s." (another
+  browser on the phone, or its cookies cleared, under 2 minutes after the
+  last new phone from it; Try again), and
+  "Can't reach your computer · Same Wi-Fi? Is sharing still on?" (Try
+  again; a request gives up after 32 s, 8 s once one failed). The page
+  follows the Shelf while it is in view, each answer held until something
+  changes (25 s at most), asks nothing while hidden, and says goodbye as it
+  closes. The bot draws only while seen, 24 frames a second while things go
+  on, then settles to a still pose with a blink every few seconds (and so
+  with reduced motion).
+  while hidden.
 
 Clipboard history is event driven (GNOME tells the shell when the
 clipboard changes; nothing polls) and kept by `isled`: the 20 most recent
@@ -523,6 +650,11 @@ banner does. Right-clicking an alert puts it away without opening it.
 | Reminder (+ chime) | bell | the reminder | – | 8 s, sticky |
 | Assistant done in the background (resting the pointer holds it; it opens no page) | mic | the answer / Isle Assistant (· Click to read more, when cut) | – | as long as it takes to read, at most 8 s |
 | Isle's service stopped | warning | Isle's service isn't running | Restart | 8 s |
+| A phone asks to connect (sharing) | phone | Allow iPhone · Safari — code 4821? (on two lines if long) / its address · the same code on the phone? | Deny, Allow (for that phone) | sticky, instant; goes once answered (here or on the Phone tab) or after 2 min |
+| Files from a phone (opens the Shelf's Files) | phone, green | IMG_3307.jpg / From your phone · on the Shelf; "3 files from your phone" for more while it shows | – | 4 s |
+| Sharing stopped as the network changed | phone | Phone sharing stopped / This computer's network changed | – | 4 s |
+| A Shelf file saved (↓) | ↓, green | Saved to Downloads / its name in Downloads | Show | 4 s |
+| Saving it failed | warning, red | Couldn't save to Downloads / why | – | 4 s |
 | Newer Isle (once per version) | update | Isle 0.x is out | How | 8 s |
 | AI plan nearly used up | the plan's logo in a ring of its colour (Claude coral, ChatGPT green; red when nearly gone) | Claude / Weekly limit · resets Sat 09:30 | 86% | 8 s |
 | Event about to start (Settings: 1–60 min before, 5 by default) | video camera when it has a meeting link, else calendar | Weekly sync in 5 min / 17:30 – 18:00 · Google Meet | Join (blue), with a Meet, Zoom, Teams or Webex link | sticky |
@@ -607,7 +739,20 @@ colour.
 | Error | what went wrong, what to do, and Sign in or Set up when that fixes it | keyboard |
 
 After 8 s on one step, "Still working · 0:12" shows under it. While the AI
-writes its answer, the answer shows as it comes.
+writes its answer, the answer shows as it comes (opencode and Antigravity give
+it once written).
+
+**The AIs.** Claude Code, Codex, Grok, opencode or Antigravity, whichever is
+picked in Settings → Assistant (Automatic: the first signed in, in that
+order), each with the user's own sign-in and kept to answering. opencode
+answers by default with the model the user's own opencode uses (its config's
+`model`, else the one used last). Settings names the OpenCode plan by the
+sign-ins (Free models, OpenCode Zen, OpenCode Go: Go Plus and Go Teams have
+Go's models and differ in limits only, which no API tells) and offers: up to
+8 models used last in opencode ("Recent · …"), OpenCode's free ones ("Free ·
+…", no sign-in needed), Zen's with a Zen key and Go's with a Go sign-in, as
+`opencode.ai/zen/go/v1/models` lists them now ("Go · …"). Only models
+`opencode models` lists are offered. No usage page.
 
 **The command card.** A command the AI wants run shows in the pill as a
 small terminal: its purpose (bold) and a line on it, then `$ command` in
@@ -682,5 +827,9 @@ hovering opens the Notifications page.
   is open. Isle never opens the camera or the microphone itself.
 - `isled` sleeps until a D-Bus signal arrives. The camera is watched with
   inotify, so the kernel reports opens and closes; nothing is polled.
+- Sharing with a phone runs its web server only while sharing: off, nothing listens and nothing wakes.
+  While on, it sleeps until a phone asks something, an ask runs out or the idle stop is due; a page
+  waits on one held request at a time and asks nothing while hidden. Files stream to and from disk in
+  64 KiB pieces, never whole in memory.
 - Moving parts that loop (music bars, the recording dot) run only while on
   screen; the music bars also rest after a minute without input.

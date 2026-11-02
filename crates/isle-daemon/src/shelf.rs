@@ -8,6 +8,7 @@ use std::time::Duration;
 use isle_core::shelf::{CAPACITY, Shelf, ShelfItem};
 use log::warn;
 use tokio::sync::oneshot::{self, error::TryRecvError};
+use tokio::sync::watch;
 use zbus::object_server::{InterfaceRef, SignalEmitter};
 use zbus::{fdo, interface};
 
@@ -25,6 +26,8 @@ pub struct ShelfService {
     store: Store<Shelf>,
     /// Checks that ran out of time, by URI; such a file is not checked again until its check ends.
     stalled: HashMap<String, oneshot::Receiver<bool>>,
+    /// Counts changes, for phone sharing's page to follow.
+    changes: watch::Sender<u64>,
 }
 
 impl ShelfService {
@@ -39,13 +42,52 @@ impl ShelfService {
             shelf,
             store,
             stalled: HashMap::new(),
+            changes: watch::Sender::new(0),
         }
     }
 
     /// Saves the shelf and tells the extension.
     async fn changed(&self, emitter: &SignalEmitter<'_>) -> zbus::Result<()> {
         self.store.save(&self.shelf);
+        self.changes.send_modify(|count| *count += 1);
         self.items_changed(emitter).await
+    }
+
+    /// The files on the shelf, without those whose last check hung (a network mount gone away).
+    pub fn answering(&self) -> Vec<ShelfItem> {
+        self.shelf
+            .items()
+            .iter()
+            .filter(|item| !self.stalled.contains_key(&item.uri))
+            .cloned()
+            .collect()
+    }
+
+    /// Changes each time the shelf does.
+    pub fn changes(&self) -> watch::Receiver<u64> {
+        self.changes.subscribe()
+    }
+
+    /// Puts a file a phone sent (in the shelf's own folder) on the shelf; false when it is full.
+    pub async fn add_received(
+        &mut self,
+        path: &std::path::Path,
+        emitter: &SignalEmitter<'_>,
+    ) -> bool {
+        let item = ShelfItem {
+            uri: uri::from_path(path),
+            name: path
+                .file_name()
+                .map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
+            added_at_ms: now_ms(),
+        };
+        if !self.shelf.add(item) {
+            return false;
+        }
+        if let Err(err) = self.changed(emitter).await {
+            warn!("could not tell of a file from a phone: {err}");
+        }
+        true
     }
 }
 
@@ -253,8 +295,8 @@ fn is_copy(path: &std::path::Path, dir: &std::path::Path) -> bool {
     path.parent() == Some(dir) && path.file_name().is_some()
 }
 
-/// Where copies made for the shelf live: `~/.local/share/isle/shelf`.
-fn owned_dir() -> std::path::PathBuf {
+/// Where copies made for the shelf live (clipboard images, files from a phone): `~/.local/share/isle/shelf`.
+pub fn owned_dir() -> std::path::PathBuf {
     data_dir().join("shelf")
 }
 

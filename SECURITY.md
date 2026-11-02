@@ -49,12 +49,14 @@ connects to the network only for these:
 | Claude plan usage | `api.anthropic.com/api/oauth/usage` | Claude Code's own sign-in token, read from Claude Code's credentials; Isle never signs in or refreshes it. Off when AI usage, or Claude in it, is turned off |
 | ChatGPT plan usage | `chatgpt.com/backend-api/wham/usage` | Codex's own sign-in token and account id, read from Codex's `auth.json`; Isle never signs in or refreshes it. Off when AI usage, or ChatGPT in it, is turned off |
 | Grok plan usage | Grok's own billing (`cli-chat-proxy.grok.com/v1`, or the address set in Grok's own config; https only) | Grok's own sign-in token and user id, read from Grok's sign-in; Isle never signs in or refreshes it. Off when AI usage, or Grok in it, is turned off |
-| Voice assistant | The AI command-line app you picked (Claude Code, Codex, Antigravity or Grok), which sends it to its own service under your plan | The text of your request (speech is turned into text on this computer), the context it needs (time, open apps and windows, reminders and events, which Linux and package managers this is), the output of the checks and commands it runs for you (with keys, tokens and passwords blanked), the conversation so far and, only if you allow it, the selected text or your notifications |
-| Web search by the assistant | Whatever the AI's own web search and page reading reach | Search words and page addresses the AI chooses for your request |
+| Voice assistant | The AI command-line app you picked (Claude Code, Codex, Antigravity, Grok or opencode), which sends it to its own service under your plan (opencode: to the provider of the model picked, under your own key or subscription) | The text of your request (speech is turned into text on this computer), the context it needs (time, open apps and windows, reminders and events, which Linux and package managers this is), the output of the checks and commands it runs for you (with keys, tokens and passwords blanked), the conversation so far and, only if you allow it, the selected text or your notifications |
+| Web search by the assistant | Whatever the AI's own web search and page reading reach; opencode searches with [Exa](https://exa.ai) (`mcp.exa.ai`), as opencode does for its own models, and reads no pages itself | Search words and page addresses the AI chooses for your request |
 | Package checks by the assistant | Your package managers' own servers (npm's registry, Snap and Flatpak stores, dnf's mirrors) | Package names it looks up, when a check like `npm view codex` or `snap find vlc` asks them |
 | Song check | `open.spotify.com/oembed` | A Spotify link the AI suggested, to check it exists before playing it |
+| OpenCode Go's models | `opencode.ai/zen/go/v1/models` (OpenCode's public model list) | A plain request, no key, only with an OpenCode Go sign-in, when Settings or the assistant looks at opencode's models (at most every 6 hours) |
 | New versions | `api.github.com` (Isle's latest release) | A plain request, at most once a day; off when New versions is turned off in Settings |
 | Speech model | `huggingface.co` (the official whisper.cpp and Silero files) | A plain download, only when you run `isle-setup-voice` (or press Set up); each file's SHA-256 is checked |
+| Shelf files you share with your phone | Your phone, over the local network, only while sharing (see below) | The names, sizes and contents of the Shelf's files, to a phone you allowed; nothing goes through the internet |
 | Events you add to an account's calendar | That account's server (Google, or another in Online Accounts), through Evolution Data Server, as any calendar app sends it | The event's title, day and time, once, when you add it to that calendar (picked with the chip in the add field). Just before, isled opens a connection to that server and closes it, sending nothing, to see it is in reach; behind a proxy it skips that |
 
 When ChatGPT can't be asked (offline, signed out), its limits are read from
@@ -68,7 +70,8 @@ Codex's own logs on this computer, with no network at all.
   (readable by you only). The conversation is deleted, with the AI's own
   copy of it, at midnight at the latest (or after 30 minutes or 2 hours
   quiet, as set in Settings), on **+**, and on **Clear the conversation
-  now**.
+  now**. opencode keeps Isle's copy in `~/.local/share/isle/opencode`, apart
+  from your own opencode's, and its models list in `~/.cache/isle/opencode`.
 - Logs of the commands the assistant ran for you, in
   `~/.cache/isle/runs` (readable by you only), deleted once Isle has
   followed each to its end.
@@ -112,6 +115,105 @@ quits, GNOME puts its last copy back without the mark; to leave that out too,
 Isle keeps a salted hash of the secret in memory until the next copy, never
 the secret itself. Clearing the history deletes its files.
 
+## Sharing the Shelf with a phone
+
+**Phone** on the Shelf's Files tab opens a small web server in `isled` so a
+phone on the same network can save the Shelf's files and send files to it, in
+its browser. It is plain HTTP on the local network; this is what keeps it
+safe:
+
+- **Off unless you start it.** Nothing listens until you press Phone, and the
+  server closes when you press Stop, after 10 minutes without a download, an
+  upload, a phone picking files to send or an Allow (a page left open and
+  checking for changes does not count, nor anything a phone not yet allowed
+  does; a transfer under way does), when the screen locks, when the computer sleeps, when Isle is
+  turned off, when GNOME Shell leaves the bus, and when its network changes:
+  its address gone from its interface, or the connection active on that
+  interface another, even with the same address (another device taking the
+  default route, a VPN, or NetworkManager restarting change nothing). A phone whose page closed or went
+  quiet for 90 seconds (4 after a goodbye) shows as away on the island, still
+  in and still counted, with its × to take it off; back with its cookie from
+  the same address, it is in without a new Allow, until sharing stops. An
+  address makes one new phone per 2 minutes, and phones that ended are kept
+  16 at most.
+  A new start has a new token: an old address never works again. Only GNOME Shell can start
+  or stop it, read its address, or answer or take off a phone.
+- **On the local network only.** It listens on one IPv4 address, the one of
+  the network your default route goes through (never `0.0.0.0`, never a
+  container, VM or VPN interface), on a random port from 47830 to 47839 (with
+  all ten taken, sharing doesn't start), and closes without a word any
+  connection from outside that network, and from this computer's own
+  addresses: a program here could otherwise use an address it read. The
+  island warns when the address is public ("This network looks public"), when
+  NetworkManager reports Wi-Fi without a password ("Open Wi-Fi"), and when it
+  can't tell ("Only share on a network you trust"), and suggests the phone's
+  hotspot.
+- **A secret in the address.** The QR code's address carries a fresh random
+  token of 128 bits (from the kernel's `getrandom`) for each sharing, so an
+  address kept in the phone's history is worthless once sharing stops; it is
+  compared in constant time. The address is not in `Share1.State`, which any
+  program on the session bus can read: GNOME Shell asks for it (`Code`), and
+  nobody else gets it. Every request without the token (a wrong one, any
+  other path, a `Host` other than the address itself) gets the same plain
+  `404 Not found`, and an address that tries 20 wrong tokens is shut out until
+  sharing stops (a browser's own `/favicon.ico` doesn't count).
+- **You allow each phone, by its code.** The first time a browser connects,
+  its page shows a four-digit code, big, and the island asks with the same
+  code: "Allow iPhone · Safari — code 4821?", with the phone's address (on
+  the Phone tab, a row with Deny and Allow for each phone asking; and as an
+  alert). The browser's name comes from its user agent, which anyone can
+  claim, so the code is what tells the phone in your hand from another: Allow
+  answers the phone of its own row or alert, never whichever asks first. Until
+  allowed, a phone sees nothing of the Shelf. The answer is tied to a cookie
+  (`HttpOnly`, `SameSite=Strict`), a secret only that phone has (the island
+  knows the phone by another id), and to the phone's address. A phone turned
+  down, or taken off with × on the Phone tab, is told so and can't ask again
+  until sharing stops (taken off, its downloads and uploads stop at their
+  next piece, a file half received deleted); at most three phones may be asking or allowed at once,
+  and an ask goes unanswered after two minutes. The name shown is one of a few
+  fixed words, never the browser's own text.
+- **The Shelf, nothing else.** The page lists only the files on the Shelf
+  (not folders, and not one whose disk doesn't answer within 2 seconds, such
+  as a network mount gone away), each by an id made from the token and its
+  address; a file is only ever found by that id among the Shelf's current
+  items, never from a path in the request, so `..`, `%2e%2e` and the like lead
+  nowhere. Files are opened without waiting (a pipe is no file), sent as
+  attachments with their type, `X-Content-Type-Options: nosniff` and a
+  `sandbox` content security policy; only JPEG, PNG, GIF and WebP may open in
+  place, never SVG or HTML. Pictures' previews are the island's own.
+- **Files sent in are kept apart.** They are streamed to disk as they come
+  (never held in memory), through the file created for them (new, private,
+  never one already there), into the Shelf's own folder,
+  `~/.local/share/isle/shelf`, readable by you only; once whole they are
+  renamed without ever replacing a file (`RENAME_NOREPLACE`) and put on the
+  Shelf in one step that stopping sharing can't cut half way. The name is the
+  last part of the one the phone gives, without control, invisible, line- or
+  text-direction characters or leading dots, at most 200 bytes, numbered
+  ("photo 2.jpg") when taken. A file cut short is deleted, and so is one whose
+  phone was taken off meanwhile. Taking it off the Shelf deletes it, as with
+  clipboard images. Limits: the Shelf's six files, 4 GB a file, 8 GB a
+  session, and 1 GB left free on the disk, counting what uploads under way
+  will still bring; the free space is looked at again every 32 MB as a file
+  comes, and below half a gigabyte the upload stops.
+- **A small server.** One request per connection, heads of at most 8 KiB (one
+  `Host`, a `Content-Length` of digits only), bodies only with a
+  `Content-Length` (no chunked encoding), 3 seconds for a request's first
+  byte and 10 for its head, 30 for each step of a transfer and, after its
+  first 30 seconds, at least 16 KiB a second on average, so no trickle holds a
+  connection or keeps sharing going; 6 connections at once per address and 32
+  in all; 60 requests in a burst then 20 a second per address. A page waiting
+  for changes gives its connection back as soon as it goes away. A refused
+  upload has its body read and dropped for up to 2 seconds, so the phone sees
+  why rather than a broken connection. The page is one file built into
+  `isled`, with no outside scripts, styles or fonts, a strict content security
+  policy (its own script and style by a fresh nonce, connections to itself
+  only) and no referrer. `isled` runs as you; it never needs or asks for more.
+
+If ufw is on and drops what it is not told to let in, phones can't reach the
+server; the island then offers the command that lets in the local network on
+those ports (`sudo ufw allow from <network> to any port 47830:47839 proto
+tcp`), until a phone gets through. Isle never changes the firewall itself.
+
 ## The voice assistant's safety model
 
 - The AI only answers. It cannot run commands or change files itself: Isle
@@ -121,8 +223,25 @@ the secret itself. Clearing the history deletes its files.
 - Each AI is started with only web search and reading pages: Claude Code with
   just its web tools, Codex with its shell, file, browser and computer-use
   tools off, agy in its own home folder behind a hook that refuses anything
-  else, and Grok in its own home folder (sharing only your sign-in) with its
-  terminal, file editing, task and image tools refused.
+  else, Grok in its own home folder (sharing only your sign-in) with its
+  terminal, file editing, task and image tools refused, and opencode 1.4.8 or
+  newer (an older one is refused) in folders of its own
+  (`~/.local/share/isle/opencode`) with every tool but web search denied, each
+  by name, and not even offered to the model (no shell, files, page fetching,
+  subagents or skills). Only the file reader is offered, as OpenCode's free
+  models answer nothing without it, and it may open only a path that never
+  exists (`/nonexistent/isle-reads-nothing`). It gets none of your opencode config (`opencode.json`,
+  so no MCP servers, plugins or custom providers of yours), no project files,
+  and none of your environment but the locale, time zone and proxy settings.
+  Your sign-ins come from `~/.local/share/opencode/auth.json`, for each
+  request: only API keys and OAuth sign-ins; an organisation's "well-known"
+  sign-in is left out, as it would bring its server's own config, MCP servers
+  and permissions with it. When opencode renews an OAuth sign-in during a
+  request (ChatGPT's, whose old refresh token then stops working), Isle writes
+  just that entry back into your `auth.json` (all at once, readable by you
+  only), so your own opencode stays signed in; nothing else in it is ever
+  changed, and Isle's own copy is deleted as the request ends, also when it
+  was stopped.
 - Files: Isle searches by name for it, within your home folder and removable
   drives, and reads only small plain-text files you ask about. It skips
   hidden folders, never searches those that hold keys or passwords (`.ssh`,

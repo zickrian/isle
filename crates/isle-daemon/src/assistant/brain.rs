@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 zickrian
 
-//! The assistant's "brain": whichever AI CLI the user has and picked (agy, Claude Code, Codex or Grok), behind one
-//! face. Each runs with the user's own sign-in, kept to answering; isled runs the tools and actions itself.
+//! The assistant's "brain": whichever AI CLI the user has and picked (agy, Claude Code, Codex, Grok or
+//! opencode), behind one face. Each runs with the user's own sign-in, kept to answering; isled runs the tools and actions itself.
 
 use std::path::{Path, PathBuf};
 
@@ -13,6 +13,7 @@ use super::answer::Answer;
 use super::claude::Claude;
 use super::codex::Codex;
 use super::grok::Grok;
+use super::opencode::Opencode;
 
 /// An AI CLI the assistant can run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,14 +22,16 @@ pub enum Provider {
     Claude,
     Codex,
     Grok,
+    Opencode,
 }
 
 /// Tried in this order when the user picked "auto", signed-in ones first. agy comes last: its terms bar
 /// third-party tools, so it answers only when it is all there is, or picked.
-const AUTO: [Provider; 4] = [
+const AUTO: [Provider; 5] = [
     Provider::Claude,
     Provider::Codex,
     Provider::Grok,
+    Provider::Opencode,
     Provider::Agy,
 ];
 
@@ -40,6 +43,7 @@ impl Provider {
             Provider::Claude => "claude",
             Provider::Codex => "codex",
             Provider::Grok => "grok",
+            Provider::Opencode => "opencode",
         }
     }
 
@@ -50,6 +54,7 @@ impl Provider {
             Provider::Claude => "Claude Code",
             Provider::Codex => "Codex",
             Provider::Grok => "Grok",
+            Provider::Opencode => "opencode",
         }
     }
 
@@ -60,6 +65,7 @@ impl Provider {
             Provider::Claude => "claude",
             Provider::Codex => "codex",
             Provider::Grok => "grok",
+            Provider::Opencode => "opencode",
         }
     }
 
@@ -80,13 +86,14 @@ impl Provider {
     pub fn signed_in(self) -> bool {
         let home = dirs::home_dir().unwrap_or_default();
         match self {
-            Provider::Agy => home.join(agy::LOGIN).exists(),
+            Provider::Agy => agy::signed_in_at(&home),
             Provider::Claude => super::claude::signed_in(),
             Provider::Codex => {
                 super::codex::user_auth().exists()
                     || std::env::var_os("OPENAI_API_KEY").is_some_and(|key| !key.is_empty())
             }
             Provider::Grok => super::grok::signed_in(),
+            Provider::Opencode => super::opencode::signed_in(),
         }
     }
 
@@ -97,10 +104,11 @@ impl Provider {
             Provider::Claude => "claude",
             Provider::Codex => "codex login",
             Provider::Grok => "grok login",
+            Provider::Opencode => "opencode auth login",
         }
     }
 
-    /// The provider with id `id` ("agy", "claude", "codex", "grok").
+    /// The provider with id `id` ("agy", "claude", "codex", "grok", "opencode").
     pub fn from_id(id: &str) -> Option<Provider> {
         AUTO.into_iter().find(|p| p.id() == id)
     }
@@ -112,11 +120,11 @@ impl Provider {
     }
 
     /// Every provider, in "auto" order.
-    pub fn all() -> [Provider; 4] {
+    pub fn all() -> [Provider; 5] {
         AUTO
     }
 
-    /// `wanted` ("agy", "claude", "codex", "grok" or "auto"), if installed; for "auto", the first installed and
+    /// `wanted` ("agy", "claude", "codex", "grok", "opencode" or "auto"), if installed; for "auto", the first installed and
     /// signed in, else the first installed (which then asks to sign in).
     pub fn pick(wanted: &str) -> Option<Provider> {
         let installed = |p: &Provider| p.program().is_some();
@@ -178,6 +186,7 @@ fn dirs_in(home: &Path, env_dir: impl Fn(&str) -> Option<PathBuf>) -> Vec<PathBu
         // Claude Code's own older install, mise and asdf, yarn, Homebrew on Linux, Nix.
         home.join(".claude/local"),
         home.join(".grok/bin"),
+        home.join(".opencode/bin"),
         home.join(".local/share/mise/shims"),
         home.join(".asdf/shims"),
         home.join(".yarn/bin"),
@@ -220,6 +229,7 @@ pub enum Brain {
     Claude(Claude),
     Codex(Codex),
     Grok(Grok),
+    Opencode(Opencode),
 }
 
 impl Brain {
@@ -250,6 +260,9 @@ impl Brain {
             Provider::Grok => {
                 Brain::Grok(Grok::start(&program, model, resume, workspace, instructions).await?)
             }
+            Provider::Opencode => Brain::Opencode(
+                Opencode::start(&program, model, resume, workspace, instructions).await?,
+            ),
         })
     }
 
@@ -257,7 +270,7 @@ impl Brain {
     pub async fn warm(&mut self) -> anyhow::Result<()> {
         match self {
             Brain::Codex(codex) => codex.warm().await,
-            Brain::Agy(_) | Brain::Claude(_) | Brain::Grok(_) => Ok(()),
+            Brain::Agy(_) | Brain::Claude(_) | Brain::Grok(_) | Brain::Opencode(_) => Ok(()),
         }
     }
 
@@ -268,6 +281,7 @@ impl Brain {
             Brain::Claude(_) => Provider::Claude,
             Brain::Codex(_) => Provider::Codex,
             Brain::Grok(_) => Provider::Grok,
+            Brain::Opencode(_) => Provider::Opencode,
         }
     }
 
@@ -284,6 +298,7 @@ impl Brain {
             Brain::Claude(claude) => claude.ask(prompt, activity, draft).await,
             Brain::Codex(codex) => codex.ask(prompt, activity, draft).await,
             Brain::Grok(grok) => grok.ask(prompt, activity, draft).await,
+            Brain::Opencode(opencode) => opencode.ask(prompt, activity).await,
         }
     }
 
@@ -294,6 +309,7 @@ impl Brain {
             Brain::Claude(claude) => claude.conversation.clone(),
             Brain::Codex(codex) => codex.conversation.clone(),
             Brain::Grok(grok) => grok.conversation.clone(),
+            Brain::Opencode(opencode) => opencode.conversation.clone(),
         }
     }
 
@@ -304,6 +320,7 @@ impl Brain {
             Provider::Claude => super::claude::forget(id),
             Provider::Codex => super::codex::forget(id),
             Provider::Grok => super::grok::forget(id),
+            Provider::Opencode => super::opencode::forget(id),
         }
     }
 
@@ -313,6 +330,7 @@ impl Brain {
         super::claude::prune(today);
         super::codex::prune(today);
         super::grok::prune(today);
+        super::opencode::prune(today);
     }
 }
 
@@ -382,6 +400,7 @@ pub fn explain(provider: Provider, error: &str) -> Failure {
         "unknown method",
         "method not found",
         "unknown variant",
+        "too old",
     ]) {
         return Failure::from((
             &*format!("Update {name}"),
@@ -577,6 +596,15 @@ mod tests {
         assert_eq!(
             explain(Provider::Codex, "account not eligible").error,
             "Codex isn’t available"
+        );
+        // opencode's own words for a used-up plan.
+        assert_eq!(
+            explain(
+                Provider::Opencode,
+                "AI_APICallError: Free usage limit reached."
+            )
+            .error,
+            "opencode isn’t available"
         );
     }
 

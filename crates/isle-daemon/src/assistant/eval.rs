@@ -96,12 +96,13 @@ const APPS: &[&str] = &[
     "Text Editor",
     "Visual Studio Code",
 ];
-/// The AI the eval asks: agy unless ISLE_EVAL_PROVIDER says claude, codex or grok.
+/// The AI the eval asks: agy unless ISLE_EVAL_PROVIDER says claude, codex, grok or opencode.
 fn eval_provider() -> Provider {
     match std::env::var("ISLE_EVAL_PROVIDER").as_deref() {
         Ok("claude") => Provider::Claude,
         Ok("codex") => Provider::Codex,
         Ok("grok") => Provider::Grok,
+        Ok("opencode") => Provider::Opencode,
         _ => Provider::Agy,
     }
 }

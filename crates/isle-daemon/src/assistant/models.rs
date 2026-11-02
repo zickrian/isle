@@ -2,7 +2,8 @@
 // Copyright (C) 2026 zickrian
 
 //! Which models each AI's plan allows, by their own names, and the plan: Claude Code's cached catalog,
-//! Codex's `model/list`, `agy models`, `grok models`. Looked at only when due (see `due`); kept in models.json.
+//! Codex's `model/list`, `agy models`, `grok models`, `opencode models`. Looked at only when due (see `due`);
+//! kept in models.json.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -26,17 +27,19 @@ pub const CLAUDE_ALIASES: [&str; 3] = ["opus", "sonnet", "haiku"];
 const ASKED_EVERY: Duration = Duration::from_secs(60);
 /// A plan change seen in the usage: no sooner than this after the last look.
 const PLAN_EVERY: Duration = Duration::from_secs(10 * 60);
-/// As the assistant opens: agy's list (it asks a server) at most this often, and Codex's only if never.
+/// As the assistant opens: agy's, Grok's and opencode's lists (they ask servers) at most this often, and
+/// Codex's only if never.
 const WARM_EVERY: Duration = Duration::from_secs(6 * 3600);
 const CODEX_TIMEOUT: Duration = Duration::from_secs(30);
 const AGY_TIMEOUT: Duration = Duration::from_secs(20);
 const GROK_TIMEOUT: Duration = Duration::from_secs(30);
+const OPENCODE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// One AI's plan and the models it allows.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Catalog {
-    /// As the account has it ("Team", "Pro"); empty when it cannot be read (agy).
+    /// As the account has it ("Team", "Pro"); empty when it cannot be read (agy) or there is none (opencode).
     pub plan: String,
     /// What it answers with when Settings says "default" (empty: the CLI's own choice), and its name.
     pub default: String,
@@ -321,8 +324,10 @@ fn due(
         Why::Plan => waited(PLAN_EVERY),
         Why::Warm => {
             let old = catalog.is_none_or(|c| {
-                matches!(provider, Provider::Agy | Provider::Grok)
-                    && now - c.checked_ms >= i64::try_from(WARM_EVERY.as_millis()).unwrap_or(0)
+                matches!(
+                    provider,
+                    Provider::Agy | Provider::Grok | Provider::Opencode
+                ) && now - c.checked_ms >= i64::try_from(WARM_EVERY.as_millis()).unwrap_or(0)
             });
             old && waited(WARM_EVERY)
         }
@@ -372,7 +377,9 @@ impl Shared {
 
 /// `provider`'s plan and models now.
 async fn read(provider: Provider) -> Found {
-    let Some(program) = provider.program().filter(|_| provider.signed_in()) else {
+    // opencode answers with OpenCode's free models signed in or not.
+    let usable = provider.signed_in() || provider == Provider::Opencode;
+    let Some(program) = provider.program().filter(|_| usable) else {
         return Found::Gone;
     };
     let read = match provider {
@@ -393,6 +400,20 @@ async fn read(provider: Provider) -> Found {
             .await
             .unwrap_or_else(|_| Err(anyhow::anyhow!("no answer in time")))
             .map(|(listed, cache, settings)| grok_catalog(&listed, &cache, &settings)),
+        Provider::Opencode => {
+            let listed = tokio::time::timeout(OPENCODE_TIMEOUT, super::opencode::models(&program))
+                .await
+                .unwrap_or_else(|_| Err(anyhow::anyhow!("no answer in time")));
+            let plan = super::opencode::plan();
+            // Go's own list, for a Go plan only: a model Go dropped is not offered though opencode lists it.
+            let go = match (&listed, plan) {
+                (Ok(_), "OpenCode Go") => super::opencode::go_models().await,
+                _ => None,
+            };
+            listed.map(|listed| {
+                opencode_catalog(&listed, &super::opencode::preferred(), plan, go.as_deref())
+            })
+        }
     };
     match read {
         Ok(catalog) if !catalog.models.is_empty() => Found::Catalog(Catalog {
@@ -683,6 +704,116 @@ fn grok_catalog(listed: &str, cache: &Value, settings: &Value) -> Catalog {
     catalog
 }
 
+/// Most of the user's recent opencode models offered.
+const OPENCODE_RECENT: usize = 8;
+
+/// `opencode models --verbose`, kept to what the user uses: the models they used last in opencode, OpenCode's free
+/// ones, and their plan's (Zen's; Go's as OpenCode Go lists them now, `go`, when known). Never a model opencode
+/// doesn't list now. The default is their own pick.
+fn opencode_catalog(
+    listed: &str,
+    preferred: &[String],
+    plan: &str,
+    go: Option<&[String]>,
+) -> Catalog {
+    let listed = super::opencode::listed_models(listed);
+    // Free: OpenCode's own free models. A plan's (ChatGPT's) lists at no cost too, but is not free.
+    let label = |model: &super::opencode::Listed| {
+        if model.free && model.provider == "opencode" {
+            format!("{} · free", model.name)
+        } else {
+            model.name.clone()
+        }
+    };
+    let mut models: Vec<Model> = Vec::new();
+    let mut add = |id: &str, name: String| {
+        if !models.iter().any(|m| m.id == id) {
+            models.push(Model {
+                id: id.to_owned(),
+                name,
+            });
+        }
+    };
+    preferred
+        .iter()
+        .filter_map(|id| listed.iter().find(|m| m.id == *id))
+        .take(OPENCODE_RECENT)
+        .for_each(|m| add(&m.id, format!("Recent · {}", label(m))));
+    // Then each provider the user signed in to in opencode (it lists those alone), newest version first.
+    let mut theirs: Vec<_> = listed
+        .iter()
+        .filter(|m| !matches!(m.provider.as_str(), "opencode" | "opencode-go"))
+        .collect();
+    theirs.sort_by(|a, b| {
+        a.provider
+            .cmp(&b.provider)
+            .then(version(&b.id).total_cmp(&version(&a.id)))
+    });
+    for m in theirs {
+        add(
+            &m.id,
+            format!("{} · {}", provider_name(&m.provider), m.name),
+        );
+    }
+    for m in &listed {
+        if m.provider == "opencode" && m.free {
+            add(&m.id, format!("Free · {}", m.name));
+        } else if m.provider == "opencode" && plan == "OpenCode Zen" {
+            add(&m.id, format!("Zen · {}", m.name));
+        } else if m.provider == "opencode-go"
+            && plan == "OpenCode Go"
+            && go.is_none_or(|go| go.contains(&m.id))
+        {
+            add(&m.id, format!("Go · {}", m.name));
+        }
+    }
+    let default = preferred
+        .iter()
+        .find_map(|id| listed.iter().find(|m| m.id == *id))
+        .map(|m| (m.id.clone(), label(m)))
+        .unwrap_or_default();
+    Catalog {
+        plan: plan.to_owned(),
+        default: default.0,
+        default_name: default.1,
+        models,
+        ..Catalog::default()
+    }
+}
+
+/// The first version number in a model id: "openai/gpt-6.1-sol" is 6.1; none is 0.
+fn version(id: &str) -> f64 {
+    let model = id.split_once('/').map_or(id, |(_, model)| model);
+    model
+        .find(|c: char| c.is_ascii_digit())
+        .map(|at| {
+            let digits: String = model[at..]
+                .chars()
+                .take_while(|c| c.is_ascii_digit() || *c == '.')
+                .collect();
+            digits.trim_end_matches('.').parse().unwrap_or(0.0)
+        })
+        .unwrap_or(0.0)
+}
+
+/// An opencode provider id as people write it: "openai" as "OpenAI", "my-proxy" as "My Proxy".
+fn provider_name(id: &str) -> String {
+    match id {
+        "openai" => "OpenAI".into(),
+        "anthropic" => "Anthropic".into(),
+        "google" => "Google".into(),
+        "openrouter" => "OpenRouter".into(),
+        "github-copilot" => "GitHub Copilot".into(),
+        "xai" => "xAI".into(),
+        "deepseek" => "DeepSeek".into(),
+        "mistral" => "Mistral".into(),
+        "groq" => "Groq".into(),
+        "amazon-bedrock" => "Amazon Bedrock".into(),
+        "azure" => "Azure".into(),
+        _ => title_case(&id.replace('-', " ")),
+    }
+}
+
 /// "opus" as "Opus", "gpt_5" as "Gpt 5".
 fn title_case(text: &str) -> String {
     text.split(['_', ' '])
@@ -954,6 +1085,104 @@ mod tests {
                 Found::Failed => println!("{}: failed", provider.id()),
             }
         }
+    }
+
+    #[test]
+    fn a_providers_newest_models_come_first() {
+        let listed: String = [
+            "gpt-5.4",
+            "gpt-5.4-mini",
+            "gpt-6-sol",
+            "gpt-6.1-sol",
+            "gpt-6.1-sol-fast",
+        ]
+        .iter()
+        .map(|id| format!("openai/{id}\n{{\n  \"name\": \"{id}\"\n}}\n"))
+        .collect();
+        let names: Vec<String> = opencode_catalog(&listed, &[], "Free models", None)
+            .models
+            .into_iter()
+            .map(|m| m.name)
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "OpenAI · gpt-6.1-sol",
+                "OpenAI · gpt-6.1-sol-fast",
+                "OpenAI · gpt-6-sol",
+                "OpenAI · gpt-5.4",
+                "OpenAI · gpt-5.4-mini"
+            ]
+        );
+    }
+
+    #[test]
+    fn opencode_offers_recent_your_providers_free_and_go_models_only() {
+        let free = "\"cost\": {\"input\": 0, \"output\": 0}";
+        let paid = "\"cost\": {\"input\": 3, \"output\": 15}";
+        let listed = format!(
+            "opencode/big-pickle\n{{\n  \"name\": \"Big Pickle\", {free}\n}}\n\
+             opencode/claude-opus\n{{\n  \"name\": \"Claude Opus\", {paid}\n}}\n\
+             opencode/mimo-free\n{{\n  \"name\": \"MiMo\", {free}\n}}\n\
+             opencode-go/qwen-max\n{{\n  \"name\": \"Qwen Max\", {paid}\n}}\n\
+             anthropic/claude-sonnet-5\n{{\n  \"name\": \"Claude Sonnet 5\", {paid}\n}}\n\
+             openrouter/some-model\n{{\n  \"name\": \"Some Model\", {paid}\n}}\n\
+             openai/gpt-6\n{{\n  \"name\": \"GPT-6\", {free}\n}}\n"
+        );
+        // Used last in opencode: one gone, one paid, one free.
+        let preferred = [
+            "openai/gone".to_owned(),
+            "anthropic/claude-sonnet-5".to_owned(),
+            "opencode/mimo-free".to_owned(),
+        ];
+        let catalog = opencode_catalog(&listed, &preferred, "OpenCode Go", None);
+        assert_eq!(
+            ids_and_names(&catalog),
+            [
+                ("anthropic/claude-sonnet-5", "Recent · Claude Sonnet 5"),
+                ("opencode/mimo-free", "Recent · MiMo · free"),
+                // Signed in to them in opencode; ChatGPT's at no cost is still not "free".
+                ("openai/gpt-6", "OpenAI · GPT-6"),
+                ("openrouter/some-model", "OpenRouter · Some Model"),
+                ("opencode/big-pickle", "Free · Big Pickle"),
+                ("opencode-go/qwen-max", "Go · Qwen Max"),
+            ]
+        );
+        // The first pick it still lists; none, and opencode chooses.
+        assert_eq!(
+            (catalog.default.as_str(), catalog.default_name.as_str()),
+            ("anthropic/claude-sonnet-5", "Claude Sonnet 5")
+        );
+        assert_eq!(catalog.plan, "OpenCode Go");
+        assert_eq!(
+            opencode_catalog(&listed, &[], "Free models", None).default,
+            ""
+        );
+        // Nothing listed, nothing offered: never a made-up model.
+        assert!(
+            opencode_catalog("", &preferred, "Free models", None)
+                .models
+                .is_empty()
+        );
+        let names = |plan, go| -> Vec<String> {
+            let catalog = opencode_catalog(&listed, &[], plan, go);
+            catalog.models.into_iter().map(|m| m.name).collect()
+        };
+        // Go's own list now: a model it dropped goes, though opencode still lists it.
+        let go = ["opencode-go/other".to_owned()];
+        assert!(
+            !names("OpenCode Go", Some(&go))
+                .iter()
+                .any(|n| n.starts_with("Go ·"))
+        );
+        // A Zen key: its paid models too; without one, only the free.
+        assert!(names("OpenCode Zen", None).contains(&"Zen · Claude Opus".to_owned()));
+        let free = names("Free models", None);
+        assert!(
+            !free
+                .iter()
+                .any(|n| n.starts_with("Zen ·") || n.starts_with("Go ·"))
+        );
     }
 
     #[test]

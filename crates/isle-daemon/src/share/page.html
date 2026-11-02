@@ -1,0 +1,987 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<title>Isle · Shelf</title>
+<style nonce="{{NONCE}}">
+:root {
+  --bg: #000; --card: #1c1c1e; --raised: #2c2c2e; --pressed: #3a3a3c;
+  --text: #fff; --dim: rgba(255, 255, 255, 0.62); --faint: rgba(255, 255, 255, 0.46);
+  --green: #30d158; --red: #ff6961;
+  --gutter: 20px; --gap: 12px; --section: 36px; --radius: 18px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+[hidden] { display: none !important; }
+html { background: var(--bg); -webkit-text-size-adjust: 100%; }
+body {
+  min-height: 100vh; color: var(--text); background: var(--bg);
+  font: 16px/1.45 Inter, system-ui, Roboto, "Segoe UI", "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
+  padding: max(16px, env(safe-area-inset-top)) max(var(--gutter), env(safe-area-inset-right))
+    max(32px, env(safe-area-inset-bottom)) max(var(--gutter), env(safe-area-inset-left));
+}
+main { max-width: 560px; margin: 0 auto; }
+svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round; flex: none; }
+button { font: inherit; color: inherit; border: 0; background: none; }
+button:disabled { opacity: 0.4; }
+/* The canvas is larger than its slot, centred over it: the glow fades out before its edge. */
+.slot { position: relative; }
+#bot { display: block; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+
+/* Connected: the mascot and where things stand, then two sections. */
+.top { display: flex; align-items: center; gap: var(--gap); min-height: 56px; margin-bottom: 28px; }
+.top .slot { width: 56px; height: 56px; flex: none; }
+.top h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.2px; line-height: 1.2; }
+.top p { font-size: 14px; color: var(--dim); }
+h2 { font-size: 20px; font-weight: 600; letter-spacing: -0.2px; line-height: 1.25; }
+.lead { color: var(--dim); font-size: 14px; margin-top: 2px; }
+section + section { margin-top: var(--section); }
+.list, .uploads { list-style: none; margin-top: var(--gap); display: flex; flex-direction: column; gap: 8px; }
+.item, .upload {
+  display: grid; grid-template-columns: 48px minmax(0, 1fr) 44px; align-items: center; gap: var(--gap);
+  padding: 12px; border-radius: var(--radius); background: var(--card);
+}
+.thumb {
+  width: 48px; height: 48px; border-radius: 12px; background: var(--raised); color: var(--dim);
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.name { font-size: 16px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.sub { font-size: 14px; color: var(--dim); margin-top: 2px; overflow-wrap: anywhere; }
+.round {
+  width: 44px; height: 44px; border-radius: 22px; background: var(--raised); color: var(--text);
+  display: flex; align-items: center; justify-content: center; text-decoration: none;
+}
+.round:active { background: var(--pressed); }
+.empty {
+  margin-top: var(--gap); padding: 24px 20px; border-radius: var(--radius); text-align: center;
+  border: 1px dashed rgba(255, 255, 255, 0.22); color: var(--dim); font-size: 15px;
+}
+.pick {
+  margin-top: var(--gap); width: 100%; min-height: 56px; padding: 14px 20px; border-radius: var(--radius);
+  background: var(--text); color: #000; font-size: 17px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; gap: 10px; text-align: center;
+}
+.pick:active { background: #d9d9de; }
+.pick.disabled { background: var(--raised); color: var(--faint); }
+.pick svg { stroke-width: 2.2; }
+.upload .state {
+  width: 48px; height: 48px; border-radius: 12px; background: var(--raised); color: var(--dim);
+  display: flex; align-items: center; justify-content: center;
+}
+.upload.done .state { background: rgba(48, 209, 88, 0.18); color: var(--green); }
+.upload.failed .state { background: rgba(255, 105, 97, 0.18); color: var(--red); }
+.upload.failed .sub { color: var(--red); }
+.bar { height: 4px; border-radius: 2px; background: var(--raised); margin-top: 8px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--text); border-radius: 2px; transition: width 0.2s; }
+.upload.done .bar, .upload.failed .bar, .upload.stopped .bar, .upload.waiting .bar { display: none; }
+
+/* Everything else: the mascot big, a title, a line. */
+.message { text-align: center; padding-top: 40px; display: flex; flex-direction: column; align-items: center; }
+.message .slot { width: 120px; height: 120px; margin-bottom: 20px; }
+.message h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.3px; line-height: 1.2; }
+.message p { color: var(--dim); font-size: 16px; margin-top: 8px; max-width: 320px; }
+.message .again {
+  margin-top: 24px; min-height: 48px; padding: 12px 28px; border-radius: 24px; background: var(--raised); font-weight: 600;
+}
+.message .foot { margin-top: 40px; font-size: 14px; color: var(--faint); }
+.code {
+  margin-top: 20px; font-size: 46px; font-weight: 700; letter-spacing: 10px; padding-left: 10px;
+  font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+
+/* A picture to keep in the phone's photos. */
+.viewer {
+  position: fixed; inset: 0; z-index: 2; background: var(--bg);
+  display: flex; flex-direction: column; padding: max(16px, env(safe-area-inset-top)) var(--gutter)
+    max(24px, env(safe-area-inset-bottom));
+}
+.viewer .bar-top { display: flex; justify-content: flex-end; }
+.viewer img { flex: 1; min-height: 0; width: 100%; object-fit: contain; margin: 12px 0; -webkit-touch-callout: default; }
+.viewer p { text-align: center; color: var(--dim); font-size: 15px; }
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+</style>
+</head>
+<body>
+<svg hidden>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-9 9"/></symbol>
+  <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="5" width="13" height="14" rx="3"/><path d="m16 10 5-3v10l-5-3"/></symbol>
+  <symbol id="i-audio" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-cross" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V7M6 12l6-6 6 6"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></symbol>
+</svg>
+<canvas id="bot" width="240" height="240" aria-hidden="true"></canvas>
+<main>
+  <div id="hello" class="message"><div class="slot"></div></div>
+
+  <div id="wait" class="message" hidden>
+    <div class="slot"></div>
+    <h1>Allow this phone</h1>
+    <p>Press Allow on your computer if it shows this code.</p>
+    <div class="code" id="code" aria-label="Code"></div>
+  </div>
+
+  <div id="denied" class="message" hidden>
+    <div class="slot"></div>
+    <h1>Not allowed</h1>
+    <p>Your computer said no.</p>
+    <p class="foot">To try again, scan a new code from Isle.</p>
+  </div>
+
+  <div id="removed" class="message" hidden>
+    <div class="slot"></div>
+    <h1>Disconnected</h1>
+    <p>This phone was removed on your computer.</p>
+    <p class="foot">To connect again, scan a new code from Isle.</p>
+  </div>
+
+  <div id="expired" class="message" hidden>
+    <div class="slot"></div>
+    <h1>No answer</h1>
+    <p>Nobody pressed Allow in time.</p>
+    <button class="again" id="again" type="button">Ask again</button>
+  </div>
+
+  <div id="busy" class="message" hidden>
+    <div class="slot"></div>
+    <h1>Too many phones</h1>
+    <p>Three can connect at once.</p>
+    <button class="again" id="retry-busy" type="button">Try again</button>
+  </div>
+
+  <div id="later" class="message" hidden>
+    <div class="slot"></div>
+    <h1>One moment</h1>
+    <p id="later-text">This phone asked a moment ago.</p>
+    <button class="again" id="retry-later" type="button">Try again</button>
+  </div>
+
+  <div id="stopped" class="message" hidden>
+    <div class="slot"></div>
+    <h1>Sharing stopped</h1>
+    <p>It was turned off on your computer.</p>
+    <p class="foot">To share again, press Phone on the Shelf and scan the new code.</p>
+  </div>
+
+  <div id="away" class="message" hidden>
+    <div class="slot"></div>
+    <h1>Can’t reach your computer</h1>
+    <p>Same Wi-Fi? Is sharing still on?</p>
+    <button class="again" id="retry" type="button">Try again</button>
+  </div>
+
+  <div id="main" hidden>
+    <div class="top">
+      <div class="slot"></div>
+      <div><h1>Connected</h1><p>to your computer’s Shelf</p></div>
+    </div>
+    <section>
+      <h2>From your computer</h2>
+      <p class="lead" id="from-lead">Tap ↓ to save.</p>
+      <ul class="list" id="items"></ul>
+      <div class="empty" id="empty" hidden>Nothing on the Shelf yet.</div>
+    </section>
+    <section>
+      <h2>Send to your computer</h2>
+      <p class="lead" id="room"></p>
+      <input type="file" id="files" multiple hidden>
+      <label class="pick" id="pick" for="files" role="button"><svg><use href="#i-plus"/></svg><span>Choose photos or files</span></label>
+      <ul class="uploads" id="uploads"></ul>
+    </section>
+  </div>
+</main>
+
+<div class="viewer" id="viewer" hidden>
+  <div class="bar-top"><button class="round" id="close" type="button" aria-label="Close"><svg><use href="#i-cross"/></svg></button></div>
+  <img id="picture" alt="">
+  <p>Press and hold the picture, then Save to Photos.</p>
+</div>
+
+<script nonce="{{NONCE}}">
+'use strict';
+const TOKEN = location.pathname.split('/')[1];
+const api = path => `/${TOKEN}/${path}`;
+const $ = id => document.getElementById(id);
+const VIEWS = ['hello', 'wait', 'denied', 'removed', 'expired', 'busy', 'later', 'stopped', 'away', 'main'];
+/** Views that end it: nothing more is asked of the computer. */
+const ENDS = new Set(['denied', 'removed', 'stopped']);
+const KINDS = {image: 'Picture', video: 'Video', audio: 'Audio', pdf: 'PDF', doc: 'Document', archive: 'Archive', file: 'File'};
+const ERRORS = {
+  'shelf-full': 'The Shelf is full',
+  'too-big': 'Too big to send',
+  'session-full': 'Sharing has taken all it can',
+  'disk': 'Not enough space on the computer',
+  'not-allowed': 'Stopped',
+  'incomplete': 'Stopped',
+};
+// iPhone, iPad and iPad's desktop-style browser (touch, and that browser's own version mark).
+// The iPad's desktop-style browser: a desktop browser's marks, with touch, on no other system (a Linux
+// touchscreen's WebKit browser says Linux or X11).
+const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+  (navigator.maxTouchPoints > 1 && /Version\/[\d.]+.*Safari\//.test(navigator.userAgent) &&
+    !/Linux|X11|Android|Windows|CrOS/.test(navigator.userAgent));
+
+// The mascot: Isle's bot, the white blob with eyes, ported from the island's bot.js
+// (itself after bloub, MIT, © 2026 Jérémy Perret, github.com/jeremy-prt/bloub).
+const Bot = (() => {
+  const canvas = $('bot');
+  const ctx = canvas.getContext('2d');
+  const still = matchMedia('(prefers-reduced-motion: reduce)');
+  const GLOW = [[143, 102, 255], [69, 143, 255], [56, 214, 245]];
+  const LIGHT = [250, 250, 252], BASE = [245, 245, 248], SHADE = [189, 194, 214], EYES = [18, 18, 23];
+  const pair = (w, h, open = 1, curve = 0) => [{w, h, open, curve}, {w, h, open, curve}];
+  const FACES = {
+    attentive: {yaw: 3, pitch: 4, roll: 0, split: 16, eyes: pair(0.22, 0.44)},
+    happy: {yaw: 2, pitch: 7, roll: 0, split: 17, eyes: pair(0.3, 0.27, 1, 1)},
+    joy: {yaw: 0, pitch: 8, roll: 0, split: 17.5, eyes: pair(0.34, 0.3, 1, 1)},
+    confused: {yaw: -6, pitch: 2, roll: 7, split: 16, eyes: [{w: 0.22, h: 0.44, open: 1, curve: 0}, {w: 0.22, h: 0.44, open: 0.66, curve: 0}]},
+    sad: {yaw: 2, pitch: -9, roll: 0, split: 15.5, eyes: pair(0.22, 0.42, 0.6)},
+    sleepy: {yaw: 3, pitch: -7, roll: -2, split: 16, eyes: pair(0.22, 0.42, 0.4)},
+  };
+  const copy = face => ({...face, eyes: face.eyes.map(eye => ({...eye}))});
+  const RAD = Math.PI / 180;
+  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  let face = copy(FACES.attentive), mood = 'attentive', cheerUntil = 0, hopAt = -9;
+  let gaze = {x: 0, y: 0, vx: 0, vy: 0}, look = null, lookAt = -9, glance = {x: 0, y: 0}, nextGlance = 0;
+  let blinkAt = -1, nextBlink = 1.2, last = 0, drawn = -1e9, size = 0;
+
+  /** Turns `u` towards `v` by `angle`, `v` along. */
+  function rotate(u, v, angle) {
+    const c = Math.cos(angle), s = Math.sin(angle);
+    for (let i = 0; i < 3; i++) {
+      const x = u[i], y = v[i];
+      u[i] = x * c + y * s;
+      v[i] = y * c - x * s;
+    }
+  }
+
+  function step(time) {
+    const dt = Math.min(0.1, Math.max(0, time - last));
+    last = time;
+    if (look && time - lookAt > 2.5)
+      look = null;
+    if (!look && time >= nextGlance) {
+      glance = {x: (Math.random() * 2 - 1) * 0.7, y: (Math.random() * 2 - 1) * 0.4};
+      nextGlance = time + 1.2 + Math.random() * 2.4;
+    }
+    const target = look ?? glance;
+    // The eyes' spring in small steps: drawn 8 times a second when calm, one big step would fly off.
+    for (let rest = dt; rest > 1e-6; rest -= 1 / 60) {
+      const h = Math.min(rest, 1 / 60);
+      gaze.vx += ((target.x - gaze.x) * 420 - gaze.vx * 25) * h;
+      gaze.vy += ((target.y - gaze.y) * 420 - gaze.vy * 25) * h;
+      gaze.x += gaze.vx * h;
+      gaze.y += gaze.vy * h;
+    }
+    const goal = FACES[time < cheerUntil ? 'joy' : mood];
+    const morph = 1 - Math.exp(-dt * 10);
+    for (const key of ['yaw', 'pitch', 'roll', 'split'])
+      face[key] += (goal[key] - face[key]) * morph;
+    face.eyes.forEach((eye, i) => {
+      for (const key of ['w', 'h', 'open', 'curve'])
+        eye[key] += (goal.eyes[i][key] - eye[key]) * morph;
+    });
+    if (time >= nextBlink) {
+      blinkAt = time;
+      const sleepy = face.eyes[0].open < 0.7;
+      nextBlink = time + (sleepy ? 3.5 + Math.random() * 3 : Math.random() < 0.18 ? 0.26 : 1.9 + Math.random() * 2.7);
+    }
+  }
+
+  // The canvas is ROOM times its slot, the body BODY of the canvas across (as 0.36 of the slot): the glow
+  // reaches 0.7 + 1.05 body radii from the middle, inside the canvas.
+  const ROOM = 1.4, BODY = 0.36 / ROOM;
+
+  // The glow and the lit body are drawn into their own canvases, the glow again twice a second (it breathes
+  // slowly) and the body once per size; each frame then only places them and draws the eyes.
+  const glowCanvas = document.createElement('canvas'), bodyCanvas = document.createElement('canvas');
+  let glowAt = -1, bodyFor = 0;
+
+  function paintGlow(time, px) {
+    glowCanvas.width = glowCanvas.height = px;
+    const g = glowCanvas.getContext('2d'), r = px * BODY, t = time * 2 * Math.PI;
+    g.globalCompositeOperation = 'lighter';
+    GLOW.forEach((color, i) => {
+      const a = (0.25 + i * 0.25) * Math.PI + 0.25 * Math.sin(t / 7 + i * 2);
+      const x = px / 2 + Math.cos(a) * r * 0.55, y = px / 2 + Math.sin(a) * r * 0.55 + r * 0.15;
+      const glow = g.createRadialGradient(x, y, 0, x, y, r * 1.05);
+      glow.addColorStop(0, rgba(color, 0.42));
+      glow.addColorStop(1, rgba(color, 0));
+      g.fillStyle = glow;
+      g.fillRect(0, 0, px, px);
+    });
+  }
+
+  // A soft, lit body: light from the top left, a shade round the far side, a glint, the glow on its edge.
+  function paintBody(px) {
+    bodyCanvas.width = bodyCanvas.height = px;
+    const g = bodyCanvas.getContext('2d'), r = px * BODY;
+    g.translate(px / 2, px / 2);
+    g.beginPath();
+    g.arc(0, 0, r, 0, 2 * Math.PI);
+    const body = g.createRadialGradient(-0.38 * r, -0.42 * r, 0, -0.1 * r, -0.1 * r, 1.35 * r);
+    body.addColorStop(0, rgba(LIGHT, 1));
+    body.addColorStop(0.45, rgba(BASE, 1));
+    body.addColorStop(1, rgba(SHADE, 1));
+    g.fillStyle = body;
+    g.fill();
+    g.save();
+    g.clip();
+    const caught = g.createLinearGradient(0, 0.35 * r, 0, 1.15 * r);
+    caught.addColorStop(0, rgba(GLOW[1], 0));
+    caught.addColorStop(1, rgba(GLOW[1], 0.32));
+    g.fillStyle = caught;
+    g.fillRect(-r, -r, 2 * r, 2 * r);
+    const glint = g.createRadialGradient(-0.42 * r, -0.5 * r, 0, -0.42 * r, -0.5 * r, 0.42 * r);
+    glint.addColorStop(0, 'rgba(255,255,255,0.6)');
+    glint.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = glint;
+    g.fillRect(-r, -r, 2 * r, 2 * r);
+    g.restore();
+    g.lineWidth = Math.max(0.8, r / 15);
+    const rim = g.createLinearGradient(0, -r, 0, r);
+    rim.addColorStop(0, 'rgba(255,255,255,0.5)');
+    rim.addColorStop(0.5, 'rgba(255,255,255,0)');
+    rim.addColorStop(1, rgba(GLOW[1], 0.25));
+    g.strokeStyle = rim;
+    g.stroke();
+  }
+
+  function paint(time) {
+    const ratio = Math.min(2, devicePixelRatio || 1);
+    const px = Math.round(size * ratio);
+    if (canvas.width !== px)
+      canvas.width = canvas.height = px;
+    if (bodyFor !== px) {
+      paintBody(px);
+      bodyFor = px;
+      glowAt = -1;
+    }
+    if (time - glowAt > 0.5 || time < glowAt) {
+      paintGlow(time, px);
+      glowAt = time;
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, px, px);
+    ctx.drawImage(glowCanvas, 0, 0);
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    const r = size * BODY;
+    const t = time * 2 * Math.PI;
+    const hop = time - hopAt < 0.6 ? Math.max(0, Math.sin(Math.PI * (time - hopAt) / 0.36)) : 0;
+    const yaw = Math.max(-20, Math.min(20, face.yaw + gaze.x * 12 + 2.2 * Math.sin(t / 11.3 + 0.4)));
+    const pitch = Math.max(-16, Math.min(16, face.pitch - gaze.y * 10 + 1.7 * Math.sin(t / 9.1 + 1.3)));
+    const roll = face.roll + 0.9 * Math.sin(t / 13.7 + 3.2);
+    const stretch = 1 + 0.006 * Math.sin(t / 3.4);
+    ctx.save();
+    ctx.translate(size / 2 + gaze.x * r * 0.087, size / 2 + gaze.y * r * 0.067 - hop * r * 0.16);
+    ctx.scale(0.94 * (1 - 0.5 * (stretch - 1)), 0.94 * stretch);
+    ctx.drawImage(bodyCanvas, -size / 2, -size / 2, size, size);
+    eyes(r, yaw, pitch, roll, time);
+    ctx.restore();
+  }
+
+  // The eyes, on a ball turned with the head, narrowing as they turn away; a smile is an arc.
+  function eyes(r, yaw, pitch, roll, time) {
+    const forward = [0, 0, 1], across = [1, 0, 0], up = [0, 1, 0];
+    rotate(forward, across, yaw * RAD);
+    rotate(up, forward, pitch * RAD);
+    rotate(across, up, roll * RAD);
+    const ball = r * 17.3 / 15, unit = r * 20.3 / 15;
+    face.eyes.forEach((eye, index) => {
+      const at = forward.slice(), side = across.slice();
+      rotate(at, side, face.split * (index ? 1 : -1) * RAD);
+      const since = time - blinkAt, length = eye.open < 0.7 ? 0.36 : 0.18;
+      let lid = 1;
+      if (since >= 0 && since < length) {
+        const k = since / length;
+        lid = k < 0.45 ? 1 - k / 0.45 : (k - 0.45) / 0.55;
+      }
+      const w = unit * eye.w, h = unit * eye.h * (0.08 + 0.92 * lid);
+      const angle = Math.atan2(side[1], side[0]);
+      ctx.save();
+      ctx.translate(at[0] * ball, at[1] * ball);
+      ctx.rotate(angle * 0.4);
+      const sideLength = Math.hypot(side[0], side[1]);
+      const upLength = Math.abs(-Math.sin(angle) * up[0] + Math.cos(angle) * up[1]);
+      ctx.scale(1 - 0.3 * (1 - sideLength), 1 - 0.3 * (1 - upLength));
+      const open = Math.max(0.12, Math.min(1, eye.open));
+      if (open < 0.99) {
+        ctx.beginPath();
+        ctx.rect(-w, h / 2 - h * open, 2 * w, h * open + 1);
+        ctx.clip();
+      }
+      ctx.fillStyle = ctx.strokeStyle = rgba(EYES, 1);
+      if (eye.curve < 0.98) {
+        ctx.globalAlpha = 1 - eye.curve;
+        // A capsule, by hand: older browsers have no roundRect.
+        const rr = Math.min(w, h) / 2, left = -w / 2 + rr, right = w / 2 - rr, top = -h / 2 + rr, bottom = h / 2 - rr;
+        ctx.beginPath();
+        ctx.arc(right, top, rr, -Math.PI / 2, 0);
+        ctx.arc(right, bottom, rr, 0, Math.PI / 2);
+        ctx.arc(left, bottom, rr, Math.PI / 2, Math.PI);
+        ctx.arc(left, top, rr, Math.PI, 1.5 * Math.PI);
+        ctx.closePath();
+        ctx.fill();
+      }
+      if (eye.curve > 0.02) {
+        const arc = w / 2;
+        ctx.globalAlpha = eye.curve;
+        ctx.lineWidth = Math.max(1, w * 0.42);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(0, arc * 0.55 + (1 - lid) * arc * 0.3, arc, Math.PI * 1.18, Math.PI * 1.82);
+        ctx.stroke();
+      }
+      ctx.restore();
+    });
+  }
+
+  // Animated only while seen and while something goes on: 24 frames a second, 12 when calm. A few seconds after
+  // the last change or touch (and with reduced motion) a still pose, drawn again only for a blink every few
+  // seconds. Nothing while hidden, scrolled away or under the picture viewer. Frames and timers kept apart.
+  let changedAt = 0, blinking = false, raf = 0, timer = 0, onScreen = true, paused = false;
+  const calm = () => mood === 'sleepy' || mood === 'sad';
+  const settled = () => still.matches || performance.now() / 1000 - changedAt > (calm() ? 3 : 5);
+  /** Something happened: it moves again a while. */
+  const wake = () => {
+    changedAt = performance.now() / 1000;
+    nextBlink = Math.min(nextBlink, changedAt + 1.5);
+  };
+
+  function draw(now) {
+    const time = now / 1000;
+    step(time);
+    paint(time);
+    drawn = now;
+  }
+
+  function tick(now) {
+    raf = 0;
+    if (blinking) {
+      draw(now);
+      if (now / 1000 - blinkAt > 0.4)
+        blinking = false;
+    } else if (now - drawn >= (calm() ? 80 : 40)) {
+      draw(now);
+    }
+    schedule();
+  }
+
+  function schedule() {
+    if (raf || timer || document.hidden || !size || !onScreen || paused)
+      return;
+    if (settled() && !blinking) {
+      // Still: the pose as it is, then a blink in a while.
+      draw(performance.now());
+      timer = setTimeout(() => {
+        timer = 0;
+        blinkAt = performance.now() / 1000;
+        nextBlink = Infinity;
+        blinking = true;
+        schedule();
+      }, 3500 + Math.random() * 3000);
+      return;
+    }
+    raf = requestAnimationFrame(tick);
+  }
+
+  function stop() {
+    if (raf)
+      cancelAnimationFrame(raf);
+    if (timer)
+      clearTimeout(timer);
+    raf = timer = 0;
+  }
+
+  // Scrolled out of view: nothing drawn until it is back.
+  new IntersectionObserver(entries => {
+    onScreen = entries.at(-1).isIntersecting;
+    if (onScreen)
+      schedule();
+    else
+      stop();
+  }).observe(canvas);
+
+  // The finger or the pointer: the eyes follow it a while.
+  const follow = event => {
+    const point = event.touches?.[0] ?? event;
+    const box = canvas.getBoundingClientRect();
+    if (!box.width)
+      return;
+    const x = (point.clientX - box.left - box.width / 2) / (innerWidth / 2);
+    const y = (point.clientY - box.top - box.height / 2) / (innerHeight / 2);
+    look = {x: Math.max(-1, Math.min(1, x * 1.6)), y: Math.max(-1, Math.min(1, y * 1.6))};
+    lookAt = performance.now() / 1000;
+    if (settled()) {
+      wake();
+      stop();
+      schedule();
+    } else {
+      wake();
+    }
+  };
+  addEventListener('pointermove', follow, {passive: true});
+  addEventListener('touchstart', follow, {passive: true});
+  addEventListener('touchmove', follow, {passive: true});
+  document.addEventListener('visibilitychange', () => (document.hidden ? stop() : schedule()));
+  addEventListener('pagehide', stop);
+
+  return {
+    /** Into `slot` (its size), drawn at once. */
+    place(slot) {
+      if (canvas.parentNode === slot)
+        return;
+      slot.append(canvas);
+      size = Math.round(slot.clientWidth * ROOM);
+      canvas.style.width = canvas.style.height = `${size}px`;
+      wake();
+      stop();
+      draw(performance.now());
+      schedule();
+    },
+    /** Covered (the picture viewer): nothing drawn until uncovered. */
+    pause(covered) {
+      paused = covered;
+      if (covered) {
+        stop();
+      } else {
+        wake();
+        schedule();
+      }
+    },
+    /** attentive, happy, sleepy, sad or confused. */
+    mood(name) {
+      if (name === mood)
+        return;
+      blinkAt = performance.now() / 1000;
+      wake();
+      mood = name;
+      stop();
+      schedule();
+    },
+    /** A moment of joy and a little hop. */
+    cheer() {
+      const time = performance.now() / 1000;
+      cheerUntil = time + 1.6;
+      hopAt = time;
+      blinkAt = time;
+      wake();
+      stop();
+      schedule();
+    },
+    stop,
+  };
+})();
+
+let version = null;
+let polling = false;
+let finished = false;
+let helloAt = 0;
+let shelf = {room: 0, max_file: 0, left: 0, capacity: 6};
+const rows = new Map();
+const queue = [];
+let sending = null;
+
+const MOODS = {hello: 'attentive', wait: 'attentive', main: 'attentive', denied: 'sad', removed: 'sad', expired: 'confused',
+  busy: 'confused', later: 'confused', stopped: 'sleepy', away: 'confused'};
+
+function show(view) {
+  const was = VIEWS.find(name => !$(name).hidden);
+  for (const name of VIEWS)
+    $(name).hidden = name !== view;
+  Bot.mood(MOODS[view]);
+  Bot.place($(view).querySelector('.slot'));
+  if (view === 'main' && was === 'wait')
+    Bot.cheer();
+  // Removed: sad a moment, then calm.
+  if (view === 'removed' && was !== 'removed')
+    setTimeout(() => Bot.mood('sleepy'), 2500);
+  if (ENDS.has(view))
+    end();
+}
+
+/** Nothing more: transfers stop (marked Stopped, not failed), buttons go dim, no more asking. */
+function end() {
+  finished = true;
+  for (const upload of queue.splice(0))
+    finish(upload, 'stopped', 'Stopped');
+  if (sending) {
+    sending.request.abort();
+    finish(sending, 'stopped', 'Stopped');
+    sending = null;
+  }
+  $('files').disabled = true;
+  $('pick').classList.add('disabled');
+  for (const button of document.querySelectorAll('button'))
+    button.disabled = true;
+  for (const link of document.querySelectorAll('.round[href]'))
+    link.removeAttribute('href');
+  closeViewer();
+}
+
+function icon(name) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', `#i-${name}`);
+  svg.append(use);
+  return svg;
+}
+
+function element(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className)
+    node.className = className;
+  if (text !== undefined)
+    node.textContent = text;
+  return node;
+}
+
+/** "2.4 MB", in steps of 1000 as file managers count. */
+function size(bytes) {
+  const units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
+  let n = bytes, i = 0;
+  while (n >= 1000 && i < units.length - 1) {
+    n /= 1000;
+    i++;
+  }
+  return i === 0 ? `${n} ${n === 1 ? 'byte' : 'bytes'}` : `${n < 10 ? Math.round(n * 10) / 10 : Math.round(n)} ${units[i]}`;
+}
+
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+/** A fetch given up after `ms`: an address gone away never answers at all. */
+function fetchWithin(url, ms, options = {}) {
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), ms);
+  return fetch(url, {...options, cache: 'no-store', signal: stop.signal}).finally(() => clearTimeout(timer));
+}
+
+async function hello() {
+  // Asked again at once (cookies refused, say): a pause, never a loop of requests.
+  const since = Date.now() - helloAt;
+  if (since < 3000)
+    await wait(3000 - since);
+  helloAt = Date.now();
+  finished = false;
+  let state;
+  try {
+    const answer = await fetchWithin(api('api/hello'), 10000, {method: 'POST'});
+    state = await answer.json();
+  } catch {
+    show('away');
+    return;
+  }
+  apply(state);
+}
+
+function apply(state) {
+  switch (state.status) {
+  case 'allowed':
+    // From hello, a phone allowed before (the page reloaded): the shelf comes with the first poll.
+    if (state.items) {
+      show('main');
+      render(state);
+    }
+    break;
+  case 'asking':
+    showCode(state);
+    break;
+  case 'denied':
+  case 'removed':
+  case 'stopped':
+    show(state.status);
+    return;
+  case 'later':
+    // Another browser on this phone (or cookies cleared) asked a moment ago: a new ask waits a little.
+    $('later-text').textContent = `This phone asked a moment ago. Try again in ${state.wait ?? 60} s.`;
+    show('later');
+    return;
+  case 'expired':
+  case 'busy':
+    show(state.status);
+    return;
+  default:
+    // Unknown here (the cookie went, or another session): ask again.
+    hello();
+    return;
+  }
+  poll();
+}
+
+/** Waiting for Allow: the code the island asks with, big. */
+function showCode(state) {
+  $('code').textContent = state.code ?? '';
+  show('wait');
+}
+
+/** Waits for changes while the page is in view: each answer comes when something changed, or after a while. */
+async function poll() {
+  if (polling || finished || document.hidden)
+    return;
+  polling = true;
+  let failures = 0;
+  try {
+    while (!finished && !document.hidden) {
+      let state;
+      try {
+        // The computer answers within 25 s; after a failure, a quicker try.
+        const answer = await fetchWithin(api(`api/state${version === null ? '' : `?v=${version}`}`), failures ? 8000 : 32000);
+        if (answer.status === 429)
+          throw new Error('slow down');
+        state = await answer.json();
+      } catch {
+        if (finished)
+          return;
+        if (++failures >= 2) {
+          show('away');
+          return;
+        }
+        await wait(2000);
+        continue;
+      }
+      failures = 0;
+      version = state.v;
+      if (state.status === 'allowed') {
+        show('main');
+        render(state);
+      } else if (state.status === 'asking') {
+        showCode(state);
+      } else {
+        polling = false;
+        apply(state);
+        return;
+      }
+    }
+  } finally {
+    polling = false;
+  }
+}
+
+function render(state) {
+  shelf = state;
+  const list = $('items');
+  const ids = new Set(state.items.map(item => item.id));
+  for (const [id, row] of rows) {
+    if (!ids.has(id)) {
+      row.remove();
+      rows.delete(id);
+    }
+  }
+  state.items.forEach((item, index) => {
+    let row = rows.get(item.id);
+    if (!row) {
+      row = itemRow(item);
+      rows.set(item.id, row);
+    }
+    if (list.children[index] !== row)
+      list.insertBefore(row, list.children[index] ?? null);
+  });
+  $('empty').hidden = state.items.length > 0;
+  $('from-lead').hidden = state.items.length === 0;
+  syncRoom();
+}
+
+function itemRow(item) {
+  const row = element('li', 'item');
+  const thumb = element('div', 'thumb');
+  thumb.append(icon(item.kind === 'image' ? 'image' : item.kind === 'pdf' ? 'doc' : item.kind));
+  if (item.thumb) {
+    const img = new Image();
+    img.alt = '';
+    img.addEventListener('load', () => thumb.replaceChildren(img));
+    img.src = api(`t/${item.id}`);
+  }
+  const meta = element('div', 'meta');
+  meta.append(element('div', 'name', item.name), element('div', 'sub', `${size(item.size)} · ${KINDS[item.kind] ?? 'File'}`));
+  const save = element('a', 'round');
+  save.href = api(`f/${item.id}`);
+  save.setAttribute('download', item.name);
+  save.setAttribute('aria-label', `Save ${item.name}`);
+  // A picture on an iPhone or iPad opens in place, to keep in the photos: a download there goes to Files.
+  if (IOS && item.view) {
+    save.addEventListener('click', event => {
+      event.preventDefault();
+      openViewer(item);
+    });
+  }
+  save.append(icon('down'));
+  row.append(thumb, meta, save);
+  return row;
+}
+
+function openViewer(item) {
+  $('picture').src = api(`f/${item.id}?view=1`);
+  $('picture').alt = item.name;
+  $('viewer').hidden = false;
+  Bot.pause(true);
+}
+
+function closeViewer() {
+  $('viewer').hidden = true;
+  $('picture').removeAttribute('src');
+  Bot.pause(false);
+}
+
+function syncRoom() {
+  // The computer counts the file on its way; those waiting here are counted here.
+  const room = finished ? 0 : Math.max(0, shelf.room - queue.length);
+  $('files').disabled = room === 0;
+  $('pick').classList.toggle('disabled', room === 0);
+  $('pick').setAttribute('aria-disabled', String(room === 0));
+  $('room').textContent = room > 0
+    ? `Room for ${room} more ${room === 1 ? 'file' : 'files'}, up to ${size(shelf.max_file)} each.`
+    : 'The Shelf is full. Remove something on your computer to send more.';
+}
+
+// Choosing files hides the page behind the phone's picker a while: the computer hears it so first.
+$('pick').addEventListener('click', () => {
+  if (!finished)
+    navigator.sendBeacon(api('api/picking'));
+});
+
+/** Back from the phone's picker: the computer hears at once, so it can count the phone away again later. */
+function back() {
+  if (!finished && !$('main').hidden)
+    fetchWithin(api('api/state'), 8000).catch(() => {});
+}
+addEventListener('focus', back);
+
+$('files').addEventListener('change', event => {
+  back();
+  // Each pick on top, its files in the order chosen.
+  const batch = document.createDocumentFragment();
+  let room = shelf.room - queue.length;
+  for (const file of event.target.files) {
+    const upload = uploadRow(file, batch);
+    // More than fit: those past the room are turned down here, not sent.
+    if (room-- > 0)
+      queue.push(upload);
+    else
+      finish(upload, 'failed', `No room: the Shelf holds ${shelf.capacity} files`);
+  }
+  $('uploads').prepend(batch);
+  event.target.value = '';
+  syncRoom();
+  next();
+});
+
+function uploadRow(file, batch) {
+  const row = element('li', 'upload waiting');
+  const state = element('div', 'state');
+  state.append(icon('up'));
+  const meta = element('div', 'meta');
+  const sub = element('div', 'sub', `${size(file.size)} · waiting`);
+  const bar = element('div', 'bar');
+  const fill = element('i');
+  bar.append(fill);
+  meta.append(element('div', 'name', file.name || 'File'), sub, bar);
+  row.append(state, meta, element('div'));
+  batch.append(row);
+  return {file, row, state, sub, fill};
+}
+
+/** `how`: done, failed or stopped. */
+function finish(upload, how, text) {
+  upload.row.classList.remove('waiting');
+  upload.row.classList.add(how);
+  upload.state.replaceChildren(icon({done: 'check', failed: 'cross', stopped: 'pause'}[how]));
+  upload.sub.textContent = text;
+}
+
+/** Sends the next file in line, one at a time. */
+function next() {
+  if (sending || finished || queue.length === 0)
+    return;
+  const upload = queue.shift();
+  const {file} = upload;
+  if (file.size > shelf.max_file) {
+    finish(upload, 'failed', `${size(file.size)} · too big, up to ${size(shelf.max_file)}`);
+    return next();
+  }
+  if (file.size > shelf.left) {
+    finish(upload, 'failed', ERRORS['session-full']);
+    return next();
+  }
+  sending = upload;
+  upload.row.classList.remove('waiting');
+  upload.sub.textContent = `${size(file.size)} · sending`;
+  const request = upload.request = new XMLHttpRequest();
+  request.open('PUT', api(`api/upload?name=${encodeURIComponent(file.name || 'File')}`));
+  request.upload.addEventListener('progress', event => {
+    if (!event.lengthComputable || sending !== upload)
+      return;
+    const share = event.loaded / event.total;
+    upload.fill.style.width = `${share * 100}%`;
+    upload.sub.textContent = `${size(file.size)} · ${Math.floor(share * 100)}%`;
+  });
+  const done = () => {
+    if (sending !== upload)
+      return;
+    sending = null;
+    syncRoom();
+    next();
+  };
+  request.addEventListener('load', () => {
+    if (sending !== upload)
+      return;
+    if (request.status === 201) {
+      let name = file.name;
+      try {
+        name = JSON.parse(request.responseText).name;
+      } catch {}
+      finish(upload, 'done', `${size(file.size)} · on the Shelf${name !== file.name ? ` as ${name}` : ''}`);
+      shelf.left -= file.size;
+      Bot.cheer();
+    } else {
+      let error = '';
+      try {
+        error = JSON.parse(request.responseText).error;
+      } catch {}
+      finish(upload, error === 'incomplete' || error === 'not-allowed' ? 'stopped' : 'failed',
+        ERRORS[error] ?? 'Couldn’t send it');
+    }
+    done();
+  });
+  request.addEventListener('error', () => {
+    if (sending !== upload)
+      return;
+    finish(upload, 'failed', 'Couldn’t send it. Check the Wi-Fi.');
+    done();
+  });
+  request.send(file);
+}
+
+$('again').addEventListener('click', hello);
+$('retry-busy').addEventListener('click', hello);
+$('retry-later').addEventListener('click', hello);
+$('retry').addEventListener('click', () => {
+  version = null;
+  hello();
+});
+$('close').addEventListener('click', closeViewer);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && !finished)
+    poll();
+});
+// Closed or reloaded: the computer hears at once (a reload comes back within seconds).
+addEventListener('pagehide', () => {
+  if (!finished)
+    navigator.sendBeacon(api('api/bye'));
+});
+show('hello');
+hello();
+</script>
+</body>
+</html>

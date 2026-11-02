@@ -20,7 +20,7 @@ import {AppUsage} from './appUsage.js';
 import {paletteFor} from './bot.js';
 import {ClipboardHistory} from './clipboard.js';
 import {CompactView} from './compact.js';
-import {HAS_ACCENT, grabsKeyboard, inhibitScanout, isMaximized, onUiScale, px, uiScale} from './compat.js';
+import {HAS_ACCENT, grabsKeyboard, inhibitScanout, isWayland, onUiScale, px, uiScale} from './compat.js';
 import {Daemon} from './daemon.js';
 import {BOTTOM_PADDING, ExpandedView, PAGE_HEIGHT} from './expanded.js';
 import {Island} from './island.js';
@@ -33,8 +33,9 @@ import {NotificationCenter} from './notifications.js';
 import {PrivacyMonitor} from './privacy.js';
 import {PeekView} from './peek.js';
 import * as Playback from './playback.js';
-import {KeyboardWatcher, OsdHook, TopBar} from './shell.js';
+import {KeyboardWatcher, OsdHook, REACH_PX, TopBar, windowAtTop} from './shell.js';
 import {ShelfHelper} from './shelfHelper.js';
+import {isShelfCopy, saveToDownloads, showInFiles} from './downloads.js';
 import {AppsPage} from './pages/apps.js';
 import {CallPage} from './pages/call.js';
 import {CalendarPage} from './pages/calendar.js';
@@ -47,7 +48,7 @@ import {UsagePage} from './pages/usage.js';
 import {ReminderWatcher} from './reminders.js';
 import * as Theme from './theme.js';
 import {GREETING, InstalledApps, UNDO_MS, VoiceView, stopUnit, actionTypes, aiSettings, openSetUp, openSignIn, runActions, signInHint, stopPending, voiceContext} from './voice.js';
-import {autoHideWanted} from './visibilityRules.js';
+import {autoHide, revealBand} from './visibilityRules.js';
 import {TextWriter} from './writer.js';
 
 /** While the pointer rests before the island opens (Settings: hover-delay), it moves at most this far (CSS px). */
@@ -88,6 +89,8 @@ const SYSTEM_ALERTS = {power: 'power', battery_low: 'power', battery_full: 'powe
 const HEADER_WITHOUT_BAR = 32;
 /** A window's animation (minimizing, say) is over by then, so whether it covers the display is checked again. */
 const SCANOUT_SETTLE_MS = 400;
+/** Auto-hidden on a display without the top bar, its top this many px (CSS) still brings it back. */
+const REVEAL_EDGE_PX = 2;
 /** isled may be away this long (restarting after an update) before the island does anything about it. */
 const SERVICE_GRACE_MS = 5000;
 /** Opened from the keyboard without getting it, the island closes this soon unless the pointer is on it. */
@@ -166,6 +169,8 @@ export class Controller {
         this._timeouts = new Map();
         /** When the island last asked for each agent session (`provider:session`); see `_onAgentEvent`. */
         this._askedAt = new Map();
+        /** The AIs whose hook isled is changing now, and whether to ask again after (see `_hookAgent`). */
+        this._hooking = new Map();
         this._presentation = 'compact';
         /** Whether auto-hide has faded the closed island away (see `_syncAutoHide`). */
         this._autoHidden = false;
@@ -284,7 +289,8 @@ export class Controller {
         this._shelfHelper = new ShelfHelper(this._island, this._shelf);
         for (const view of [this._compact, ...this._peeks, this._expanded, this._voice])
             this._island.addView(view);
-        Main.layoutManager.addChrome(this._island, {trackFullscreen: true});
+        Main.layoutManager.addChrome(this._island, this._chromeParams());
+        this._chrome = this._chromeParams();
         // GNOME Shell shutting down takes the island with the stage, Isle still on, and GNOME 51 runs on a
         // moment after: nothing of Isle's may run on it then.
         this._island.connect('destroy', () => {
@@ -309,12 +315,11 @@ export class Controller {
                 this.collapse();
             this._passToAgentWindow(focus);
             this._syncMonitor();
-            // The app in front changed: with "only when an app fills the screen", it may hide or show again.
-            this._syncAutoHide();
         });
         // Hidden by a fullscreen window meanwhile: what waited shows now.
         this._island.connect('notify::visible', () => {
             this._syncScanout();
+            this._syncAutoHide();
             if (!this._island.visible) {
                 this._onHidden();
                 return;
@@ -329,11 +334,15 @@ export class Controller {
         const sync = () => {
             this._syncScanout();
             this._syncAutoHide();
-            this._later('scanout', SCANOUT_SETTLE_MS, () => this._syncScanout());
+            this._later('scanout', SCANOUT_SETTLE_MS, () => {
+                this._syncScanout();
+                this._syncAutoHide();
+            });
         };
         this._scanoutWatches = [
             [global.display, ['restacked', 'workareas-changed', 'in-fullscreen-changed', 'window-entered-monitor',
-                'window-left-monitor']],
+                'window-left-monitor', 'grab-op-end']],
+            [Main.overview, ['showing', 'hidden']],
             [global.window_manager, ['size-changed', 'minimize', 'unminimize', 'map', 'destroy']],
             [global.workspace_manager, ['active-workspace-changed']],
             [Main.layoutManager.panelBox, ['notify::mapped', 'notify::y', 'notify::translation-y']],
@@ -460,6 +469,9 @@ export class Controller {
         });
         this._shelfHelper.connect('drag-over', (_helper, over) => (this._shelf.dropOver = over));
         this._shelfHelper.connect('drag-files', (_helper, uris) => this._shelf.showDragged(uris));
+        // ↓ on a file the Shelf keeps itself, from the island's own tile or the helper's.
+        this._shelf.connect('save-requested', (_page, uri) => this._saveToDownloads(uri));
+        this._shelfHelper.connect('save', (_helper, uri) => this._saveToDownloads(uri));
         this._shelfHelper.connect('drag-end', (_helper, onShelf = false) => {
             // A full shelf turns the file away: the island shakes its head.
             if (this._shelf.endDrop(onShelf))
@@ -484,9 +496,24 @@ export class Controller {
 
         this._settingsChanged = ['notch-depth', 'island-in-top-bar'].map(key =>
             this._settings.connect(`changed::${key}`, () => this._render()));
-        for (const key of ['auto-hide', 'auto-hide-delay', 'auto-hide-fullscreen-only'])
+        for (const key of ['auto-hide', 'auto-hide-delay'])
             this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => this._syncAutoHide(true)));
+        this._settingsChanged.push(this._settings.connect('changed::alerts-over-fullscreen', () => {
+            this._trackIsland();
+            this._syncFullscreen();
+            this._syncAutoHide(true);
+        }));
         this._settingsChanged.push(this._settings.connect('changed::island-monitor', () => this._updateGeometry()));
+        // Notifications left to GNOME again: those in the island, shown or waiting, go as a fresh start has none.
+        this._settingsChanged.push(this._settings.connect('changed::gnome-banners', () => {
+            if (!this._settings.get_boolean('gnome-banners'))
+                return;
+            // The waiting ones first: else each would show, with its sound, as the one before it goes.
+            const notification = alert => alert?.kind === 'notification' || alert?.key === 'notifications-summary';
+            this._queue = this._queue.filter(alert => !notification(alert));
+            if (notification(this._alert))
+                this._withdrawAlert(this._alert.key);
+        }));
         // On the display in use, it follows the window in front, once closed.
         this._focusMonitorChanged = global.display.connect('window-entered-monitor', () => this._syncMonitor());
         this._settingsChanged.push(this._settings.connect('changed::voice-assistant', () => {
@@ -509,6 +536,8 @@ export class Controller {
         this._settingsChanged.push(this._settings.connect('changed::clock-format', () => {
             Format.setClockFormat(this._settings.get_string('clock-format'));
             refreshClocks();
+            // A page on show with times in it writes them again too (the Calendar's, the Usage page's).
+            this._expanded?.pages.forEach(page => page.clockChanged?.());
         }));
         for (const provider of AGENT_PROVIDERS) {
             this._settingsChanged.push(this._settings.connect(`changed::agent-alerts-${provider}`, () =>
@@ -583,6 +612,7 @@ export class Controller {
                 this._sayPresent(true);
             }
         });
+        daemon.connect('phone-received', (_daemon, name) => this._onPhoneReceived(name));
         daemon.connect('agent-event', (_daemon, event) => this._onAgentEvent(event));
         daemon.connect('agent-asking', (_daemon, request) => this._onAgentAsking(request));
         daemon.connect('agent-withdrawn', (_daemon, id) => this._withdrawAlert(`agent-ask:${id}`));
@@ -601,6 +631,8 @@ export class Controller {
             // Back online: an "Offline" still waiting its turn, or on screen, is no longer so.
             else if (key === 'system' && daemon.state.system?.network?.connected)
                 this._withdrawAlert('network');
+            else if (key === 'share')
+                this._onShare();
         });
         this._settingsChanged.push(this._settings.connect('changed::check-updates', () => this._syncUpdates()));
         this._settingsChanged.push(this._settings.connect('changed::lyrics-online', () => this._syncLyrics()));
@@ -741,61 +773,108 @@ export class Controller {
     // GNOME hides the island under a fullscreen window only when fullscreen changes, not when it moves
     // to another display: its rule (layout.js `_updateActorVisibility`), here.
     _syncFullscreen() {
-        this._island.visible = !(global.window_group.visible && this._monitor?.inFullscreen);
+        this._island.visible = this._settings.get_boolean('alerts-over-fullscreen') ||
+            !(global.window_group.visible && this._monitor?.inFullscreen);
     }
 
     // Auto-hide
 
-    /** Whether the island may fade away now: auto-hide on, resting closed, pointer away (and, if Settings
-     * say so, an app filling its display); see visibilityRules.js. */
-    get _autoHideWanted() {
-        return autoHideWanted({
-            enabled: this._settings.get_boolean('auto-hide'),
-            fullscreenOnly: this._settings.get_boolean('auto-hide-fullscreen-only'),
-            appFillsScreen: this._appFillsScreen(),
-            presentation: this._presentation,
-            hovered: this._island.hovered,
-            visible: this._island.visible,
-        });
+    /** Over a full-screen app with Settings' alerts over it: the island stays there, hidden but for them. */
+    get _overFullscreen() {
+        return this._settings.get_boolean('alerts-over-fullscreen') && global.window_group.visible &&
+            Boolean(this._monitor?.inFullscreen);
     }
 
-    /** Fades the closed island away after Settings' wait, unless it is in use; brings it back the moment it
-     * is needed again (an alert, the open island, the pointer). */
+    /** Whether the island hides now ('now'), after Settings' wait ('later'), or shows (false); and, hidden, how
+     * much of its top still brings it back. See visibilityRules.js. */
+    _autoHideState() {
+        const mode = this._settings.get_string('auto-hide');
+        const fullscreen = this._overFullscreen;
+        const when = autoHide({
+            mode, fullscreen,
+            presentation: this._presentation,
+            visible: this._island.visible,
+            hovered: this._island.hovered,
+            barHidden: mode === 'top-bar' && this._barHidden(),
+            windowAtTop: mode === 'windows' && this._windowAtTop(),
+        });
+        // A bar another extension hid is not there to point at.
+        const band = revealBand({mode, fullscreen, barHeight: this._onBar && !this._barHidden() ? this._topBar.height : 0,
+            edge: px(REVEAL_EDGE_PX)});
+        return {when, band};
+    }
+
+    /** Hides the closed island as Settings say, unless it is in use; brings it back the moment it is needed
+     * again (an alert, the open island, the pointer at its place). */
     _syncAutoHide(restart = false) {
         if (this._destroying)
             return;
         if (restart)
             this._cancel('auto-hide');
-        if (!this._autoHideWanted) {
+        const {when, band} = this._autoHideState();
+        if (when !== 'later')
             this._cancel('auto-hide');
-            this._setAutoHidden(false);
+        if (!when || when === 'now') {
+            this._setAutoHidden(Boolean(when), band);
             return;
         }
-        if (this._autoHidden || this._timeouts.has('auto-hide'))
+        if (this._autoHidden) {
+            this._setAutoHidden(true, band);
+            return;
+        }
+        if (this._timeouts.has('auto-hide'))
             return;
         this._later('auto-hide', this._settings.get_int('auto-hide-delay') * 1000, () => {
-            if (this._autoHideWanted)
-                this._setAutoHidden(true);
+            const now = this._autoHideState();
+            if (now.when)
+                this._setAutoHidden(true, now.band);
         });
     }
 
     /** Fades the island out or back (see Island.setAutoHidden). */
-    _setAutoHidden(hidden) {
+    _setAutoHidden(hidden, band = 0) {
+        this._island.setAutoHidden(hidden, band);
         if (hidden === this._autoHidden)
             return;
         this._autoHidden = hidden;
-        this._island.setAutoHidden(hidden);
+        this._trackIsland();
         this._syncScanout();
     }
 
-    /** Whether the app in front fills the island's display: fullscreen, or maximized on it. */
-    _appFillsScreen() {
-        const window = global.display.focus_window;
-        if (!window || window.minimized || !window.located_on_workspace(global.workspace_manager.get_active_workspace()))
+    /** As chrome: over a full-screen app only for alerts (Settings). On X11 (GNOME 49 and older) hidden in the bar,
+     * out of the input region, so clicks below reach the windows; the band stays in the bar's own. */
+    _chromeParams() {
+        const params = {trackFullscreen: !this._settings.get_boolean('alerts-over-fullscreen')};
+        if (!isWayland())
+            params.affectsInputRegion = !this._autoHidden || !this._onBar;
+        return params;
+    }
+
+    /** Tracks the island again if how it should be tracked changed. */
+    _trackIsland() {
+        const params = this._chromeParams();
+        if (!this._chrome || (params.trackFullscreen === this._chrome.trackFullscreen &&
+            params.affectsInputRegion === this._chrome.affectsInputRegion))
+            return;
+        this._chrome = params;
+        Main.layoutManager.untrackChrome(this._island);
+        // A copy: GNOME fills in its defaults on what it is given.
+        Main.layoutManager.trackChrome(this._island, {...params});
+    }
+
+    /** Whether the top bar over the island is away: hidden or slid off the screen by another extension. */
+    _barHidden() {
+        if (!this._onBar)
             return false;
-        if (window.get_monitor() !== this._monitor?.index)
-            return false;
-        return window.is_fullscreen() || isMaximized(window);
+        const panelBox = Main.layoutManager.panelBox;
+        return !panelBox.mapped || panelBox.get_transformed_position()[1] + panelBox.height <= this._monitor.y + 1;
+    }
+
+    /** Whether an app's window under the island reaches the top of its display: maximized, tiled or moved up there. */
+    _windowAtTop() {
+        const monitor = this._monitor;
+        const top = monitor ? monitor.y + (this._onBar ? this._topBar.height : 0) : 0;
+        return windowAtTop(monitor, top + REACH_PX * uiScale(), [this._island.x, this._island.x + this._island.width]);
     }
 
     /** The display the island belongs on: the main one, or the one of the window in use (see Settings). */
@@ -941,8 +1020,26 @@ export class Controller {
         }
     }
 
-    /** Puts in or takes out `provider`'s hook, as its switch says; refused, the switch goes off and says why. */
+    /** `_setHooked`, one call at a time per AI: two at once (isled appearing as its state comes) would race
+     * on the AI's config file, and the one refused would turn the switch off. One asked meanwhile runs after. */
     async _hookAgent(provider) {
+        if (this._hooking.has(provider)) {
+            this._hooking.set(provider, true);
+            return;
+        }
+        this._hooking.set(provider, false);
+        try {
+            await this._setHooked(provider);
+        } finally {
+            const again = this._hooking.get(provider);
+            this._hooking.delete(provider);
+            if (again && !this._destroying)
+                this._hookAgent(provider);
+        }
+    }
+
+    /** Puts in or takes out `provider`'s hook, as its switch says; refused, the switch goes off and says why. */
+    async _setHooked(provider) {
         const on = this._settings.get_boolean(`agent-alerts-${provider}`);
         const {error} = await this._daemon.attempt('agents', 'SetHooked', provider, on);
         if (this._destroying)
@@ -1218,8 +1315,16 @@ export class Controller {
 
     /** The pointer came or went: holds or times out alerts and answers, and opens or closes the island. */
     _onHoverChanged(moved = false) {
-        // Under the pointer, a hidden island comes back before it opens; away, its time to hide starts.
+        // Under the pointer, a hidden island comes back; away, its time to hide starts.
+        const wasHidden = this._autoHidden;
         this._syncAutoHide();
+        this._stopRevealWait();
+        // Brought back by the pointer, it only shows: it opens once the pointer moves on it and rests again.
+        if (wasHidden && !this._autoHidden && this._island.hovered && !this._expandWanted) {
+            this._hoverUnmoved = true;
+            this._hoverOnIslandMove(global.get_pointer());
+            return;
+        }
         const unmoved = this._hoverUnmoved;
         this._hoverUnmoved = false;
         this._cancel('hover');
@@ -1318,6 +1423,25 @@ export class Controller {
             else if (this._island.hovered)
                 this._expandOnRest();
         });
+    }
+
+    // As `_hoverOnMove`, by the island's own motion: nothing runs while the pointer rests on it at the top.
+    _hoverOnIslandMove([x, y]) {
+        this._revealMotion = this._island.connect('motion-event', () => {
+            const [nowX, nowY] = global.get_pointer();
+            if (Math.hypot(nowX - x, nowY - y) > px(REST_DISTANCE_PX)) {
+                this._stopRevealWait();
+                this._onHoverChanged(true);
+            }
+            return Clutter.EVENT_PROPAGATE;
+        });
+    }
+
+    /** Stops waiting for the pointer to move on the island it brought back. */
+    _stopRevealWait() {
+        if (this._revealMotion)
+            this._island.disconnect(this._revealMotion);
+        this._revealMotion = 0;
     }
 
     // Counts the pointer on the island as a hover once it moves from `[x, y]`.
@@ -1493,7 +1617,7 @@ export class Controller {
                 this._call.raise();
                 return Clutter.EVENT_STOP;
             }
-            if (!Playback.hasTrack(this._daemon.state.nowPlaying))
+            if (!Playback.showsClosed(this._daemon.state.nowPlaying))
                 return Clutter.EVENT_PROPAGATE;
             this.collapse();
             this._daemon.call('media', 'Raise');
@@ -2365,6 +2489,51 @@ export class Controller {
         }
     }
 
+    // Phone sharing: a phone asking to connect gets an alert to answer (the Phone tab asks too); one answered
+    // there, or given up on, goes.
+    _onShare() {
+        const state = this._daemon.state.share;
+        const asking = state?.active ? state.asking ?? [] : [];
+        const keys = new Set(asking.map(ask => `phone-ask:${ask.id}`));
+        for (const key of this._phoneAsks ?? []) {
+            if (!keys.has(key))
+                this._withdrawAlert(key);
+        }
+        for (const ask of asking) {
+            if (!this._phoneAsks?.has(`phone-ask:${ask.id}`))
+                this._post(Alerts.phoneAsks(ask, allow => this._daemon.call('share', 'Answer', ask.id, allow)));
+        }
+        this._phoneAsks = keys;
+        // Stopped because this computer's network changed: said once, so it isn't a mystery.
+        if (this._wasSharing && !state?.active && state?.ended === 'network')
+            this._post(Alerts.sharingStopped());
+        this._wasSharing = Boolean(state?.active);
+    }
+
+    /** Copies `uri` into Downloads (off the shell's thread), then says so, with Show; or why not. */
+    async _saveToDownloads(uri) {
+        // Only a copy the Shelf keeps itself, whoever asks (the helper's Save signal included).
+        if (!isShelfCopy(uri))
+            return;
+        this._saving ??= new Gio.Cancellable();
+        try {
+            const file = await saveToDownloads(uri, this._saving);
+            // Already being saved: the first press says how it went.
+            if (file && !this._destroying)
+                this._post(Alerts.savedToDownloads(file.get_basename(), () => showInFiles(file)));
+        } catch (e) {
+            if (!this._destroying && !this._saving.is_cancelled())
+                this._post(Alerts.saveFailed(e.message));
+        }
+    }
+
+    // A file came from a phone: one alert counts those that come together, as long as it is up or waiting.
+    _onPhoneReceived(name) {
+        const waiting = [this._alert, ...this._queue].some(alert => alert?.key === 'phone-received');
+        this._phoneNames = waiting ? [...this._phoneNames ?? [], name] : [name];
+        this._post(Alerts.phoneReceived(this._phoneNames, () => this._shelf.showTab('files')));
+    }
+
     // Claude Code or Codex asks a permission: an alert to answer it, unless the user would not see it
     // (its window in front, Do Not Disturb, alerts off); then it asks in its own terminal.
     _onAgentAsking(request) {
@@ -2563,10 +2732,15 @@ export class Controller {
             this._destroyPartial();
             return;
         }
+        this._stopRevealWait();
         // Turned off (the screen locks too): agents waiting on an answer here ask in their terminals at once,
         // and so do those that ask until Isle is back.
         this._passAgentAsks();
         this._sayPresent(false);
+        // Sharing with a phone never outlives Isle (the screen locking turns it off too): asked whatever the
+        // state last said (a Start may be on its way), but never starting isled just for that.
+        if (this._daemon.running)
+            this._daemon.call('share', 'Stop');
         // What waits goes with Isle, never shown (a notification marked read, its sound played) as it goes.
         this._queue = [];
         Alerts.stopWatching();
@@ -2586,6 +2760,7 @@ export class Controller {
         for (const name of [...this._timeouts.keys()])
             this._cancel(name);
         this._destroying = true;
+        this._saving?.cancel();
 
         const monitor = global.backend.get_core_idle_monitor();
         if (this._idleWatch)

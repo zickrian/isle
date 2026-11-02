@@ -13,7 +13,8 @@ import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import {VERTICAL, onUiScale, px, uiScale} from '../compat.js';
-import {icon, iconButton, label} from '../widgets.js';
+import {isShelfCopy} from '../downloads.js';
+import {Lines, icon, iconButton, label} from '../widgets.js';
 
 /** The shelf holds this many files (as isled enforces). */
 export const SHELF_CAPACITY = 6;
@@ -43,9 +44,14 @@ const ZONE_GLOW = [[0.43, 0.48, 1], [0.54, 0.36, 1]];
 const ZONE_GLOW_ALPHA = [0.45, 0.12];
 const FILES_TYPE = 'x-special/gnome-copied-files';
 
-/** The tiles and drop zone St draws itself, seen whenever the helper window isn't over them. */
-export const FilesView = GObject.registerClass(
-class FilesView extends St.Widget {
+/** How fast the ↓ shows and goes with the pointer. */
+const SAVE_FADE_MS = 120;
+
+// The tiles and drop zone St draws itself, seen whenever the helper window isn't over them. Signals:
+// `save` (uri) for ↓ on a file the Shelf keeps itself.
+export const FilesView = GObject.registerClass({
+    Signals: {'save': {param_types: [GObject.TYPE_STRING]}},
+}, class FilesView extends St.Widget {
     /** `thumbnails` loads the previews and keeps them while the files stay. */
     _init(daemon, thumbnails) {
         super._init({
@@ -59,6 +65,8 @@ class FilesView extends St.Widget {
         /** isled's last list: kept while it is away, as the helper keeps its own, so the two never disagree. */
         this._items = [];
         this._helperActive = false;
+        /** Fading out under the helper's window as it fades in (see `handOver`). */
+        this._handingOver = false;
         this._helperAvailable = false;
         this._dropping = false;
         this._dropOver = false;
@@ -125,9 +133,40 @@ class FilesView extends St.Widget {
 
     /** While the helper window covers this tab, show nothing of its own so the two never mix. */
     set helperActive(active) {
+        this._handingOver = false;
         if (active === this._helperActive)
             return;
         this._helperActive = active;
+        this.update();
+    }
+
+    /** The helper's window fading in over the tiles: they fade out with it, so the names are never drawn twice in
+     * full (doubled, as if bold). Ended by `helperActive`, or `handBack` when the window doesn't come. */
+    handOver(duration) {
+        this._handingOver = true;
+        // Only the names and ×: the pictures are the same in the window, so they stay (fading both would dim them).
+        for (const part of this._handedOverParts())
+            part.ease({opacity: 0, duration, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+    }
+
+    /** Each tile's name and ×, which the helper's window draws again a pixel or two off. */
+    _handedOverParts() {
+        return [...this._tileFor.values()].flatMap(tile => tile._handedOver ?? []);
+    }
+
+    /** The parts `handOver` faded, whole again (unseen under the window, or shown again). */
+    _restoreParts() {
+        for (const part of this._handedOverParts()) {
+            part.remove_transition('opacity');
+            part.opacity = 255;
+        }
+    }
+
+    /** The helper's window went before it was in: the tiles show again. */
+    handBack() {
+        if (!this._handingOver)
+            return;
+        this._handingOver = false;
         this.update();
     }
 
@@ -240,7 +279,10 @@ class FilesView extends St.Widget {
         this._empty.visible = items.length === 0;
         // Under the helper's window the tiles stay laid out but unseen (hidden, the tab would shrink and the
         // window go, blinking). The empty shelf's words are only drawn here: the helper's are see-through.
-        this._tiles.opacity = this._helperActive ? 0 : 255;
+        if (!this._handingOver) {
+            this._tiles.opacity = this._helperActive ? 0 : 255;
+            this._restoreParts();
+        }
         this._updateEmptyText();
     }
 
@@ -309,7 +351,22 @@ class FilesView extends St.Widget {
             () => this._daemon.call('shelf', 'Remove', item.uri), {size: 10, accessibleName: 'Remove from the shelf'});
         remove.set_size(px(REMOVE_DISC), px(REMOVE_DISC));
 
-        const tile = this._tileBox(this._frame(preview, {copied, remove}), item.name);
+        // Files the Shelf keeps itself (sent from the phone, a clipboard picture): ↓ saves one into Downloads,
+        // shown under the pointer, mirroring the ×.
+        const save = isShelfCopy(item.uri) ? iconButton('isle-save-symbolic', 'isle-shelf-remove isle-shelf-save',
+            () => this.emit('save', item.uri), {size: 10, accessibleName: 'Save to Downloads'}) : null;
+        save?.set_size(px(REMOVE_DISC), px(REMOVE_DISC));
+        save?.set({opacity: 0, reactive: false});
+        const tile = this._tileBox(this._frame(preview, {copied, remove, save}), item.name);
+        // What fades as the helper's window comes in (see `handOver`): its picture is the same, drawn over.
+        tile._handedOver = [tile._names, remove];
+        if (save) {
+            tile.connect('notify::hover', () => {
+                save.reactive = tile.hover;
+                save.remove_transition('opacity');
+                save.ease({opacity: tile.hover ? 255 : 0, duration: SAVE_FADE_MS, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+            });
+        }
         tile.accessible_name = item.name;
         tile.connect('clicked', () => this._onClicked(item, copied));
 
@@ -333,7 +390,7 @@ class FilesView extends St.Widget {
     }
 
     /** The preview (with `copied` over it) and room for the × over its corner. */
-    _frame(preview, {copied = null, remove = null} = {}) {
+    _frame(preview, {copied = null, remove = null, save = null} = {}) {
         const scale = uiScale();
         const frame = new St.Widget({layout_manager: new Clutter.FixedLayout(), width: TILE_WIDTH * scale, height: FRAME_HEIGHT * scale});
         const left = (TILE_WIDTH - PREVIEW_SIZE) / 2;
@@ -346,6 +403,11 @@ class FilesView extends St.Widget {
             // Its centre a few pixels inside the preview's corner.
             remove.set_position((left + PREVIEW_SIZE - REMOVE_SIZE + 6) * scale, 0);
         }
+        if (save) {
+            frame.add_child(save);
+            // The ×'s place mirrored, over the preview's other corner.
+            save.set_position((TILE_WIDTH - (left + PREVIEW_SIZE - REMOVE_SIZE + 6) - REMOVE_DISC) * scale, 0);
+        }
         return frame;
     }
 
@@ -353,22 +415,26 @@ class FilesView extends St.Widget {
     _tileBox(frame, name) {
         const box = new St.BoxLayout({...VERTICAL, style_class: 'isle-shelf-tile-box'});
         box.add_child(frame);
-        const text = label(name, 'isle-shelf-name', {width: px(NAME_WIDTH), x_align: Clutter.ActorAlign.CENTER,
-            y_align: Clutter.ActorAlign.CENTER, y_expand: true});
+        const text = label(name, 'isle-shelf-name', {width: px(NAME_WIDTH), y_align: Clutter.ActorAlign.FILL});
         // Two lines ("Alex Morgan / CV.pdf" whole); only a longer name loses its middle.
         text.clutter_text.set({line_wrap: true, line_wrap_mode: Pango.WrapMode.WORD_CHAR,
             line_alignment: Pango.Alignment.CENTER, ellipsize: Pango.EllipsizeMode.MIDDLE});
         // Two lines' room, a shorter name in its middle, as the helper's (crates/isle-shelf).
+        // The label is given its lines' height whole: on GNOME 50 and later it measures one, and a long name showed on
+        // one line here but two in the helper's window.
         const lines = new St.Widget({style_class: 'isle-shelf-name-lines', layout_manager: new Clutter.BinLayout()});
-        lines.add_child(text);
+        lines.add_child(new Lines(text, 2, {x_expand: false, x_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.CENTER}));
         box.add_child(lines);
-        return new St.Button({
+        const button = new St.Button({
             style_class: 'isle-shelf-tile',
             child: box,
             can_focus: true,
             width: px(TILE_WIDTH),
             y_align: Clutter.ActorAlign.CENTER,
         });
+        button._names = lines;
+        return button;
     }
 
     // Clicks

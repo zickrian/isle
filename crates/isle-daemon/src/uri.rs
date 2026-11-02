@@ -4,8 +4,21 @@
 //! The local path a `file://` URI names (RFC 8089), its `%XX` escapes decoded.
 
 use std::ffi::OsString;
-use std::os::unix::ffi::OsStringExt;
-use std::path::PathBuf;
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
+use std::path::{Path, PathBuf};
+
+/// The `file://` URI of an absolute path, escaped as GLib's `g_filename_to_uri` escapes it.
+pub fn from_path(path: &Path) -> String {
+    let mut uri = String::from("file://");
+    for &byte in path.as_os_str().as_bytes() {
+        if byte.is_ascii_alphanumeric() || b"-._~/!$&'()*+,;=:@".contains(&byte) {
+            uri.push(byte as char);
+        } else {
+            uri.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    uri
+}
 
 /// The path of `file:///…`, `file://localhost/…` or `file:/…`; `None` for any other URI or host.
 /// A query or fragment is not part of the path, so a `#` or `?` in a name must come escaped.
@@ -67,6 +80,19 @@ fn hex_digit(byte: u8) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn paths_round_trip() {
+        let path = Path::new("/home/a/.local/share/isle/shelf/Foto 2 #1 100%.jpg");
+        let uri = from_path(path);
+        assert_eq!(
+            uri,
+            "file:///home/a/.local/share/isle/shelf/Foto%202%20%231%20100%25.jpg"
+        );
+        assert_eq!(to_path(&uri).as_deref(), Some(path));
+        let odd = Path::new("/tmp/caf\u{e9}?.txt");
+        assert_eq!(to_path(&from_path(odd)).as_deref(), Some(odd));
+    }
 
     fn path(uri: &str) -> Option<String> {
         to_path(uri).map(|path| path.to_string_lossy().into_owned())

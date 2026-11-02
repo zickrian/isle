@@ -20,14 +20,22 @@ chrono.workspace = true
 dirs.workspace = true
 env_logger.workspace = true
 futures-util.workspace = true
+httparse.workspace = true
 image.workspace = true
 inotify.workspace = true
 libc.workspace = true
 log.workspace = true
+md5.workspace = true
+qrcode.workspace = true
 serde.workspace = true
 # Keeps the keys of Claude Code's settings.json in their order when its hooks are changed.
 serde_json = { workspace = true, features = ["preserve_order"] }
+subtle.workspace = true
 tokio.workspace = true
 toml_edit.workspace = true
 ureq.workspace = true
 zbus.workspace = true
+
+[dev-dependencies]
+# Paused clocks, for phone sharing's idle stop.
+tokio = { workspace = true, features = ["test-util"] }

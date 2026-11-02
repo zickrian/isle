@@ -198,6 +198,8 @@
 .isle-privacy-dot.camera { background-color: #34c759; }
 .isle-privacy-dot.microphone { background-color: #ff9f0a; }
 .isle-privacy-dot.screenShare { background-color: #0a84ff; }
+/* Sharing the Shelf with a phone: violet, the bot's glow; no other dot is. */
+.isle-privacy-dot.phone { background-color: #bf5af2; }
 
 .isle-recording-dot {
   width: 10px;
@@ -876,7 +878,7 @@
 .isle-notifications-dnd-text { font-size: 12px; color: rgba(255, 255, 255, 0.5); }
 .isle-notification-list { spacing: 6px; padding-bottom: 8px; }
 
-/* A card each, apart from the next: the app's icon, who in white and what in grey on one line, then when;
+/* A card each, apart from the next: the app's icon, who in white and what in grey under it, then when;
  * its buttons under them. */
 .isle-notification-row {
   border-radius: 12px;
@@ -886,7 +888,7 @@
 
 .isle-notification-row:hover { background-color: rgba(255, 255, 255, 0.09); }
 .isle-notification { spacing: 10px; padding: 8px 10px; }
-.isle-notification-line { spacing: 8px; }
+.isle-notification-texts { spacing: 2px; }
 .isle-notification-title { font-size: 13px; font-weight: 600; }
 .isle-notification-body { font-size: 13px; color: rgba(255, 255, 255, 0.55); }
 .isle-notification-tools { spacing: 6px; }
@@ -1032,6 +1034,53 @@
 }
 
 .isle-shelf-remove:hover { background-color: #5a5a5e; }
+
+/* ── Shelf: sharing with a phone ─────────────────────── */
+
+.isle-shelf-column { spacing: 8px; }
+.isle-shelf-phone { padding: 5px 12px 5px 10px; }
+.isle-shelf-phone-box { spacing: 5px; }
+/* The Phone tab: one column from the top, every block 6 px under the one before (its own bottom padding). */
+.isle-phone { spacing: 0; }
+.isle-phone-title { font-size: 15px; font-weight: 600; letter-spacing: -0.1px; padding-bottom: 6px; }
+.isle-phone-steps { spacing: 2px; padding-bottom: 6px; }
+.isle-phone-step { spacing: 8px; }
+.isle-phone-step-number { width: 16px; height: 16px; border-radius: 8px; background-color: rgba(255, 255, 255, 0.14); }
+/* A pixel over the digit: the font's line keeps room below it that digits never use. */
+.isle-phone-step-digit { font-size: 10px; font-weight: 700; font-feature-settings: "tnum"; padding-top: 1px; }
+.isle-phone-step-text { font-size: 12px; color: rgba(255, 255, 255, 0.82); }
+.isle-phone-warning { color: #ff9f0a; }
+.isle-phone-hint,
+.isle-phone-copy-text { font-size: 12px; color: rgba(255, 255, 255, 0.55); }
+.isle-phone-rows { spacing: 0; }
+.isle-phone-row { padding-bottom: 6px; }
+.isle-phone-status { spacing: 8px; }
+.isle-phone-dot { width: 7px; height: 7px; border-radius: 4px; background-color: rgba(255, 255, 255, 0.35); }
+.isle-phone-dot.on { background-color: #30d158; }
+.isle-phone-status-text { font-size: 12px; font-weight: 600; }
+.isle-phone-leaving .isle-phone-status-text,
+.isle-phone-away .isle-phone-status-text { font-weight: 400; color: rgba(255, 255, 255, 0.55); }
+.isle-phone-ask { spacing: 8px; }
+.isle-phone-note { spacing: 6px; color: #ff9f0a; padding-bottom: 6px; }
+.isle-phone-note-icon { padding-top: 1px; }
+.isle-phone-note-text { font-size: 12px; color: #ff9f0a; }
+.isle-phone-copy { spacing: 8px; }
+.isle-phone-code-text { font-size: 13px; font-weight: 700; font-feature-settings: "tnum"; }
+.isle-phone-remove { padding: 4px; border-radius: 999px; background-color: #2c2c2e; }
+.isle-phone-remove:hover { background-color: #3a3a3c; }
+#isleIsland.isle-translucent .isle-phone-remove { background-color: rgba(255, 255, 255, 0.14); }
+#isleIsland.isle-translucent .isle-phone-remove:hover { background-color: rgba(255, 255, 255, 0.22); }
+#isleIsland.isle-translucent .isle-phone-hint,
+#isleIsland.isle-translucent .isle-phone-copy-text,
+#isleIsland.isle-translucent .isle-phone-leaving .isle-phone-status-text,
+#isleIsland.isle-translucent .isle-phone-away .isle-phone-status-text { color: rgba(255, 255, 255, 0.7); }
+#isleIsland.isle-translucent .isle-phone-step-text { color: rgba(255, 255, 255, 0.9); }
+#isleIsland.isle-translucent .isle-phone-step-number { background-color: rgba(255, 255, 255, 0.2); }
+/* Signal colours a quarter towards white on glass. */
+#isleIsland.isle-translucent .isle-phone-dot.on { background-color: rgb(100, 220, 130); }
+#isleIsland.isle-translucent .isle-phone-note,
+#isleIsland.isle-translucent .isle-phone-note-text,
+#isleIsland.isle-translucent .isle-phone-warning { color: rgb(255, 183, 71); }
 
 /* ── Usage ────────────────────────────────────────────── */
 
@@ -1358,6 +1407,7 @@
 #isleIsland.isle-translucent .isle-privacy-dot.camera { background-color: #67d582; }
 #isleIsland.isle-translucent .isle-privacy-dot.microphone { background-color: #ffb748; }
 #isleIsland.isle-translucent .isle-privacy-dot.screenShare { background-color: #47a3ff; }
+#isleIsland.isle-translucent .isle-privacy-dot.phone { background-color: #cf83f5; }
 /* A locked length a step brighter than on black, as all the greys here. */
 #isleIsland.isle-translucent .isle-stepper-locked .isle-stepper-entry { color: rgba(255, 255, 255, 0.72) !important; }
 /* Text picked in a field: the accent, as in GNOME's own fields. */

@@ -178,7 +178,7 @@ export const CompactView = GObject.registerClass({
         row.add_child(this._rightSide);
 
         this._daemonChanged = daemon.connect('changed', (_daemon, key) => {
-            if (['nowPlaying', 'pomodoro'].includes(key))
+            if (['nowPlaying', 'pomodoro', 'share'].includes(key))
                 this._refresh();
         });
         this._settingsChanged = settings.connect('changed::privacy-indicators', () => this._refresh());
@@ -386,8 +386,8 @@ export const CompactView = GObject.registerClass({
     _refresh() {
         const {nowPlaying, pomodoro} = this._daemon.state;
         const playing = Playback.isPlaying(nowPlaying);
-        // A paused song stays until its player closes; none with the Music page left out.
-        const hasTrack = Playback.hasTrack(nowPlaying) && !this._settings.get_strv('hidden-pages').includes('music');
+        // A paused song stays until its player closes, a browser's until it is over; none with the Music page left out.
+        const hasTrack = Playback.showsClosed(nowPlaying) && !this._settings.get_strv('hidden-pages').includes('music');
         const timerActive = pomodoro && pomodoro.phase !== 'idle';
         const recording = this._privacy.recording;
         const onCall = this._call.active;
@@ -401,7 +401,9 @@ export const CompactView = GObject.registerClass({
         // On a call the green phone already says the microphone is on, unless another app records too.
         const privacy = this._showingPrivacy() ? this._privacy : {};
         const microphone = privacy.microphone && (!onCall || this._call.othersRecording);
-        const dots = {camera: privacy.camera, microphone, screenShare: privacy.screenShare};
+        // Sharing with a phone: a dot of its own, whatever Settings says of the others, so it's never forgotten.
+        const phone = Boolean(this._daemon.state.share?.active);
+        const dots = {camera: privacy.camera, microphone, screenShare: privacy.screenShare, phone};
         const anyDot = Object.values(dots).some(Boolean);
         // Left: the activity's sign, else the unread dot.
         const timerSign = anyDot ? this._ring : this._timerIcon;

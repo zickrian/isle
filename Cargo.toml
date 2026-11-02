@@ -12,7 +12,7 @@ members = [
 default-members = ["crates/isle-core", "crates/isle-daemon"]
 
 [workspace.package]
-version = "1.5.3"
+version = "1.6.0"
 edition = "2024"
 # isle-core and isled use let chains (1.88); isle-shelf sets its own, for gtk-rs.
 rust-version = "1.88"
@@ -32,12 +32,20 @@ env_logger = { version = "0.11", default-features = false }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 gdk4-x11 = "0.11"
 gtk4 = { version = "0.11", features = ["v4_12"] }
+# Phone sharing's tiny HTTP server reads request heads with it; nothing else of a web stack.
+httparse = "1"
 image = { version = "0.25", default-features = false, features = ["png"] }
 inotify = { version = "0.11", default-features = false, features = ["stream"] }
 libc = "0.2"
 log = "0.4"
+# Names the shelf's previews as the extension does (the URI's MD5); no security rides on it.
+md5 = "0.8"
+# Phone sharing's QR code, as modules only: the extension draws them.
+qrcode = { version = "0.14", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Compares phone sharing's secret token in constant time.
+subtle = "2"
 # Edits Codex's config.toml in place, keeping its comments and layout.
 toml_edit = { version = "0.25", default-features = false, features = ["display", "parse"] }
 tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "process", "rt", "signal", "sync", "time"] }

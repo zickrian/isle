@@ -2,7 +2,7 @@
 // Copyright (C) 2026 zickrian
 
 // Notifications: a heading with Do Not Disturb and Clear (and, while it is on, what still gets through),
-// over a list of one-line rows, newest first. Click one to open it. See docs/product-spec.md.
+// over a list of cards, newest first. Click one to open it. See docs/product-spec.md.
 
 import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
@@ -12,11 +12,13 @@ import St from 'gi://St';
 import {VERTICAL, px} from '../compat.js';
 import * as Format from '../format.js';
 import {notificationIcon, plainBody} from '../notifications.js';
-import {WrapLayout, icon, iconButton, isSymbolic, label, ownIcon, pillButton, setButtonIcon} from '../widgets.js';
+import {Lines, WrapLayout, icon, iconButton, isSymbolic, label, ownIcon, pillButton, setButtonIcon, wrapLines} from '../widgets.js';
 import {Page} from './page.js';
 
 /** A card offers at most this many of its notification's buttons ("Mark as read", "Accept"). */
 const MAX_ACTIONS = 3;
+/** A notification's text shows on up to this many lines, the last ending in "…" when there is more. */
+const BODY_LINES = 3;
 
 /** The app's icon, small beside its row: a colour one as is, a symbolic one on a grey rounded square. */
 function notificationBadge(gicon) {
@@ -140,7 +142,7 @@ class NotificationsPage extends Page {
         /** Each row's "5m ago", with when it came, to bring up to date without a rebuild. */
         this._times = [];
         const notifications = this._center.notifications;
-        this._clearButton.visible = notifications.some(n => !n.resident);
+        this._clearButton.visible = notifications.length > 0;
 
         // Newest first, one row each, as a list to scroll.
         this._list.destroy_all_children();
@@ -165,25 +167,26 @@ class NotificationsPage extends Page {
         this._dndNote.visible = on;
     }
 
-    /** A row: the app's icon, who and what on one line, its buttons under them, and when; × under the pointer. */
+    /** A row: the app's icon, who, what under it on up to three lines, its buttons, and when; × under the pointer. */
     _row(notification) {
         const content = new St.BoxLayout({style_class: 'isle-notification', x_expand: true});
         const badge = notificationBadge(notificationIcon(notification));
         content.add_child(badge);
 
-        const line = new St.BoxLayout({style_class: 'isle-notification-line', x_expand: true, y_align: Clutter.ActorAlign.CENTER});
-        // On one line, as the body: a title may hold line breaks too.
+        // On one line: a title may hold line breaks too.
         const title = label((notification.title || notification.source?.title || '').replace(/\s+/g, ' ').trim(), 'isle-notification-title');
+        title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        const texts = new St.BoxLayout({...VERTICAL, style_class: 'isle-notification-texts', x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER});
+        texts.add_child(title);
         // While the screen is shared, only who wrote, not what.
         const text = this._sharing ? '' : plainBody(notification).replace(/\s+/g, ' ').trim();
-        const body = label(text, 'isle-notification-body', {x_expand: true});
-        for (const part of [title, body])
-            part.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-        body.visible = body.text.length > 0;
-        line.add_child(title);
-        line.add_child(body);
-        const texts = new St.BoxLayout({...VERTICAL, x_expand: true, y_align: Clutter.ActorAlign.CENTER});
-        texts.add_child(line);
+        if (text) {
+            // Filling its lines' height: given only its own (one line), it would show one.
+            const body = label(text, 'isle-notification-body', {y_align: Clutter.ActorAlign.FILL});
+            wrapLines(body, Pango.EllipsizeMode.END);
+            texts.add_child(new Lines(body, BODY_LINES));
+        }
         content.add_child(texts);
         // Its buttons, as GNOME's banner had them, on a line of their own; not while the screen is shared.
         const actions = this._sharing ? [] : (notification.actions ?? []).slice(0, MAX_ACTIONS);
@@ -198,23 +201,24 @@ class NotificationsPage extends Page {
                 }));
             }
             texts.add_child(buttons);
-            // From the top, the icon and the time level with its first line.
-            badge.y_align = texts.y_align = Clutter.ActorAlign.START;
         }
+        // More than a line: from the top, the icon and the time level with the title.
+        const tall = texts.get_n_children() > 1;
+        if (tall)
+            badge.y_align = texts.y_align = Clutter.ActorAlign.START;
 
         // The time, and in its place under the pointer the ×.
         const corner = new St.Widget({layout_manager: new Clutter.BinLayout(),
-            y_align: actions.length ? Clutter.ActorAlign.START : Clutter.ActorAlign.CENTER});
+            y_align: tall ? Clutter.ActorAlign.START : Clutter.ActorAlign.CENTER});
         const time = label(Format.ago(notification.datetime), 'isle-notification-time', {x_align: Clutter.ActorAlign.END});
         this._times.push([time, notification.datetime]);
         corner.add_child(time);
+        // Every one can be put away, a resident one too, as in GNOME's list.
         const tools = new St.BoxLayout({style_class: 'isle-notification-tools', x_align: Clutter.ActorAlign.END, opacity: 0, visible: false});
-        if (!notification.resident) {
-            const dismiss = iconButton('isle-close-symbolic', 'isle-button-flat isle-notification-dismiss',
-                () => notification.destroy(), {size: 10, accessibleName: 'Dismiss'});
-            dismiss.y_align = Clutter.ActorAlign.CENTER;
-            tools.add_child(dismiss);
-        }
+        const dismiss = iconButton('isle-close-symbolic', 'isle-button-flat isle-notification-dismiss',
+            () => notification.destroy(), {size: 10, accessibleName: 'Dismiss'});
+        dismiss.y_align = Clutter.ActorAlign.CENTER;
+        tools.add_child(dismiss);
         corner.add_child(tools);
         content.add_child(corner);
 
@@ -223,14 +227,12 @@ class NotificationsPage extends Page {
             notification.activate();
             this.emit('request-close');
         });
-        if (tools.get_n_children() > 0) {
-            row.connect('notify::hover', () => {
-                tools.show();
-                tools.ease({opacity: row.hover ? 255 : 0, duration: 120,
-                    onComplete: () => (tools.visible = row.hover)});
-                time.ease({opacity: row.hover ? 0 : 255, duration: 120});
-            });
-        }
+        row.connect('notify::hover', () => {
+            tools.show();
+            tools.ease({opacity: row.hover ? 255 : 0, duration: 120,
+                onComplete: () => (tools.visible = row.hover)});
+            time.ease({opacity: row.hover ? 0 : 255, duration: 120});
+        });
         return row;
     }
 

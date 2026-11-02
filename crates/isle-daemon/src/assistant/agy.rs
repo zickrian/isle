@@ -44,13 +44,23 @@ const PER_CONVERSATION: &[&str] = &[
     "implicit",
 ];
 
-/// Where agy keeps its sign-in, under its home.
+/// Where agy keeps its sign-in, under its home: before agy 1.4, and since (beside the system keyring).
 pub const LOGIN: &str = ".gemini/antigravity-cli/antigravity-oauth-token";
+const STANDALONE_LOGIN: &str = ".gemini/jetski-standalone-oauth-token";
+
+/// Whether the user signed in to agy in `home`, as either version keeps it.
+pub fn signed_in_at(home: &Path) -> bool {
+    [LOGIN, STANDALONE_LOGIN]
+        .iter()
+        .any(|login| home.join(login).exists())
+}
 
 /// Links Isle's agy home to the user's agy sign-in, so signing in once (in `user`'s home) is enough
 /// (see sign_in.rs).
 fn link_login(user: &Path, isle: &Path) {
-    super::sign_in::share(&user.join(LOGIN), &isle.join(LOGIN));
+    for login in [LOGIN, STANDALONE_LOGIN] {
+        super::sign_in::share(&user.join(login), &isle.join(login));
+    }
 }
 
 /// What `agy models` lists for this account (`id<TAB>name` lines): run in Isle's home for agy, as every
@@ -344,6 +354,21 @@ fn parse_result(result: &Value) -> anyhow::Result<Answer> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn either_versions_sign_in_counts() {
+        let home = std::env::temp_dir().join(format!("isle-agy-login-{}", std::process::id()));
+        std::fs::create_dir_all(home.join(".gemini/antigravity-cli")).unwrap();
+        assert!(!signed_in_at(&home));
+        // agy 1.4 and later.
+        std::fs::write(home.join(STANDALONE_LOGIN), "token").unwrap();
+        assert!(signed_in_at(&home));
+        std::fs::remove_file(home.join(STANDALONE_LOGIN)).unwrap();
+        // Before.
+        std::fs::write(home.join(LOGIN), "token").unwrap();
+        assert!(signed_in_at(&home));
+        std::fs::remove_dir_all(&home).unwrap();
+    }
     use super::*;
 
     #[test]

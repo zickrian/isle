@@ -5,6 +5,7 @@
 // OSD and keyboard state. Everything here is undone in `destroy()`.
 
 import GLib from 'gi://GLib';
+import Meta from 'gi://Meta';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as Signals from 'resource:///org/gnome/shell/misc/signals.js';
@@ -31,6 +32,10 @@ const NOTCH_BAR_CLASS = 'isle-notch-bar';
 const GAP_PX = 4;
 /** The primary (usually left) mouse button, as Clutter numbers it. */
 const PRIMARY_BUTTON = 1;
+/** A window whose top is this close below the bar (in px) reaches it: maximized, tiled or moved up there. */
+export const REACH_PX = 5;
+/** Looked again once a window's animation is over (minimizing, closing), as some signals come as it starts. */
+const WINDOW_SETTLE_MS = 400;
 
 // Restyles the top bar around the island (black or glass) and hides the clock and its calendar menu.
 // Signals: `height-changed`, `style-changed` (`blendsIn` may have changed), `calendar-requested` (Super+V).
@@ -50,12 +55,14 @@ export class TopBar extends Signals.EventEmitter {
             ...['top-bar-style', 'top-bar-opacity', 'island-theme'].map(key => settings.connect(`changed::${key}`, () => {
                 this._yielded = false;
                 const blended = this._blended;
+                this._syncWindowWatch(false);
                 this._applyStyle();
                 // Only black all the way changes where the island sits; the shades between just restyle the bar.
                 if (this.blendsIn !== blended)
                     this.emit('style-changed');
             })),
             settings.connect('changed::compact-top-bar', () => this._applyStyle()),
+            settings.connect('changed::top-bar-black-with-windows', () => this._syncWindowWatch()),
             settings.connect('changed::island-in-top-bar', () => this._applyStyle()),
             // The bar keeps its height: the island is laid out again for its own.
             settings.connect('changed::notch-gap', () => {
@@ -67,6 +74,8 @@ export class TopBar extends Signals.EventEmitter {
         ];
         this._applyStyle();
         this._styleChanged = Main.panel.connect('notify::style', () => this._onPanelStyle());
+        this._windowWatch = [];
+        this._syncWindowWatch();
         // GNOME 50 and later drag a maximized window from the bar with any button: after a right click on the bar
         // the window followed the pointer (#27). Only the primary button, as up to GNOME 49; given back on disable.
         this._dragGesture = Main.panel._clickGesture ?? null;
@@ -128,6 +137,62 @@ export class TopBar extends Signals.EventEmitter {
         if (this._settings.get_user_value('top-bar-opacity'))
             return this._settings.get_int('top-bar-opacity');
         return this._settings.get_string('top-bar-style') === 'black' ? 100 : 0;
+    }
+
+    /** The bar's opacity in % as shown: black while a window reaches it, if Settings say so. */
+    get _shownOpacity() {
+        return this._windowAtBar ? 100 : this.opacity;
+    }
+
+    /** Follows the windows while Settings turn the bar black beside them (a see-through or grey bar), else
+     * nothing; then shows the bar as they are, unless `show` is false. */
+    _syncWindowWatch(show = true) {
+        const wanted = this._settings.get_boolean('top-bar-black-with-windows') && this.opacity < 100;
+        if (wanted && !this._windowWatch.length) {
+            const sync = () => this._onWindowsChanged();
+            this._windowWatch = [
+                [global.display, ['restacked', 'grab-op-end', 'workareas-changed', 'window-entered-monitor',
+                    'window-left-monitor']],
+                [global.window_manager, ['size-changed', 'minimize', 'unminimize', 'map', 'destroy']],
+                [global.workspace_manager, ['active-workspace-changed']],
+                [Main.overview, ['showing', 'hidden']],
+            ].flatMap(([source, signals]) => signals.map(signal => [source, source.connect(signal, sync)]));
+        } else if (!wanted) {
+            this._unwatchWindows();
+        }
+        this._windowAtBar = wanted && windowReachesBar();
+        if (show)
+            this._syncColor();
+    }
+
+    /** Lets go of the windows' signals. */
+    _unwatchWindows() {
+        this._windowWatch.forEach(([source, id]) => source.disconnect(id));
+        this._windowWatch = [];
+        if (this._settleId)
+            GLib.source_remove(this._settleId);
+        this._settleId = 0;
+    }
+
+    /** A window came, went, moved or changed size: the bar as they are now, and again once it has settled. */
+    _onWindowsChanged() {
+        this._showWindowAtBar();
+        if (this._settleId)
+            GLib.source_remove(this._settleId);
+        this._settleId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, WINDOW_SETTLE_MS, () => {
+            this._settleId = 0;
+            this._showWindowAtBar();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    /** Recolours the bar only when a window starts or stops reaching it. */
+    _showWindowAtBar() {
+        const atBar = windowReachesBar();
+        if (atBar === this._windowAtBar)
+            return;
+        this._windowAtBar = atBar;
+        this._syncColor();
     }
 
     /** Whether the bar is as black as the island; otherwise the island hangs from the screen's top edge.
@@ -195,7 +260,7 @@ export class TopBar extends Signals.EventEmitter {
 
     /** The bar's style with Isle's colour at `opacity`, the rest of it left alone: the current one itself when
      * Isle's colour is already in effect there. */
-    _wantedStyle(opacity = this.opacity) {
+    _wantedStyle(opacity = this._shownOpacity) {
         const rule = this._barRule(opacity);
         if (rule)
             this._own.add(normalized(rule));
@@ -203,7 +268,7 @@ export class TopBar extends Signals.EventEmitter {
     }
 
     /** Sets Isle's colour, leaving the rest of the style alone; writes nothing when it is in effect already. */
-    _syncColor(opacity = this.opacity) {
+    _syncColor(opacity = this._shownOpacity) {
         const wanted = this._wantedStyle(opacity);
         if (wanted === Main.panel.get_style())
             return;
@@ -223,6 +288,7 @@ export class TopBar extends Signals.EventEmitter {
         this._settingsChanged.forEach(id => this._settings.disconnect(id));
         Main.panel.disconnect(this._heightChanged);
         Main.panel.disconnect(this._styleChanged);
+        this._unwatchWindows();
         if (this._dragButtonWas === 0 && this._dragGesture.required_button === PRIMARY_BUTTON)
             this._dragGesture.required_button = 0;
         this._dateMenu.menu.disconnect(this._menuChanged);
@@ -239,6 +305,29 @@ export class TopBar extends Signals.EventEmitter {
         this._dateMenu.opacity = 255;
         this._dateMenu.reactive = true;
     }
+}
+
+/** Whether an app's window on the active workspace reaches the top bar on the main display; not in the overview,
+ * nor with the bar hidden (under a fullscreen window). */
+function windowReachesBar() {
+    if (!Main.panel.mapped)
+        return false;
+    const bottom = Main.panel.get_transformed_position()[1] + Main.panel.height;
+    return windowAtTop(Main.layoutManager.primaryMonitor, bottom + REACH_PX * uiScale());
+}
+
+/** Whether an app's window on the active workspace and `monitor` (across `[left, right]` if given) has its top above
+ * `reach` (stage px); never in the overview, where the windows are not as they lie. */
+export function windowAtTop(monitor, reach, [left, right] = [-Infinity, Infinity]) {
+    if (!monitor || Main.overview.visible)
+        return false;
+    const workspace = global.workspace_manager.get_active_workspace();
+    return global.get_window_actors().some(({meta_window: window}) => {
+        const rect = window?.get_frame_rect();
+        return rect && window.get_window_type() === Meta.WindowType.NORMAL && !window.minimized &&
+            !window.is_skip_taskbar() && window.get_monitor() === monitor.index && window.located_on_workspace(workspace) &&
+            window.showing_on_its_workspace() && rect.y < reach && rect.x < right && rect.x + rect.width > left;
+    });
 }
 
 // Adds or removes each of `classes` ({name: on}) in one change: each change restyles the whole bar at once.

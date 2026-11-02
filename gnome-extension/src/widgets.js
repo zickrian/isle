@@ -110,6 +110,38 @@ export function label(text, styleClass, props = {}) {
     return new St.Label({text, style_class: styleClass, y_align: Clutter.ActorAlign.CENTER, ...props});
 }
 
+/** Its wrapping, ellipsizing label (aligned FILL) no taller than `lines` lines: given that height, Pango ends the last
+ * in "…". */
+export const Lines = GObject.registerClass(
+class Lines extends St.Bin {
+    _init(child, lines, props = {}) {
+        super._init({child, x_expand: true, ...props});
+        this._lines = lines;
+    }
+
+    /** As many of its lines as there are, up to `lines`: counted here, as an ellipsizing label measures one
+     * (GNOME 50 and later). Never less: a scrolled list gives its rows their least height. One pixel spare. */
+    vfunc_get_preferred_height(forWidth) {
+        const [line] = super.vfunc_get_preferred_height(forWidth);
+        const text = this.child.clutter_text;
+        const layout = text.create_pango_layout(text.text);
+        // From its name: the text's own description is not ours to hold.
+        layout.set_font_description(Pango.font_description_from_string(text.font_name));
+        layout.set_wrap(Pango.WrapMode.WORD_CHAR);
+        // Asked with no width (a centring bin on GNOME 51): the label's own.
+        const width = forWidth >= 0 ? forWidth : this.child.get_preferred_width(-1)[1];
+        layout.set_width(Math.floor(width * Pango.SCALE));
+        const height = Math.ceil(line * Math.min(layout.get_line_count(), this._lines)) + 1;
+        return [height, height];
+    }
+
+    /** The label gets all of it: given that height, it wraps and ellipsizes to fill it. */
+    vfunc_allocate(box) {
+        this.set_allocation(box);
+        this.child?.allocate(this.get_theme_node().get_content_box(box));
+    }
+});
+
 /** Wraps a label over lines, breaking a long word where it must, with no hyphen added ("example.co-m"). */
 export function wrapLines(label, ellipsize = Pango.EllipsizeMode.NONE) {
     const text = wrapText(label, ellipsize);
@@ -1311,7 +1343,8 @@ class PrivacyDots extends St.BoxLayout {
     _init() {
         super._init({style_class: 'isle-privacy-dots', y_align: Clutter.ActorAlign.CENTER, visible: false});
         this._dots = {};
-        for (const kind of ['camera', 'microphone', 'screenShare']) {
+        // `phone`: the Shelf shared with a phone, a port open on the network.
+        for (const kind of ['camera', 'microphone', 'screenShare', 'phone']) {
             const dot = new St.Widget({style_class: `isle-privacy-dot ${kind}`, visible: false, y_align: Clutter.ActorAlign.CENTER});
             dot.set_pivot_point(0.5, 0.5);
             this._dots[kind] = dot;
@@ -1319,7 +1352,7 @@ class PrivacyDots extends St.BoxLayout {
         }
     }
 
-    /** Shows a dot for each of `privacy`'s camera, microphone and screenShare. */
+    /** Shows a dot for each of `privacy`'s camera, microphone, screenShare and phone. */
     update(privacy) {
         for (const [kind, dot] of Object.entries(this._dots)) {
             const on = Boolean(privacy[kind]);

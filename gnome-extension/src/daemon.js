@@ -26,6 +26,7 @@ const INTERFACES = {
             <method name="SetPosition"><arg name="position_us" type="x" direction="in"/></method>
             <method name="Raise"/>
             <method name="Choose"><arg name="name" type="s" direction="in"/></method>
+            <method name="Dismiss"/>
             <method name="SetLyrics"><arg name="enabled" type="b" direction="in"/></method>
             <method name="SetWatching"><arg name="watching" type="b" direction="in"/></method>
             <property name="NowPlaying" type="s" access="read"/>
@@ -64,6 +65,17 @@ const INTERFACES = {
             <method name="Refresh"/>
             <property name="Items" type="s" access="read"/>`),
         properties: {Items: 'shelf'},
+    },
+    share: {
+        xml: node('Share1', `
+            <method name="Start"/>
+            <method name="Stop"/>
+            <method name="Answer"><arg name="id" type="s" direction="in"/><arg name="allow" type="b" direction="in"/></method>
+            <method name="Remove"><arg name="id" type="s" direction="in"/></method>
+            <method name="Code"><arg type="s" direction="out"/></method>
+            <signal name="Received"><arg name="name" type="s"/></signal>
+            <property name="State" type="s" access="read"/>`),
+        properties: {State: 'share'},
     },
     clipboard: {
         xml: node('Clipboard1', `
@@ -329,6 +341,9 @@ export class Daemon extends Signals.EventEmitter {
             break;
         case 'Alert':
             this.emit('usage-alert', ...args);
+            break;
+        case 'Received':
+            this.emit('phone-received', args[0]);
             break;
         case 'Event':
             try {

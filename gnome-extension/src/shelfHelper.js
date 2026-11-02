@@ -35,12 +35,14 @@ const ShelfWindowProxy = Gio.DBusProxy.makeProxyWrapper(`
     <arg name="awidth" type="i" direction="in"/><arg name="aheight" type="i" direction="in"/>
   </method>
   <method name="Hide"/>
+  <method name="SetSaves"><arg name="saves" type="b" direction="in"/></method>
   <method name="Scale"><arg name="scale" type="i" direction="out"/></method>
   <method name="SetScale"><arg name="scale" type="i" direction="in"/></method>
   <method name="SetDropping"><arg name="dropping" type="b" direction="in"/></method>
   <signal name="Dragging"><arg name="active" type="b"/></signal>
   <signal name="Hovering"><arg name="uris" type="as"/></signal>
   <signal name="Drawn"/>
+  <signal name="Save"><arg name="uri" type="s"/></signal>
 </interface></node>`);
 
 /** Errors meaning the helper cannot be started at all. */
@@ -100,7 +102,7 @@ function logical({x, y, width, height}, scale) {
 }
 
 // Signals: `drag-near`, `drag-over` (over the shelf or not), `drag-files` (the URIs over it), `drag-away` (went elsewhere),
-// `drag-end` (a drag in or out ended; whether it ended over the shelf), `available-changed`.
+// `drag-end` (a drag in or out ended; whether it ended over the shelf), `available-changed`, `save` (a URI, ↓ pressed).
 export class ShelfHelper extends Signals.EventEmitter {
     /** Looks for the helper, watches drags, and catches its window as it maps. */
     constructor(island, page) {
@@ -353,6 +355,8 @@ export class ShelfHelper extends Signals.EventEmitter {
                     if (this._reveal !== reveal || !reveal.framed || !reveal.drawn)
                         return;
                     this._cancelReveal();
+                    // The tab's own tiles fade out as the window fades in: a crossfade, never both in full.
+                    this._page.handOver(FADE_IN_MS);
                     actor.ease({
                         opacity: 255,
                         duration: FADE_IN_MS,
@@ -405,6 +409,7 @@ export class ShelfHelper extends Signals.EventEmitter {
     /** Lets go of the helper's window once it is gone. */
     _forgetWindow() {
         this._cancelReveal();
+        this._page.handBack();
         this._windowIds?.forEach(id => this._window.disconnect(id));
         this._windowIds = null;
         this._window = null;
@@ -516,16 +521,28 @@ export class ShelfHelper extends Signals.EventEmitter {
                             this._drawnAt = GLib.get_monotonic_time();
                         }
                     });
+                    // 1.5.4: ↓ on a file the Shelf keeps itself, saved by the extension as from its own tile; the
+                    // helper shows ↓ only once told this extension does (an older helper has no SetSaves).
+                    this._saveId = proxy.connectSignal('Save', (_proxy, _sender, [uri]) => this.emit('save', uri));
                     this._signalProxy = proxy;
                     this._ownerId = proxy.connect('notify::g-name-owner', () => this._onOwnerChanged(proxy));
+                    this._saySaves(proxy);
                     this.sync();
                 }, this._cancellable, Gio.DBusProxyFlags.DO_NOT_AUTO_START_AT_CONSTRUCTION);
             });
     }
 
+    /** Tells a running helper this extension saves files on its Save, so it shows ↓; an older helper (no
+     * SetSaves) shows none anyway. Never starts one. */
+    _saySaves(proxy) {
+        if (proxy.g_name_owner)
+            proxy.call('SetSaves', new GLib.Variant('(b)', [true]), Gio.DBusCallFlags.NO_AUTO_START, -1, null, () => {});
+    }
+
     /** The helper started or quit; too many quits while shown and it is given up. */
     _onOwnerChanged(proxy) {
         if (proxy.g_name_owner) {
+            this._saySaves(proxy);
             // Started again (after a crash, or quitting as the drag began): it must hear of the drag too.
             if (this._dragNear)
                 this._setDropping(true);
@@ -648,6 +665,7 @@ export class ShelfHelper extends Signals.EventEmitter {
             this._signalProxy.disconnectSignal(this._draggingId);
             this._signalProxy.disconnectSignal(this._hoveringId);
             this._signalProxy.disconnectSignal(this._drawnId);
+            this._signalProxy.disconnectSignal(this._saveId);
             this._signalProxy.disconnect(this._ownerId);
         }
         this._proxy = null;

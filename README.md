@@ -63,7 +63,7 @@ appear in the same place instead of in the middle of the screen.
 <tr>
 <td width="50%" valign="top">
 <img src="docs/images/call.png" alt="A Google Meet call in the island: its length, mute and open" width="100%"><br>
-<b>Calls</b> in WhatsApp, Telegram, Meet or any app or browser: the closed island shows a green phone beside the time, and the Call page how long the call has lasted. Open it to see the call live (you and whoever you call) while you work in other windows, mute your microphone, or jump back to the call.
+<b>Calls</b> in WhatsApp, Telegram, Discord, Zoom, Meet and other call apps or call pages in a browser: the closed island shows a green phone beside the time, and the Call page how long the call has lasted. Open it to see the call live (you and whoever you call) while you work in other windows, mute your microphone, or jump back to the call.
 </td>
 <td width="50%" valign="top">
 <img src="docs/images/focus.png" alt="Timer page: the timer's ring, the work and break lengths, and Start" width="100%"><br>
@@ -77,7 +77,7 @@ appear in the same place instead of in the middle of the screen.
 </td>
 <td width="50%" valign="top">
 <img src="docs/images/clipboard.png" alt="Clipboard history" width="100%"><br>
-<b>Shelf.</b> A clipboard history of text, links, images and files (search, filter, pin; Super+V to paste), and a files tray: drop files on the island, then drag them into any app or click one to copy it, ready to paste into a chat.
+<b>Shelf.</b> A clipboard history of text, links, images and files (search, filter, pin; Super+V to paste), and a files tray: drop files on the island, then drag them into any app or click one to copy it, ready to paste into a chat. Press <b>Phone</b> and scan the QR code to save the Shelf's files on your phone, or send photos and files from it to the Shelf, in the phone's browser: same Wi-Fi, no app, nothing through the internet. ↓ on a file the phone sent saves it into Downloads.
 </td>
 </tr>
 <tr>
@@ -97,7 +97,7 @@ appear in the same place instead of in the middle of the screen.
 </td>
 <td width="50%" valign="top">
 <img src="docs/images/voice.png" alt="The voice assistant at work: what it heard, and the step it is on, finding jazz on Spotify" width="100%"><br>
-<b>Voice assistant.</b> Press Super+I and ask, in English or Indonesian: play a song, find a file, put windows side by side, add a reminder, explain why the laptop is slow. It works as an agent: a request with several steps is done one after another, each step checked, with the AI you already use (Claude Code, Codex, Grok or Antigravity).
+<b>Voice assistant.</b> Press Super+I and ask, in English or Indonesian: play a song, find a file, put windows side by side, add a reminder, explain why the laptop is slow. It works as an agent: a request with several steps is done one after another, each step checked, with the AI you already use (Claude Code, Codex, Grok, opencode or Antigravity).
 </td>
 </tr>
 <tr>
@@ -151,9 +151,10 @@ your windows uncovered.
 - **GNOME Shell 46 to 51** (Ubuntu 24.04 to 26.10, Fedora 40 to 45,
   Debian 13, …), on a 64-bit Intel or AMD PC (x86_64). Check with
   `gnome-shell --version`.
-- `curl`, which most systems have. Install as yourself, not with `sudo`.
+- `curl`, which most systems have (if not: `sudo apt install curl`). Install
+  Isle as yourself, not with `sudo`.
 - For the voice assistant (optional): a microphone and
-  one of Claude Code, Codex, Grok or Antigravity signed in (Codex and the npm
+  one of Claude Code, Codex, Grok, opencode or Antigravity signed in (Codex and the npm
   install of Claude Code need Node.js 18 or newer); see
   [Voice assistant](#voice-assistant).
 
@@ -288,16 +289,15 @@ Click the gear right of the clock in the open island (or Isle's gear in the
 **Extensions** app):
 
 - **Island:** Isle's own black island, or Glass, clear dark glass that shows what
-  is behind it (windows and wallpaper) blurred, with a slider from clear to dark smoked glass; the top bar on a slider from glass (default) to black;
-  a little space below the island inside the bar (on by default); a 24- or 12-hour clock (or as GNOME's); privacy dots; which pages the open island has (Music,
+  is behind it (windows and wallpaper) blurred, with a slider from clear to dark smoked glass; the top bar on a slider from glass (default) to black, and black anyway while a window reaches it (off by default);
+  a little space below the island inside the bar (on by default); auto-hide (always, with a top bar that hides, or beside maximized windows; off by default); a 24- or 12-hour clock (or as GNOME's); privacy dots; which pages the open island has (Music,
   Notifications, Timer, Reminders, Shelf, Calendar, Apps, AI Usage) and whether it
   has the AI assistant at all; world clocks, and their cities;
   the closed island inside the bar or hanging below it; with more than one
   display, on the main one or the one you are using; opening when the
-  pointer rests on it (and for how long) or only on a click; auto-hide, after
-  how long, and whether only while an app fills the screen.
+  pointer rests on it (and for how long) or only on a click; how long auto-hide waits.
 - **Alerts:** apps' notifications in the island (or GNOME's own banners
-  instead); volume and brightness; charging, network, Bluetooth and Caps
+  instead); over full-screen apps too (off by default); volume and brightness; charging, network, Bluetooth and Caps
   Lock, each on its own; new songs, sounds; lyrics online;
   a reminder before calendar events, and how many minutes before.
   Alerts other than a low battery are not shown while Do Not Disturb is on.
@@ -375,12 +375,20 @@ after 10 minutes, and a command is stopped after 30.
    | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `curl -fsSL https://claude.ai/install.sh \| bash` (or `npm i -g @anthropic-ai/claude-code`) | run `claude` | Uses your Claude plan; Sonnet by default; Haiku is the fastest but follows the request's language and tools less reliably |
    | [Codex](https://github.com/openai/codex) (ChatGPT) | `npm i -g @openai/codex` | `codex login` | How Isle uses ChatGPT: your ChatGPT plan (Free works too, with lower limits), with the model your Codex uses |
    | [Grok](https://x.ai/build) | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok login` | Uses your Grok plan (Free works too); Isle runs it in its own folder, kept to answering |
+   | [opencode](https://opencode.ai) | `curl -fsSL https://opencode.ai/install \| bash` | `opencode auth login` | Uses the providers you signed in to in opencode (your own API keys or subscriptions), with the model your opencode uses; Isle runs it in its own folders with every tool but web search turned off. No usage page: the providers bill you directly |
    | [Antigravity](https://antigravity.google) | its installer | run `agy` | Its terms bar third-party tools from the service; Isle only runs the official `agy`, at your own risk |
 
    Settings → Assistant lists only the models your plan includes, by their full names, with your plan's
    name. If your plan stops including the one you picked (a subscription that lapsed), Isle answers with
    the plan's default and says so once, then goes back to your pick when the plan includes it again.
    Claude's Fable models are not offered: in the assistant they would use your usage credits without asking.
+   opencode shows your OpenCode plan (Free models, OpenCode Zen or OpenCode Go; Go Plus and Go Teams
+   show as Go, as they include the same models) and offers only: the models you used last in opencode,
+   OpenCode's free models, and your plan's (Zen's, or Go's as OpenCode Go lists them now). Every one is a
+   model `opencode models` lists for you; nothing else is offered. It needs no sign-in for the free
+   models. Isle uses only what you signed in to with `opencode auth login` (opencode 1.4.8 or newer):
+   custom providers in your own `opencode.json` (a local Ollama, say) and API keys kept only in
+   environment variables are not used.
 
 2. Set up speech recognition, once: press **Set up** when the assistant asks
    for it, or run `~/.local/bin/isle-setup-voice` in a terminal (`isle-setup-voice` with a .deb,
@@ -397,7 +405,7 @@ after 10 minutes, and a command is stopped after 30.
    `isle-setup-voice --remove-old`.
 3. Pick the AI in **Settings → Assistant**, or leave it on Automatic, which
    uses the first one you are signed in to: Claude Code, then Codex, then
-   Grok, then Antigravity. An AI installed later is found by itself.
+   Grok, then opencode, then Antigravity. An AI installed later is found by itself.
 4. Check with `~/.local/bin/isled --doctor` (`isled --doctor` with a
    package): it lists speech recognition (the models
    downloaded, and the GPU or processor it runs on) and each AI, where it is
@@ -534,6 +542,11 @@ day (also in Settings); the speech model, downloaded once from Hugging Face
 when you set up voice; and the voice assistant, whose requests go to the AI
 you picked and may include a web search by it. A meeting's link is read
 from the event on this computer, and only opened when you click Join.
+Sharing the Shelf with your phone runs a small web server on your local
+network only while you share: a secret address in the QR code, your Allow on
+the island for each phone (matching the code it shows), the Shelf's files and nothing else, and it stops
+after 10 idle minutes, on Stop, or when the screen locks
+([how it is kept safe](SECURITY.md#sharing-the-shelf-with-a-phone)).
 Copies from password managers
 are never kept, and only GNOME Shell may read the clipboard history from
 Isle's service or steer its assistant. The call preview is drawn by GNOME
@@ -555,6 +568,14 @@ found"; a busy service retries on its own.
 **Files cannot be dragged in or out.** The release package includes the
 drag-and-drop helper; when building from source, install `libgtk-4-dev`
 (Fedora: `gtk4-devel`) and run `./install.sh` again.
+
+**A phone can't open the Shelf.** It must be on the same Wi-Fi as the computer
+(not a guest network that keeps devices apart). A firewall that blocks
+incoming connections keeps it out too: with ufw, the island offers the
+command (**Copy fix**), `sudo ufw allow from <your network> to any port 47830:47839 proto tcp`;
+with firewalld on a zone that blocks them (Fedora Workstation's own does not),
+`sudo firewall-cmd --permanent --add-port=47830-47839/tcp && sudo firewall-cmd --reload`.
+Isle never changes the firewall itself, and listens only while you share.
 
 **Another extension covers the island.** Extensions that restyle or move the
 top bar (Dash to Panel, Hide Top Bar, other islands) can get in the way;

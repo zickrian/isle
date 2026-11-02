@@ -105,6 +105,15 @@ pub fn speech_only(samples: &[f32], stretches: &[(f32, f32)]) -> Vec<f32> {
     speech
 }
 
+/// What a recording held: the words, how much of it was speech, and the segments not counted as said.
+#[derive(Debug, Default, PartialEq)]
+pub struct Heard {
+    pub text: String,
+    pub speech_ms: usize,
+    /// Each as (text, no-speech score), for isled's log when no words came of it.
+    pub dropped: Vec<(String, f32)>,
+}
+
 /// A loaded Whisper model, with Silero when its file is there.
 pub struct Model {
     state: WhisperState,
@@ -150,7 +159,7 @@ impl Model {
     }
 
     /// What was said in `samples` (16 kHz mono), in one of the `language` setting's languages.
-    pub fn transcribe(&mut self, samples: &[f32], language: &str) -> Result<String, String> {
+    pub fn transcribe(&mut self, samples: &[f32], language: &str) -> Result<Heard, String> {
         let speech = match &mut self.vad {
             Some(vad) => {
                 // faster-whisper's settings, which the assistant was tuned with.
@@ -168,8 +177,9 @@ impl Model {
             None => speech_only(samples, &[(0.0, f32::MAX)]),
         };
         if speech.is_empty() {
-            return Ok(String::new());
+            return Ok(Heard::default());
         }
+        let speech_ms = speech.len() * 1000 / SAMPLE_RATE;
 
         let allowed = allowed(language);
         let language = match allowed.as_slice() {
@@ -196,14 +206,21 @@ impl Model {
         self.state
             .full(params, &speech)
             .map_err(|err| format!("speech recognition failed: {err}"))?;
-        let mut said = Vec::new();
+        let (mut said, mut dropped) = (Vec::new(), Vec::new());
         for segment in self.state.as_iter() {
             let text = segment.to_str_lossy().map_err(|err| err.to_string())?;
-            if heard(&text, segment.no_speech_probability()) {
+            let no_speech = segment.no_speech_probability();
+            if heard(&text, no_speech) {
                 said.push(text.trim().to_owned());
+            } else {
+                dropped.push((text.trim().to_owned(), no_speech));
             }
         }
-        Ok(said.join(" ").trim().to_owned())
+        Ok(Heard {
+            text: said.join(" ").trim().to_owned(),
+            speech_ms,
+            dropped,
+        })
     }
 
     /// How likely `speech` is in each language Whisper knows.

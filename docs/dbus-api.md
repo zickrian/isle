@@ -8,8 +8,8 @@ milliseconds unless the name says `_us` (microseconds).
 
 Methods that read what the user copied (`Clipboard1.GetText` and `Search`), steer the
 assistant (every `Assistant1` method but `ClearChat`), answer an AI agent
-(`Agents1.Resolve` and `SetPresent`) or change an AI's settings (`Agents1.SetHooked`) answer
-GNOME Shell only, where the extension runs; any other caller gets
+(`Agents1.Resolve` and `SetPresent`), change an AI's settings (`Agents1.SetHooked`) or share
+with a phone (`Share1.Start`, `Stop` and `Answer`) answer GNOME Shell only, where the extension runs; any other caller gets
 `org.freedesktop.DBus.Error.AccessDenied`.
 
 `isled --version`, `isled --doctor` (what works: the service, speech
@@ -23,7 +23,8 @@ running one alone.
 ## io.github.zickrian.isle.Media1
 
 The active MPRIS player: the one picked with `Choose` while it runs, else the one playing, else the one
-that played last. Another player starting to play ends the pick.
+that played last, a paused song before a browser's media that rests. Another player starting to play ends
+the pick. A player put away with `Dismiss` is left out until it plays again.
 
 | Member | Signature | |
 |---|---|---|
@@ -31,9 +32,10 @@ that played last. Another player starting to play ends the pick.
 | `SetPosition(x position_us)` | | Seek to an absolute position. |
 | `Raise()` | | Bring the player's window to the front. |
 | `Choose(s name)` | | Show and control the player `name` (from `Players`). |
+| `Dismiss()` | | Put the active player away until it plays again (the Music page's ×); another shows, or none. |
 | `SetLyrics(b enabled)` | | Look lyrics up online (LRCLIB), or not; off, `Lyrics` says `off`. The extension sends its setting whenever isled appears. |
 | `SetWatching(b watching)` | | While on, read the active player at once and then every second it plays (every 0.35 s to confirm a read that fell behind or while it buffers, every 0.5 s after a read that was off or while a new speed is measured, every 10 s after a read failed). The extension turns it on only while the open island shows the position (the player or lyrics), and sends it again whenever isled appears; off, isled sets no timer at all. |
-| `NowPlaying` | `s` | `{available, identity, desktop_entry, status, title, artist, album, art_path, length_us, position_us, sampled_at_ms, rate, can_go_next, can_go_previous, can_play_pause, can_seek}` |
+| `NowPlaying` | `s` | `{available, identity, desktop_entry, status, title, artist, album, art_path, length_us, position_us, sampled_at_ms, rate, can_go_next, can_go_previous, can_play_pause, can_seek, resting}`; `resting`: a browser's media that is over (paused at its end, or paused for a minute), which the closed island leaves out |
 | `Lyrics` | `s` | `{track, status, lines: [{time_ms, text}]}`; `status` is `none`, `loading`, `synced`, `plain` (lines have `time_ms` -1), `instrumental`, `not_found`, `error` (LRCLIB could not be reached), `unavailable` (LRCLIB answered but is busy or failing) or `off` (turned off with `SetLyrics`); isled retries `error` and `unavailable` on its own. |
 | `Players` | `s` | `[{name, identity, desktop_entry, playing, active}]`, sorted by name; empty unless two or more players run. |
 
@@ -131,6 +133,54 @@ five seconds) it is `""`; empty or over-long ids are refused with
 | `Refresh()` | | Drop items whose files no longer exist, shortly after it returns. A file that does not answer within two seconds (a network mount gone offline) stays. |
 | `Items` | `s` | `[{uri, name, added_at_ms}]`, newest first. |
 
+Files a phone sends (see `Share1`) are kept in the shelf's own folder,
+`~/.local/share/isle/shelf`, as copied clipboard images are; taking one off
+the shelf deletes it.
+
+## io.github.zickrian.isle.Share1
+
+Sharing the shelf with a phone (see SECURITY.md). While it runs, isled serves
+one web page and the shelf's files over plain HTTP on the local network; off,
+nothing listens and nothing runs.
+
+| Member | Signature | |
+|---|---|---|
+| `Start()` | | Starts sharing, or keeps the session already running. It listens on one IPv4 address: the one on the interface of the default route (not a container's, VM's or VPN's), private first, Wi-Fi first; on a random port from 47830 to 47839. Fails (`Failed`, with words for the island) without a network, or with all ten ports taken. GNOME Shell only. |
+| `Stop()` | | Stops sharing: the port closes, transfers under way end, pages say it stopped. GNOME Shell only. |
+| `Code() → s` | | `{url, qr}`: the address with its token (`http://<address>:<port>/<token>`) and its QR code (level L, without the quiet zone) as rows of `0` and `1` (dark). Kept out of `State`, which any program on the bus can read. Fails while not sharing. GNOME Shell only. |
+| `Answer(s id, b allow)` | | Allows or turns down the phone `id` in `asking`, and only that one; turned down, it is told so and its address can't ask again until sharing stops. `InvalidArgs` when no such phone asks. GNOME Shell only. |
+| `Remove(s id)` | | Takes the allowed phone `id` off: it sees nothing more, its downloads and uploads stop at their next piece (a file half received is deleted), it is told so, and its address can't ask again until sharing stops. `InvalidArgs` when no such phone is in. GNOME Shell only. |
+| `State` | `s` | No secret in it. Off: `{active: false, ended}`, `ended` being why the last session ended (`stopped`, `idle`, `locked`, `asleep`, `gone`, `network`: its address left the computer) or null. On: `{active: true, session, network, firewall, asking, phones, idle_minutes}`: `session` counts sessions (a new one has a new `Code`); `network` is `home`, `open` (Wi-Fi without a password, or OWE), `public` (a public address) or `unknown` (NetworkManager could not say); `firewall`, while ufw is on with a dropping input policy and no phone has got through yet, the command that lets the local network in, else null; `asking` is `[{id, device, address, code}]`, the phones waiting for an answer with the four digits each one's page shows; `phones` is `[{id, device, address, code, here}]`, those allowed. A phone is `here` while its page polls, it moves a file, its page is behind the phone's file picker (up to 5 minutes, said by `api/picking`), or it asked anything in the last 90 s; after a goodbye, 4 s unless it is back (a reload). Away (`here` false) it is still in, still counted, and back without a new Allow when it returns with its cookie from the same address; `Remove` takes it off. An ask lives its full 2 minutes, unless its page said goodbye. An address makes one new phone per 2 minutes, and phones that ended are kept 16 at most. `id` is the island's handle on a phone, never its cookie; `device` is one of a few fixed names ("iPhone · Safari", "Android phone · Chrome"). At most three phones asking or allowed. |
+| `Received(s name)` | signal | A file from a phone landed on the shelf under `name`. |
+
+Sharing ends on its own after 10 minutes without a download, an upload, a
+phone picking files to send or an Allow (a page open and polling, its hellos
+and goodbyes don't count; a transfer under way holds it), when
+the screen locks (logind's `LockedHint`), when the computer goes to sleep, and
+when the caller of `Start` leaves the bus, and when its network is not the one
+it started on: its address gone from its interface, or the connection active
+on that interface another, even with the same address (looked at as
+NetworkManager reports a change; no polling; another device taking the default
+route, a VPN or NetworkManager restarting change nothing, and no answer is
+taken as no change).
+The extension calls `Stop` when it is turned off.
+
+The phone's side, all under `/<token>`: `GET /<token>` the page; `POST
+api/hello` asks to connect (sets the `isle` cookie, `HttpOnly`,
+`SameSite=Strict`; answers `{status, code}`, `status` being `asking`,
+`allowed`, `denied`, `removed` or `expired`, or `403 {status: denied | busy}`,
+or `403 {status: later, wait}` for a new phone from an address that made one
+less than 2 minutes ago, `wait` the seconds left);
+`GET api/state?v=<n>` where the phone stands (`code` while it asks) and, once
+allowed, the shelf (`{v, status, items: [{id, name, size, kind, thumb, view}],
+room, capacity, max_file, left}`), held up to 25 s until `v` changes or the
+page goes; `POST api/bye` the page is going (closed, reloaded); `POST api/picking` the page goes behind the phone's file picker; `GET f/<id>` a file (`?view=1` shows a JPEG, PNG, GIF or WebP in
+place); `GET t/<id>` a picture's preview (the extension's own, in
+`~/.cache/isle/shelf`); `PUT api/upload?name=<name>` a file as the body, with
+a `Content-Length`, answered `201 {name}` or `400 incomplete`, `403
+not-allowed`, `409 shelf-full`, `411 length`, `413 too-big` or
+`session-full`, `507 disk`. Every other request is `404 Not found`.
+
 ## io.github.zickrian.isle.Clipboard1
 
 Clipboard history. The extension watches the clipboard and reports each
@@ -197,7 +247,7 @@ Every method is GNOME Shell's: the history names every app the user ran.
 
 The voice assistant. isled records the microphone, turns speech into text
 (whisper.cpp, through `isle-whisper`), asks the AI picked in Settings
-(Claude Code, Codex, Grok or agy, with the user's own sign-in), runs the look-up
+(Claude Code, Codex, Grok, opencode or agy, with the user's own sign-in), runs the look-up
 tools the AI asks for (finding files and apps, reading small text files), and
 publishes the answer; the extension runs its actions. It works step by step:
 desktop actions the AI takes mid-way go to the extension in the `acting`
@@ -218,7 +268,7 @@ starts it; isled follows the log to the end (its last line is
 
 | Member | Signature | |
 |---|---|---|
-| `Listen(s context)` | | Records a request until the user pauses, then answers it. `context` is JSON from the extension: `{apps, running, windows, actions, provider, agy_model, claude_model, codex_model, whisper_model, language, keep_chat, selection, notifications}`; `keep_chat` is `day`, `idle-2h` or `idle-30m`; `actions` lists the action types it can run, and the AI is offered only those. |
+| `Listen(s context)` | | Records a request until the user pauses, then answers it. `context` is JSON from the extension: `{apps, running, windows, actions, provider, agy_model, claude_model, codex_model, grok_model, opencode_model, whisper_model, language, keep_chat, selection, notifications}`; `keep_chat` is `day`, `idle-2h` or `idle-30m`; `actions` lists the action types it can run, and the AI is offered only those. |
 | `Warm(s context)` | | The island opened on the assistant: starts the AI so the request to come is answered sooner. Asks nothing. |
 | `Ask(s text, s context)` | | Answers a typed request, with the same context. |
 | `Stop()` | | Stops recording and answers what was said so far. |
@@ -230,8 +280,8 @@ starts it; isled follows the log to the end (its last line is
 | `ClearChat()` | | Deletes the conversation now, with the AI's copy. Any caller (Settings asks it). |
 | `State` | `s` | `{phase, heard, reply, actions, error, hint, sign_in, provider, set_up, model, listen, heard_nothing, activity, turn, step}`. With `sign_in`, signing in to `provider` fixes the error; with `set_up`, running `isle-setup-voice model` does. `phase` is `idle`, `listening`, `transcribing`, `thinking`, `acting`, `reply` or `error`. In `acting`, `actions` are to run now, once per `step`, and reported with `Results`; in `reply`, they are what the answer asks, run once per `turn`. `activity` says what the AI is doing while it thinks ("Searching ~/Downloads for “ttd”…"); `draft`, its answer so far as it writes it. `card` is the command it asked to run, or null: `{id, command, why, detail, risks, status, output, seconds, exit, stop}`, `risks` some of `root`, `internet`, `removes`, `status` `waiting`, `running`, `done`, `failed`, `denied` or `stopped`, `output` its last lines (secrets blanked), and `stop` the argv that stops it. |
 | `History` | `s` | The conversation: `[{role, text, spoken, command, status, at}]`, `role` `user`, `assistant` or `command` (with `command` and its `status`), the newest 50. |
-| `Models` | `s` | Each AI installed and signed in, its plan and the models the plan allows: `{claude, codex, grok, agy}`, each `{plan, default, default_name, models: [{id, name}], checked_ms}`. `plan` is as the account has it (`Team`, `Pro`, `Free`; empty for agy, whose plan cannot be read); `default` is what an empty model in the context answers with (empty: the CLI's own choice). Claude's models are its aliases (`opus`, `sonnet`, `haiku`, never Fable), named as the model each means now, from Claude Code's own cached catalog; Codex's from its app server's `model/list`; Grok's from `grok models`; agy's from `agy models`. Kept in `models.json`. Any caller (Settings reads it). |
-| `RefreshModels()` | | Looks at `Models` again in the background and returns at once; Codex and agy at most once a minute. Also looked at: Codex's and Claude's when the usage shows another plan, agy's every 6 hours as the assistant opens, and an AI's after it refused a model. Any caller. |
+| `Models` | `s` | Each AI installed and signed in, its plan and the models the plan allows: `{claude, codex, grok, opencode, agy}`, each `{plan, default, default_name, models: [{id, name}], checked_ms}`. `plan` is as the account has it (`Team`, `Pro`, `Free`; empty for agy, whose plan cannot be read); `default` is what an empty model in the context answers with (empty: the CLI's own choice). Claude's models are its aliases (`opus`, `sonnet`, `haiku`, never Fable), named as the model each means now, from Claude Code's own cached catalog; Codex's from its app server's `model/list`; Grok's from `grok models`; opencode's from `opencode models` (no plan; its default is the model the user's own opencode uses); agy's from `agy models`. Kept in `models.json`. Any caller (Settings reads it). |
+| `RefreshModels()` | | Looks at `Models` again in the background and returns at once; each AI but Claude at most once a minute. Also looked at: Codex's and Claude's when the usage shows another plan, agy's, Grok's and opencode's every 6 hours as the assistant opens (and Codex's when it has none), and an AI's after it refused a model. Any caller. |
 | `ModelSwitched` (signal) | `ssss` | `(provider, plan, picked, used)`, by names: the AI answers with `used` because its plan lacks `picked` (or it refused it, and the request was asked again with `used`). Once per pick; the pick is kept and used again once the plan allows it. |
 | `Notice` (signal) | `sb` | `(text, ok)`: a command ended while no request watched it (isled had restarted). |
 | `Level` (signal) | `d` | The microphone's level (0..1) while listening, 20 times a second. |
@@ -339,3 +389,5 @@ Served by `isle-shelf` (not `isled`) as `io.github.zickrian.isle.ShelfWindow` at
 | `SetScale(i scale)` | | Draw at this scale (1 to 4) from now on: the extension sets it when the window comes out another size than asked, as when GTK started before GNOME told X11 apps the display's scale. |
 | `SetDropping(b dropping)` | | A file is being dragged towards the island: show where it will land. |
 | `Hovering` | signal `as uris` | The files dragged over the window, for the island to light in their colours; empty once they leave. |
+| `SetSaves(b saves)` | | 1.5.4: the extension saves files on `Save`; until it says so (an older one), the helper shows no ↓. The extension says it whenever the helper starts. |
+| `Save` | signal `s uri` | 1.5.4: ↓ was pressed on a file the shelf keeps itself (in isled's shelf folder); the extension copies it into Downloads, as from its own tile, and only such a file. |

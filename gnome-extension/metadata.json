@@ -1,7 +1,7 @@
 {
   "uuid": "isle@zickrian.github.io",
   "name": "Isle",
-  "description": "A notch-style island for the top bar: music with synced lyrics, calls, a focus timer beside your reminders, a calendar, a file shelf, app usage, charging and system alerts, and a voice assistant that works with Claude Code, Codex, Grok or Antigravity.",
+  "description": "A notch-style island for the top bar: music with synced lyrics, calls, a focus timer beside your reminders, a calendar, a file shelf, app usage, charging and system alerts, and a voice assistant that works with Claude Code, Codex, Grok, opencode or Antigravity.",
   "shell-version": [
     "46",
     "47",
@@ -12,5 +12,5 @@
   ],
   "settings-schema": "org.gnome.shell.extensions.isle",
   "url": "https://github.com/zickrian/isle",
-  "version-name": "1.5.3"
+  "version-name": "1.6.0"
 }

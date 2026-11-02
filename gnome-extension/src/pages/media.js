@@ -103,9 +103,9 @@ class MediaPage extends Page {
         this.connect('destroy', () => this._onDestroy());
     }
 
-    /** A track, playing or paused. */
+    /** A track, playing or paused, unless it is a browser's that is over. */
     get relevant() {
-        return Playback.hasTrack(this.daemon.state.nowPlaying);
+        return Playback.showsClosed(this.daemon.state.nowPlaying);
     }
 
     /** Wider only with the lyrics open. */
@@ -244,6 +244,11 @@ class MediaPage extends Page {
         modes.add_child(this._playerSwitch);
         modes.add_child(this._modeButton('lyrics', 'isle-lyrics', 'Show lyrics', false));
         modes.add_child(this._modeButton('audio', 'isle-output', 'Volume and output', false));
+        // While paused: put this player away until it plays again (a tab's video that is over).
+        this._dismiss = iconButton('isle-close-symbolic', 'isle-button-flat isle-player-dismiss',
+            () => this.daemon.call('media', 'Dismiss'), {size: 14, accessibleName: 'Hide until it plays again'});
+        this._dismiss.visible = false;
+        modes.add_child(this._dismiss);
         // The last icon on the page's right edge, as the header's settings; its padding hangs past it.
         onUiScale(modes, scale => (modes.translation_x = 5 * scale));
         head.add_child(modes);
@@ -399,6 +404,7 @@ class MediaPage extends Page {
         this._updateTint(nowPlaying.art_path);
 
         const playIcon = nowPlaying.status === 'Playing' ? 'isle-pause-symbolic' : 'isle-play-symbolic';
+        this._dismiss.visible = nowPlaying.status !== 'Playing';
         for (const button of this._playButtons)
             setButtonIcon(button, playIcon);
         // Dimmed where the player can't (no next song, a stream that can't pause).

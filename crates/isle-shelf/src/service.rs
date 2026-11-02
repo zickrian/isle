@@ -43,6 +43,10 @@ const INTERFACE: &str = r#"
       <arg name="aheight" type="i" direction="in"/>
     </method>
     <method name="Hide"/>
+    <!-- 1.5.4: the extension saves files on Save; until it says so (an older one), no ↓ is shown. -->
+    <method name="SetSaves">
+      <arg name="saves" type="b" direction="in"/>
+    </method>
     <!-- 1.1: the scale GTK draws at (X pixels per logical one), and setting it: the extension sets
          it if the window comes out another size than asked, as when GTK started before GNOME's. -->
     <method name="Scale">
@@ -69,6 +73,10 @@ const INTERFACE: &str = r#"
     <!-- 1.5: the window has drawn its first frame since it was shown, so the extension fades in
          something drawn, never an empty (black) window. -->
     <signal name="Drawn"/>
+    <!-- 1.5.4: ↓ was pressed on a file the shelf keeps itself; the extension saves it into Downloads. -->
+    <signal name="Save">
+      <arg name="uri" type="s"/>
+    </signal>
   </interface>
 </node>"#;
 
@@ -132,6 +140,13 @@ pub fn register(connection: &gio::DBusConnection, window: ShelfWindow) -> Result
                 window.hide();
                 invocation.return_value(None);
             }
+            "SetSaves" => match params.get::<(bool,)>() {
+                Some((saves,)) => {
+                    window.set_saves(saves);
+                    invocation.return_value(None);
+                }
+                None => invocation.return_error(gio::DBusError::InvalidArgs, "expected a boolean"),
+            },
             "SetDropping" => match params.get::<(bool,)>() {
                 Some((dropping,)) => {
                     window.set_dropping(dropping);
@@ -158,6 +173,11 @@ pub fn announce_hovering(uris: &[String]) {
 /// Tells the extension the window has drawn since it was shown.
 pub fn announce_drawn() {
     announce("Drawn", &().to_variant());
+}
+
+/// Asks the extension to save the file at `uri` into Downloads.
+pub fn announce_save(uri: &str) {
+    announce("Save", &(uri,).to_variant());
 }
 
 /// Emits one of the interface's signals; a failure is only logged.

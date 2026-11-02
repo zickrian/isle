@@ -493,6 +493,84 @@ function toolLine(tool, input) {
     return [tool, line].filter(Boolean).join(' ');
 }
 
+/** A Shelf file was saved into Downloads as `name`; `show` shows it in the file manager. */
+export function savedToDownloads(name, show) {
+    return {
+        key: 'shelf-saved',
+        icon: 'isle-save-symbolic',
+        motion: 'bounce',
+        title: 'Saved to Downloads',
+        subtitle: name,
+        tone: 'good',
+        action: {label: 'Show', callback: show},
+        duration: NOTIFICATION_DURATION,
+    };
+}
+
+/** Saving a Shelf file into Downloads failed, for `why`. */
+export function saveFailed(why) {
+    return {
+        key: 'shelf-saved',
+        icon: 'isle-warning-symbolic',
+        title: 'Couldn’t save to Downloads',
+        subtitle: why,
+        tone: 'bad',
+        duration: NOTIFICATION_DURATION,
+    };
+}
+
+/** Sharing with a phone stopped by itself as this computer's network changed. */
+export function sharingStopped() {
+    return {
+        key: 'phone-stopped',
+        icon: 'isle-smartphone-symbolic',
+        title: 'Phone sharing stopped',
+        subtitle: 'This computer’s network changed',
+        tone: 'neutral',
+        duration: NOTIFICATION_DURATION,
+    };
+}
+
+/** A phone asks to connect while sharing ({id, device, address, code}); `answer(allow)` tells isled about
+ * that phone, whatever else asks meanwhile. */
+export function phoneAsks(ask, answer) {
+    return {
+        key: `phone-ask:${ask.id}`,
+        icon: 'isle-smartphone-symbolic',
+        motion: 'bounce',
+        // The code is the phone's own, shown big on its screen: only the phone showing it gets in.
+        title: `Allow ${ask.device} — code ${ask.code}?`,
+        // A long browser name goes on to a second line rather than losing the code.
+        titleLines: 2,
+        subtitle: `${ask.address} · the same code on the phone?`,
+        tone: 'neutral',
+        actions: [
+            {label: 'Deny', answer: 'deny', callback: () => answer(false)},
+            {label: 'Allow', answer: 'allow', primary: true, callback: () => answer(true)},
+        ],
+        // It waits on the user, as long as the phone waits (isled gives up after two minutes).
+        sticky: true,
+        duration: 120000,
+        priority: 'instant',
+    };
+}
+
+/** Files arrived from a phone and are on the Shelf (`names`, in order); `onShown` readies the Files tab. */
+export function phoneReceived(names, onShown) {
+    const one = names.length === 1;
+    return {
+        key: 'phone-received',
+        icon: 'isle-smartphone-symbolic',
+        motion: 'bounce',
+        title: one ? names[0] : `${names.length} files from your phone`,
+        subtitle: one ? 'From your phone · on the Shelf' : 'On the Shelf',
+        tone: 'good',
+        page: 'shelf',
+        duration: NOTIFICATION_DURATION,
+        onShown,
+    };
+}
+
 /** An AI agent asks to run something ({provider, project, tool, input, always}), shown by the assistant;
  * `answer(choice)` sends allow, deny or always back. */
 export function agentAsks(request, look, answer) {
@@ -597,7 +675,8 @@ export function agentConnected(provider, look, settings) {
 
 /** The model picked for the assistant isn't on `provider`'s plan now (it lapsed, say): `used` answers instead. */
 export function modelSwitched(provider, plan, picked, used) {
-    const name = {claude: 'Claude', codex: 'ChatGPT', grok: 'Grok', agy: 'Antigravity'}[provider] ?? 'Your AI';
+    const name = {claude: 'Claude', codex: 'ChatGPT', grok: 'Grok', agy: 'Antigravity', opencode: 'opencode'}[provider] ??
+        'Your AI';
     return {
         key: `model-switched:${provider}`,
         icon: {claude: 'isle-claude', codex: 'isle-openai', grok: 'isle-grok'}[provider] ?? 'isle-sparkle-symbolic',

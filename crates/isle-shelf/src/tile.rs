@@ -2,7 +2,7 @@
 // Copyright (C) 2026 zickrian
 
 //! A file's tile, one size for all, as in pages/files.js: drag it out, click to copy,
-//! double-click to open, × to remove.
+//! double-click to open, × to remove, ↓ (on a file the shelf keeps itself) to save into Downloads.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -58,6 +58,19 @@ const NO_THUMBNAIL: &[&str] = &[
     "application/x-executable",
     "application/x-sharedlib",
 ];
+/// The ↓, white: drawn the same as the island's own (icons/isle-save-symbolic.svg).
+const SAVE_ICON: &[u8] = br##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="#ffffff" d="M7.25 2h1.5v6.6l2.2-2.2 1.06 1.06L8 11.47 3.99 7.46 5.05 6.4l2.2 2.2zM3 12.5h10V14H3z"/></svg>"##;
+
+thread_local! {
+    /// Whether the extension handles Save (it says so with SetSaves): an older one doesn't, so no ↓.
+    static SAVES: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Sets whether ↓ is shown; true if that changed.
+pub fn set_saves(saves: bool) -> bool {
+    SAVES.with(|cell| cell.replace(saves) != saves)
+}
+
 /// How long "Copied" shows on the tile.
 const COPIED_FOR: Duration = Duration::from_millis(1100);
 /// How long a drop waits for the app it landed on to answer before the drag ends anyway.
@@ -120,8 +133,20 @@ pub fn new(item: &Item, fresh: bool, on_remove: impl Fn(String) + 'static) -> gt
     remove.update_property(&[gtk::accessible::Property::Label("Remove from the shelf")]);
     let uri = item.uri.clone();
     remove.connect_clicked(move |_| on_remove(uri.clone()));
+    // A file the shelf keeps itself (from a phone, a clipboard picture): ↓ under the pointer saves it.
+    let save = (SAVES.with(std::cell::Cell::get) && is_shelf_copy(&file)).then(|| {
+        let icon = gio::BytesIcon::new(&glib::Bytes::from_static(SAVE_ICON));
+        let save = gtk::Button::builder()
+            .child(&gtk::Image::builder().gicon(&icon).pixel_size(10).build())
+            .css_classes(["remove", "save"])
+            .build();
+        save.update_property(&[gtk::accessible::Property::Label("Save to Downloads")]);
+        let uri = item.uri.clone();
+        save.connect_clicked(move |_| service::announce_save(&uri));
+        save
+    });
 
-    let frame = frame(&preview_with_flash, Some(&remove));
+    let frame = frame(&preview_with_flash, Some(&remove), save.as_ref());
     let tile = tile_box(&frame, &item.name, fresh);
 
     // Dragging the tile hands the file to whatever it is dropped on.
@@ -165,10 +190,13 @@ pub fn new(item: &Item, fresh: bool, on_remove: impl Fn(String) + 'static) -> gt
     let click = gtk::GestureClick::new();
     click.connect_released(move |gesture, presses, x, y| {
         let Some(tile) = gesture.widget() else { return };
+        let on = |button: &gtk::Button, target: &gtk::Widget| {
+            target.is_ancestor(button) || target == button.upcast_ref::<gtk::Widget>()
+        };
         if tile
             .pick(x, y, gtk::PickFlags::DEFAULT)
             .is_some_and(|target| {
-                target.is_ancestor(&remove) || &target == remove.upcast_ref::<gtk::Widget>()
+                on(&remove, &target) || save.as_ref().is_some_and(|save| on(save, &target))
             })
         {
             return;
@@ -204,7 +232,11 @@ fn preview_square(classes: &[&str]) -> gtk::Box {
 
 /// The preview, centred at the bottom of a box with room for the × above
 /// its top-right corner.
-fn frame(preview: &impl IsA<gtk::Widget>, remove: Option<&gtk::Button>) -> gtk::Overlay {
+fn frame(
+    preview: &impl IsA<gtk::Widget>,
+    remove: Option<&gtk::Button>,
+    save: Option<&gtk::Button>,
+) -> gtk::Overlay {
     let room = gtk::Box::builder()
         .width_request(TILE_WIDTH)
         .height_request(FRAME_HEIGHT)
@@ -221,7 +253,25 @@ fn frame(preview: &impl IsA<gtk::Widget>, remove: Option<&gtk::Button>) -> gtk::
         remove.set_margin_start((TILE_WIDTH + PREVIEW_SIZE) / 2 - REMOVE_SIZE + 6);
         frame.add_overlay(remove);
     }
+    if let Some(save) = save {
+        save.set_halign(gtk::Align::Start);
+        save.set_valign(gtk::Align::Start);
+        save.set_size_request(REMOVE_SIZE, REMOVE_SIZE);
+        // The ×'s place mirrored, over the preview's other corner.
+        save.set_margin_start(
+            TILE_WIDTH - ((TILE_WIDTH + PREVIEW_SIZE) / 2 - REMOVE_SIZE + 6) - REMOVE_SIZE,
+        );
+        frame.add_overlay(save);
+    }
     frame
+}
+
+/// Whether `file` sits right in isled's shelf folder: a copy the shelf keeps (and deletes) itself.
+fn is_shelf_copy(file: &gio::File) -> bool {
+    let own = glib::user_data_dir().join("isle").join("shelf");
+    file.path()
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+        .is_some_and(|parent| parent == own)
 }
 
 /// The frame above its name, in a fixed-width column.

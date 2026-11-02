@@ -37,6 +37,8 @@ Paste this into a terminal and press Enter:
 curl -fsSL https://raw.githubusercontent.com/zickrian/isle/main/get.sh | bash
 ```
 
+(`curl: command not found`? Install it first: `sudo apt install curl`.)
+
 It downloads the latest release, checks its checksum and installs it for
 your user. It ends with `==> Isle 1.x.y is installed` and what to do next:
 log out and back in, and how to check or remove Isle. Run it as yourself,
@@ -58,7 +60,7 @@ Rest the pointer on it to open it.
 Everything else works without it. To ask the island things out loud with
 Super+I:
 
-1. Install and sign in to one of Claude Code, Codex, Grok or Antigravity (the
+1. Install and sign in to one of Claude Code, Codex, Grok, opencode or Antigravity (the
    [README](../README.md#voice-assistant) says how; each uses your own plan).
 2. Set up speech recognition once, in a terminal. It downloads the speech
    model picked in Settings → Assistant (`small`, 265 MB, by default; or name
@@ -265,6 +267,10 @@ If it says `OUT OF DATE`, your GNOME Shell version is outside 46 to 51. If
 it says `ERROR`, that is most likely a bug in Isle: please
 [open an issue](https://github.com/zickrian/isle/issues) with GNOME Shell's
 log (see **Anything else** below).
+
+**A phone can't open the Shelf.** It must be on the same Wi-Fi as the
+computer. A firewall that blocks incoming connections keeps it out too: see
+the [README](../README.md#troubleshooting) for the ufw and firewalld commands.
 
 **Music does not show.** Check the background service:
 `systemctl --user status isled`.

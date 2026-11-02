@@ -2,20 +2,24 @@
 // Copyright (C) 2026 zickrian
 
 // Mic, camera (from isled), screen sharing and recording; all event driven.
-// Mic streams that only meter input (sound settings) are ignored, as GNOME does.
+// Mic streams that only meter input (sound settings) are ignored, as GNOME does, and so are those that record
+// a speaker's sound rather than a microphone (an app's equaliser or visualizer).
 
 import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as Signals from 'resource:///org/gnome/shell/misc/signals.js';
 import {getMixerControl} from 'resource:///org/gnome/shell/ui/status/volume.js';
 
+import {sinkCaptures, streamOwner} from './callServices.js';
 import {isWayland} from './compat.js';
 
 /** Apps that open the microphone only to show its level. */
 export const LEVEL_METERS = ['org.gnome.VolumeControl', 'org.PulseAudio.pavucontrol'];
 
-/** Signals: `changed` (any state), `recording-started` (GNOME's screen recorder). */
+/** Signals: `changed` (any state), `recording-started` (GNOME's screen recorder), `streams-changed` (what each
+ * recording records and who holds it: see `isSpeakerCapture`, `ownerOf`). */
 export class PrivacyMonitor extends Signals.EventEmitter {
     /** Starts from what is in use now and follows each source's own signals. */
     constructor(daemon) {
@@ -31,6 +35,13 @@ export class PrivacyMonitor extends Signals.EventEmitter {
         this.recordingSince = 0;
 
         this._mixer = getMixerControl();
+        /** The recordings that record a speaker (by index), and the recordings they were found among. */
+        this._sinkCaptures = new Set();
+        /** Who holds each recording, by index (see `ownerOf`). */
+        this._owners = new Map();
+        this._noPactl = false;
+        this._outputs = '';
+        this._cancellable = new Gio.Cancellable();
         this._mixerIds = ['stream-added', 'stream-removed'].map(signal =>
             this._mixer.connect(signal, () => this._syncMicrophone()));
 
@@ -64,11 +75,66 @@ export class PrivacyMonitor extends Signals.EventEmitter {
         this._screenshotUI.stopScreencast();
     }
 
-    /** Any app recording sound, level meters aside. */
+    /** Any app recording a microphone, level meters aside; a new recording only once the sound server has said
+     * what it records, so an equaliser never lights the dot for a moment. */
     _syncMicrophone() {
-        const inUse = this._mixer.get_source_outputs()
-            .some(stream => !LEVEL_METERS.includes(stream.get_application_id()));
+        this._lookAtOutputs();
+        const inUse = this._mixer.get_source_outputs().some(stream => !LEVEL_METERS.includes(stream.get_application_id()) &&
+            !this.isSpeakerCapture(stream) && this.ownerOf(stream.get_index()) !== undefined);
         this._set('microphone', inUse);
+    }
+
+    /** Whether recording `stream` records a speaker's sound, not a microphone: no call, no microphone in use. */
+    isSpeakerCapture(stream) {
+        return this._sinkCaptures.has(stream.get_index());
+    }
+
+    /** The process holding recording `index` ({pid, binary}), as the sound server last said; null when it can't
+     * say (no pactl), undefined while it is still asked. */
+    ownerOf(index) {
+        if (this._noPactl)
+            return null;
+        return this._owners.has(index) ? this._owners.get(index) : undefined;
+    }
+
+    /** Asks the sound server what each recording records and who holds it, only when the recordings change (a
+     * song or a sound playing changes none); the answer comes as `streams-changed`. */
+    _lookAtOutputs() {
+        const indices = this._mixer.get_source_outputs().map(stream => stream.get_index());
+        const outputs = [...indices].sort().join();
+        if (outputs === this._outputs)
+            return;
+        this._outputs = outputs;
+        if (!outputs) {
+            this._sinkCaptures.clear();
+            this._owners.clear();
+            return;
+        }
+        try {
+            const launcher = new Gio.SubprocessLauncher({flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE});
+            launcher.setenv('LC_ALL', 'C', true);
+            const process = launcher.spawnv(['pactl', 'list', 'source-outputs']);
+            process.communicate_utf8_async(null, this._cancellable, (_process, result) => {
+                let text;
+                try {
+                    [, text] = process.communicate_utf8_finish(result);
+                } catch {
+                    if (this._cancellable.is_cancelled())
+                        return;
+                    text = '';
+                }
+                // Changed again meanwhile: the newer answer counts.
+                if (this._outputs !== outputs)
+                    return;
+                this._sinkCaptures = sinkCaptures(text);
+                this._owners = new Map(indices.map(index => [index, streamOwner(text, index)]));
+                this._syncMicrophone();
+                this.emit('streams-changed');
+            });
+        } catch {
+            // No pactl: every recording counts, as before.
+            this._noPactl = true;
+        }
     }
 
     /** The camera as isled sees it. */
@@ -138,6 +204,7 @@ export class PrivacyMonitor extends Signals.EventEmitter {
     destroy() {
         // Tell no one about changes made while tearing down.
         this.disconnectAll();
+        this._cancellable.cancel();
         this._mixerIds.forEach(id => this._mixer.disconnect(id));
         this._daemon.disconnect(this._daemonId);
         this._screenshotUI.disconnect(this._recordingId);

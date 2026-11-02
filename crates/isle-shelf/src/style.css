@@ -87,3 +87,11 @@ window.isle-shelf {
 .tile .remove:hover { background: #5a5a5e; }
 
 scrollbar { opacity: 0.4; }
+
+/* ↓ on a file the shelf keeps itself: under the pointer only, as the island's. */
+.tile .save {
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.tile:hover .save { opacity: 1; }

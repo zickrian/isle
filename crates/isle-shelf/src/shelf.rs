@@ -507,6 +507,18 @@ impl ShelfWindow {
             .set_visible_child_name(if count == 0 { "empty" } else { "files" });
     }
 
+    /// Whether the extension saves files on Save: the tiles are made again, with or without ↓.
+    pub fn set_saves(&self, saves: bool) {
+        if tile::set_saves(saves) {
+            self.0
+                .tile_cache
+                .take()
+                .into_values()
+                .for_each(|old| self.0.tiles.remove(&old));
+            self.render_tiles(false);
+        }
+    }
+
     /// Lays out a tile per file, newest first. A file already shown keeps its tile where it is, or moves it;
     /// only new files get tiles (fading in with `mark_new`) and only gone ones lose theirs, so nothing else
     /// is taken down and put back, nor replays its arrival.

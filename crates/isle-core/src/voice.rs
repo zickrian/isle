@@ -60,6 +60,11 @@ impl Endpointer {
         self.speaking
     }
 
+    /// The room's noise so far (RMS, 0..1), for the log when nothing was heard.
+    pub fn room(&self) -> f32 {
+        self.noise()
+    }
+
     /// The room's noise: the quietest tenth of the recording, digital silence aside.
     fn noise(&self) -> f32 {
         let mut heard: Vec<f32> = self

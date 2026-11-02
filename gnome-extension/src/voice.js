@@ -1005,7 +1005,7 @@ const TERMINALS = [
     ['ghostty', '-e'], ['wezterm', 'start', '--'], ['foot'], ['x-terminal-emulator', '-e'],
 ];
 
-/** Opens a terminal to sign in to `provider` ("agy", "claude", "codex", "grok"), with its CLI where isled
+/** Opens a terminal to sign in to `provider` ("agy", "claude", "codex", "grok", "opencode"), with its CLI where isled
  * found it (`found`: nvm, Homebrew…); false without a terminal or the CLI. */
 export function openSignIn(provider, found = '') {
     const [name, ...args] = SIGN_IN[provider] ?? SIGN_IN.agy;
@@ -1033,7 +1033,10 @@ const SET_UP = 'next="$1"; shift; "$@" && printf "\\nIsle: done. %s\\n" "$next" 
     'printf "\\nIsle: that did not finish; run isle-setup-voice again.\\n"; exec bash';
 
 /** How each AI CLI signs in, run in a terminal (`agy` and `claude` ask on start). */
-const SIGN_IN = {agy: ['agy'], claude: ['claude'], codex: ['codex', 'login'], grok: ['grok', 'login']};
+const SIGN_IN = {
+    agy: ['agy'], claude: ['claude'], codex: ['codex', 'login'], grok: ['grok', 'login'],
+    opencode: ['opencode', 'auth', 'login'],
+};
 
 /** What to do when no terminal could be opened to sign in. */
 export function signInHint(provider) {
@@ -1048,6 +1051,7 @@ export function aiSettings(settings) {
         claude_model: settings.get_string('voice-claude-model'),
         codex_model: settings.get_string('voice-codex-model'),
         grok_model: settings.get_string('voice-grok-model'),
+        opencode_model: settings.get_string('voice-opencode-model'),
     };
 }
 

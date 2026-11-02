@@ -211,6 +211,8 @@ export const ExpandedView = GObject.registerClass({
     /** Whether the voice assistant is on, to show its mic button. */
     set voiceEnabled(enabled) {
         this._micButton.visible = enabled;
+        // The header's width goes with it: an open island fits it now, as it would opened anew.
+        this._syncWidth();
     }
 
     /** A tab per page; the open one is lit and says its name. */
@@ -610,7 +612,7 @@ export const ExpandedView = GObject.registerClass({
         const playing = Playback.isPlaying(nowPlaying);
         // There for as long as there is a song, dimmed while paused as on the closed island: play and
         // pause never change the header's width.
-        this._headerBars.visible = Playback.hasTrack(nowPlaying) && !this.pageNamed('music')?.hidden;
+        this._headerBars.visible = Playback.showsClosed(nowPlaying) && !this.pageNamed('music')?.hidden;
         this._headerBars.opacity = playing ? 255 : PAUSED_BARS_OPACITY;
         this._headerBars.playing = this._active && playing;
 

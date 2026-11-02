@@ -41,10 +41,15 @@
       <summary>Top bar opacity</summary>
       <description>How black the top bar beside the island is, in %: 0 is glass, 100 is black and the island blends into it. Unset, top-bar-style decides.</description>
     </key>
+    <key name="top-bar-black-with-windows" type="b">
+      <default>false</default>
+      <summary>Black top bar beside windows</summary>
+      <description>With a see-through or grey top bar: while an app's window reaches the bar (maximized, tiled to the top or moved up there), the bar turns black, so the wallpaper doesn't show above it. The island stays where it is.</description>
+    </key>
     <key name="compact-top-bar" type="b">
       <default>true</default>
       <summary>Compact top bar</summary>
-      <description>Make the top bar slimmer, so it frames the island like a thin bezel.</description>
+      <description>Smaller text and spacing in the top bar; with the island below the bar, a slimmer bar too.</description>
     </key>
     <key name="island-in-top-bar" type="b">
       <default>true</default>
@@ -84,20 +89,26 @@
       <default>120</default>
       <summary>How long the pointer rests before the island opens, in milliseconds</summary>
     </key>
-    <key name="auto-hide" type="b">
-      <default>false</default>
+    <key name="auto-hide" type="s">
+      <choices>
+        <choice value="off"/>
+        <choice value="always"/>
+        <choice value="top-bar"/>
+        <choice value="windows"/>
+      </choices>
+      <default>'off'</default>
       <summary>Auto-hide the closed island</summary>
-      <description>Fade the closed island away after the pointer has been off it for a while. Move the pointer to the top centre, or click there, to bring it back; alerts, the open island and the assistant still show.</description>
+      <description>off: always shown. always: hides once the pointer has been off it a while. top-bar: hides and comes back with a top bar another extension hides. windows: hides while an app's window reaches the top (maximized, tiled or moved up there). Hidden, alerts, the open island and the assistant still show; pointing at its place in the top bar brings it back.</description>
     </key>
     <key name="auto-hide-delay" type="i">
       <range min="1" max="60"/>
       <default>3</default>
       <summary>How long the closed island waits before hiding, in seconds</summary>
     </key>
-    <key name="auto-hide-fullscreen-only" type="b">
+    <key name="alerts-over-fullscreen" type="b">
       <default>false</default>
-      <summary>Auto-hide only with an app filling the screen</summary>
-      <description>When on, the island auto-hides only while the app in front is fullscreen or maximized on the island's display; otherwise it stays visible.</description>
+      <summary>Alerts over full-screen apps</summary>
+      <description>When on, alerts (notifications, calls, timers…) show over a full-screen app (a video, a game), the island hidden again between them. Off, they wait until the app leaves full screen, as GNOME's own.</description>
     </key>
     <key name="island-monitor" type="s">
       <choices>
@@ -253,7 +264,7 @@
     <key name="voice-assistant" type="b">
       <default>true</default>
       <summary>Voice assistant</summary>
-      <description>Listen for requests on the shortcut and the mic button, and answer them with the AI chosen: Claude Code, Codex, Grok or Antigravity (agy).</description>
+      <description>Listen for requests on the shortcut and the mic button, and answer them with the AI chosen: Claude Code, Codex, Grok, opencode or Antigravity (agy).</description>
     </key>
     <key name="voice-shortcut" type="as">
       <default><![CDATA[['<Super>i']]]></default>
@@ -263,7 +274,7 @@
     <key name="voice-provider" type="s">
       <default>'auto'</default>
       <summary>AI the voice assistant asks</summary>
-      <description>“agy” (Antigravity), “claude” (Claude Code), “codex” (Codex) or “grok” (Grok), each with its own sign-in; “auto” for the first installed and signed in.</description>
+      <description>“agy” (Antigravity), “claude” (Claude Code), “codex” (Codex), “grok” (Grok) or “opencode” (opencode), each with its own sign-in; “auto” for the first installed and signed in.</description>
     </key>
     <key name="voice-claude-model" type="s">
       <default>'sonnet'</default>
@@ -279,6 +290,11 @@
       <default>''</default>
       <summary>Model Grok answers with</summary>
       <description>A model id from Grok; empty for the one Grok itself uses.</description>
+    </key>
+    <key name="voice-opencode-model" type="s">
+      <default>''</default>
+      <summary>Model opencode answers with</summary>
+      <description>A model as “opencode models” lists it (provider/model); empty for the one opencode itself uses.</description>
     </key>
     <key name="voice-agy-model" type="s">
       <default>'gemini-3.8-flash-low'</default>
@@ -337,7 +353,7 @@
     <key name="voice-read-notifications" type="b">
       <default>false</default>
       <summary>Let the voice assistant read notifications</summary>
-      <description>Send the last few notifications with each request, so the AI (Claude Code, Codex, Grok or Antigravity) can read them out or summarise them.</description>
+      <description>Send the last few notifications with each request, so the AI (Claude Code, Codex, Grok, opencode or Antigravity) can read them out or summarise them.</description>
     </key>
     <key name="usage-enabled" type="b">
       <default>true</default>
@@ -368,7 +384,7 @@
     </key>
     <key name="chimes" type="b">
       <default>true</default>
-      <summary>Play a sound when a focus session or break ends</summary>
+      <summary>Play a sound when a focus session or break ends, and for reminders</summary>
     </key>
   </schema>
 </schemalist>
