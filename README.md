@@ -318,7 +318,7 @@ Click the gear right of the clock in the open island (or Isle's gear in the
   conversation is kept, and clearing it now.
 - **AI Usage:** on or off, which plans to show (Antigravity's Claude & GPT
   and Argon cards are off until turned on), and when to warn; and
-  under **AI Agents**, a switch for each of [CC] and Codex that is
+  under **AI Agents**, a switch for each of Claude Code and Codex that is
   installed (on by default; none listed when neither is).
 - **About:** the version and whether it is up to date (with how to update,
   and the switch for asking GitHub once a day), help, a bug report to copy
@@ -473,24 +473,29 @@ readable by you alone, and the AI's copy apart from your own chats with it.
 ## AI usage
 
 Isle finds your plans from the apps you are signed in to: **Claude** with
-[CC]'s sign-in, **ChatGPT** with Codex's, **Grok** with Grok's, and
+Claude Code's sign-in, **ChatGPT** with Codex's, **Grok** with Grok's, and
 **Antigravity** with `agy`'s sign-in.
 It shows each limit your plan has (a 5-hour window, the week, a model's
 week), when it resets, and warns at 80% and 95% (set in Settings). A plan
 you are not signed in to does not show at all.
 
-Claude's numbers come from the same page [CC]'s `/usage` reads, and
+Claude's numbers come from the same page Claude Code's `/usage` reads, and
 ChatGPT's from the one Codex's `/status` reads; neither is a documented API,
 so they may change. Antigravity's come from `agy`'s own `/usage`, run as
 `agy --print /usage --output-format json` (agy 1.1.11 or newer) in Isle's own
 folder for agy, using the sign-in you already have (its token file, or the
 keyring). One read gives Gemini's limits, shown by default, and the
 **Claude & GPT** (5 hours and the week) and **Argon** (the week) cards once
-they are turned on under **Settings → AI Usage → Antigravity**. Isle asks
-each every ten minutes (at most every two while the Usage page is open),
-and not while the screen is locked. Offline, as at login before the
-network is up, it tries again within a minute; when Claude's server fails it
-waits longer each time. It never signs in or refreshes a sign-in itself, and
+they are turned on under **Settings → AI Usage → Antigravity**. With AI
+usage, Antigravity and the voice assistant on, Isle reads Antigravity when
+the Usage page opens or `Usage1.Refresh()` is called, with a 30-minute
+cooldown after success or a sign-in failure. Offline failures use shorter
+backoffs; busy or update-required failures wait an hour. A later refresh is
+needed to try again; there are no automatic Antigravity retries.
+Other plans are asked every ten minutes (at most every two while the Usage
+page is open), and not while the screen is locked. Offline, as at login before
+the network is up, they try again within a minute; when Claude's server fails it
+waits longer each time. Isle never signs in or refreshes a sign-in itself, and
 with usage turned off it asks nothing at all. When ChatGPT can't be asked
 (offline, or Codex's sign-in ran out), its numbers come from Codex's own
 logs, as of your last use of Codex.

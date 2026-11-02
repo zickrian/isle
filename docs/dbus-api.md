@@ -296,13 +296,19 @@ ChatGPT's from `chatgpt.com/backend-api/wham/usage` with Codex's sign-in (as
 often as Claude's; when that fails, from Codex's own logs); Antigravity's
 from its own quota service, through `agy --print /usage --output-format
 json` (`agy` 1.1.11 or newer) with `agy`'s sign-in (its token file, or the
-keyring), run with `HOME` in Isle's own folder (`~/.local/share/isle/agy`), as
-often as Claude's. Turned off, nothing runs.
+keyring), run with `HOME` in Isle's own folder (`~/.local/share/isle/agy`).
+Antigravity is read only on `Refresh()` (including when the Usage page opens),
+while usage, Antigravity and the assistant are enabled. Success or a sign-in
+failure has a 30-minute cooldown; offline failures back off for 30 seconds,
+60 seconds, 2 minutes, 5 minutes, then 30 minutes, and busy or update-required
+failures wait an hour. All retries require another `Refresh()`; none are
+automatic. An Antigravity-only configuration starts no usage timer; other
+enabled providers retain their timers. Turned off, nothing runs.
 
 | Member | Signature | |
 |---|---|---|
-| `SetConfig(s config)` | | `{enabled, claude, codex, grok, agy, agy_claude_gpt, agy_argon, assistant, warn, critical}`, from Settings; off until set. `agy` is on by default; `agy_claude_gpt` and `agy_argon` are off until turned on in Settings, and a plan turned off here is not shown. `assistant` false: a plan seen here starts no AI to list its models. |
-| `Refresh()` | | Reads again now (Claude at most every two minutes). |
+| `SetConfig(s config)` | | `{enabled, claude, codex, grok, agy, agy_claude_gpt, agy_argon, assistant, warn, critical}`, from Settings; off until set. `agy` is on by default; `agy_claude_gpt` and `agy_argon` are off until turned on in Settings, and a plan turned off here is not shown. `assistant` false: a plan seen here starts no AI to list its models, and Antigravity usage is not read. `SetConfig` never starts `agy`; a `Refresh()` is needed. |
+| `Refresh()` | | Requests fresh readings (Claude at most every two minutes); Antigravity only when enabled with `assistant` true and its cooldown has elapsed. |
 | `Usage` | `s` | `{providers: [{id, name, plan, windows: [{label, percent, resets_at_ms}], updated_ms, note}]}`; a provider not signed in is left out. Antigravity's cards are `agy` (Gemini's 5-hour and weekly limits, whenever it is signed in), then `agy-claude-gpt` and `agy-argon` when their settings are on, each with `plan` `Claude & GPT` or `Argon`. |
 | `Alert` (signal) | `ssdx` | `(provider, window, percent, resets_at_ms)`: a limit passed the warning or the critical share, once per window. `provider` is the card's name: `Antigravity`, or `Antigravity · Claude & GPT` and `Antigravity · Argon` for the extra cards. |
 
