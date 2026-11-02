@@ -245,7 +245,7 @@ class UsagePage extends Page {
             step = 1;
             break;
         case Clutter.ScrollDirection.SMOOTH: {
-            const [, dy] = event.get_scroll_delta();
+            const [dx, dy] = event.get_scroll_delta();
             gesture.dy += dy;
             const wheel = event.get_scroll_source() === Clutter.ScrollSource.WHEEL;
             if (!gesture.moved && Math.abs(gesture.dy) >= (wheel ? WHEEL_STEP : SWIPE_STEP)) {
@@ -256,7 +256,7 @@ class UsagePage extends Page {
                 else
                     gesture.moved = true;
             }
-            if (event.get_scroll_finish_flags() !== Clutter.ScrollFinishFlags.NONE)
+            if (event.get_scroll_finish_flags() !== Clutter.ScrollFinishFlags.NONE || (dx === 0 && dy === 0))
                 gesture.at = 0;
             break;
         }

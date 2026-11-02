@@ -19,7 +19,8 @@ All notable changes to Isle are listed here. The format follows
 
 ### Fixed
 
-- Scrolling AI usage no longer skips providers when a wheel click or swipe is reported twice.
+- AI usage scrolling keeps working when wheel and touchpad events are mixed; compatibility events
+  no longer skip or block cards, and touchpad gestures end correctly on GNOME 46.
 - AI usage restores cached limits after provider off/on without bypassing request cooldowns.
   Antigravity's Gemini, Claude & GPT and Argon cards also survive turning the voice assistant off/on.
 - Antigravity counts as signed in when `agy` keeps its token in the keyring and has finished its

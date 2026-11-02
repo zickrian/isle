@@ -1882,6 +1882,9 @@ export class Controller {
     _onAlertScroll(event) {
         if (this._presentation !== 'peek' || !this._alert || this._expandWanted)
             return Clutter.EVENT_PROPAGATE;
+        // Ignore compatibility copies before they contribute to the gesture.
+        if (event.get_flags() & Clutter.EventFlags.FLAG_POINTER_EMULATED)
+            return Clutter.EVENT_STOP;
         let step;
         switch (event.get_scroll_direction()) {
         case Clutter.ScrollDirection.UP:
@@ -1906,9 +1909,6 @@ export class Controller {
         default:
             return Clutter.EVENT_PROPAGATE;
         }
-        // The click-style copies of a smooth scroll count once, as the smooth one.
-        if (event.get_flags() & Clutter.EventFlags.POINTER_EMULATED)
-            return Clutter.EVENT_STOP;
         // Content scrolls down with fingers moving up (and a wheel turned down): the alert goes up and away.
         if (step > 0)
             this._dismissAlert(true);

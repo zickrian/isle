@@ -657,7 +657,7 @@ else lives in Rust behind a D-Bus API.
 | `crates/isle-shelf` | `isle-shelf`, the files tray's drag-and-drop window. |
 | `crates/isle-whisper` | `isle-whisper`, the voice assistant's speech recognition: whisper.cpp, on the GPU through Vulkan or on the processor. |
 | `gnome-extension` | The GNOME Shell extension; `src/actionRules.js` holds the assistant's rules that need no GNOME, so they are tested anywhere. |
-| `tests/extension` | Tests of the extension's GNOME-free parts (`node --test`, and `gjs -m` for those that use GLib). |
+| `tests/extension` | GNOME-free tests (`node --test`, and `gjs -m` for GLib) plus the isolated native full-island input regression; see [Checks](CONTRIBUTING.md#checks). |
 | `data` | systemd and D-Bus activation files, and the Inter typeface. |
 | `scripts` | `setup-voice.sh` (installed as `isle-setup-voice`), `isle-charge-limit`, and `package.sh`, which makes a release. |
 | `docs/product-spec.md` | How the island looks and behaves: sizes, motion, pages, alerts. |
