@@ -25,6 +25,12 @@ use super::child::{self, Events, Group};
 const HOOKS: &str = r#"{"isle-guard": {"PreToolUse": [{"matcher": "*", "hooks": [{"timeout": 5, "command":
 "grep -qE '\"name\": *\"(search_web|read_url_content|finish|wait)\" *[}] *, *\"transcriptPath\"' && echo '{\"decision\":\"allow\"}' || echo '{\"decision\":\"deny\",\"reason\":\"Isle allows only web search and reading pages; answer with actions instead.\"}'"}]}]}}"#;
 
+fn write_hooks(workspace: &Path) -> std::io::Result<()> {
+    let agents = workspace.join(".agents");
+    std::fs::create_dir_all(&agents)?;
+    std::fs::write(agents.join("hooks.json"), HOOKS)
+}
+
 /// agy's own home: Isle's conversations stay apart from the user's own agy and are cleared each day.
 pub fn home() -> PathBuf {
     crate::store::data_dir().join("agy")
@@ -91,7 +97,12 @@ pub fn signed_in_at(home: &Path) -> bool {
 /// Whether `agy --version` ("1.4.12") is 1.1.11 or newer, where `--print /usage` reads the quota
 /// instead of starting a turn.
 pub fn supports_usage(version: &str) -> bool {
-    let mut parts = version.trim().split('.');
+    let token = version
+        .split_whitespace()
+        .map(|word| word.trim_start_matches(['v', 'V']))
+        .find(|word| word.bytes().next().is_some_and(|b| b.is_ascii_digit()))
+        .unwrap_or_default();
+    let mut parts = token.split('.');
     let (Some(major), Some(minor), Some(patch)) = (
         parts.next().and_then(|s| s.parse::<u32>().ok()),
         parts.next().and_then(|s| s.parse::<u32>().ok()),
@@ -121,15 +132,14 @@ static VERSION_OK: std::sync::LazyLock<Mutex<Option<VersionCheck>>> =
 
 /// The usage `agy --print /usage` reports for this sign-in: its JSON, read in Isle's home for agy.
 pub async fn usage(program: &Path) -> Result<Value, UsageError> {
-    if !version_supports_usage(program).await {
-        return Err(UsageError::NeedsUpdate);
-    }
+    version_supports_usage(program).await?;
     let user = dirs::home_dir();
     let home = home();
     if let Some(user) = &user {
         link_login(user, &home);
     }
     std::fs::create_dir_all(&home).map_err(|_| UsageError::Busy)?;
+    write_hooks(&home).map_err(|_| UsageError::Busy)?;
     let mut command = Command::new(program);
     command
         .args([
@@ -158,14 +168,13 @@ pub async fn usage(program: &Path) -> Result<Value, UsageError> {
         link_login(user, &home);
     }
     match read {
-        Err(_) => Err(UsageError::Offline),
-        Ok(Err(_)) => Err(UsageError::Busy),
+        Err(_) | Ok(Err(_)) => Err(UsageError::Busy),
         Ok(Ok((stdout, stderr, status))) => parse_usage(&stdout, &stderr, status.success()),
     }
 }
 
 /// Whether this agy reads `/usage` instead of starting a turn, from `agy --version` once per binary.
-async fn version_supports_usage(program: &Path) -> bool {
+async fn version_supports_usage(program: &Path) -> Result<(), UsageError> {
     let modified = std::fs::metadata(program)
         .and_then(|meta| meta.modified())
         .ok();
@@ -175,36 +184,55 @@ async fn version_supports_usage(program: &Path) -> bool {
             && path.as_path() == program
             && *when == modified
         {
-            return *ok;
+            return if *ok {
+                Ok(())
+            } else {
+                Err(UsageError::NeedsUpdate)
+            };
         }
     }
     // A version that could not be read says nothing about the binary: it is asked again next time.
-    let Some(version) = version_of(program).await else {
-        return false;
-    };
+    let version = version_of(program).await.ok_or(UsageError::Busy)?;
     let ok = supports_usage(&version);
     *VERSION_OK.lock().unwrap() = Some((program.to_path_buf(), modified, ok));
-    ok
+    if ok {
+        Ok(())
+    } else {
+        Err(UsageError::NeedsUpdate)
+    }
 }
 
 /// What `agy --version` says ("1.4.12"), if it can be read in time.
 async fn version_of(program: &Path) -> Option<String> {
+    let home = home();
+    std::fs::create_dir_all(&home).ok()?;
     let mut command = Command::new(program);
     command
         .arg("--version")
+        .current_dir(&home)
+        .env("HOME", &home)
         .env("AGY_CLI_DISABLE_AUTO_UPDATE", "1")
+        .env_remove("XDG_CONFIG_HOME")
+        .env_remove("XDG_DATA_HOME")
+        .env_remove("XDG_STATE_HOME")
+        .env_remove("XDG_CACHE_HOME")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     let mut child = child::spawn(&mut command).ok()?;
-    let mut version = String::new();
-    let mut out = child.stdout.take()?;
-    tokio::time::timeout(VERSION_TIMEOUT, out.read_to_string(&mut version))
-        .await
-        .ok()?
-        .ok()?;
-    let status = child.wait().await.ok()?;
-    status.success().then_some(version)
+    tokio::time::timeout(VERSION_TIMEOUT, async {
+        let mut version = String::new();
+        child
+            .stdout
+            .take()?
+            .read_to_string(&mut version)
+            .await
+            .ok()?;
+        let status = child.wait().await.ok()?;
+        status.success().then_some(version)
+    })
+    .await
+    .ok()?
 }
 
 /// All of agy's output and how it ended. Reads both pipes at once: it would block on a full one otherwise.
@@ -245,7 +273,10 @@ const OFFLINE_WORDS: &[&str] = &[
 
 /// agy's usage JSON, or why there is none: its sign-in, the network, or anything else it said.
 fn parse_usage(stdout: &str, stderr: &str, success: bool) -> Result<Value, UsageError> {
-    let json = serde_json::from_str::<Value>(stdout).ok();
+    let json = match serde_json::from_str::<Value>(stdout).ok() {
+        Some(json) if success && json["status"] == "SUCCESS" => return Ok(json),
+        json => json,
+    };
     let error = json.as_ref().and_then(|json| json["error"].as_str());
     let said = [stdout, stderr, error.unwrap_or_default()]
         .join("\n")
@@ -256,10 +287,7 @@ fn parse_usage(stdout: &str, stderr: &str, success: bool) -> Result<Value, Usage
     if OFFLINE_WORDS.iter().any(|words| said.contains(*words)) {
         return Err(UsageError::Offline);
     }
-    match json {
-        Some(json) if success && json["status"] == "SUCCESS" => Ok(json),
-        _ => Err(UsageError::Busy),
-    }
+    Err(UsageError::Busy)
 }
 
 /// What `agy models` lists for this account (`id<TAB>name` lines): run in Isle's home for agy, as every
@@ -406,9 +434,7 @@ impl Agy {
         if let Some(user) = dirs::home_dir() {
             link_login(&user, &home());
         }
-        let agents = workspace.join(".agents");
-        std::fs::create_dir_all(&agents)?;
-        std::fs::write(agents.join("hooks.json"), HOOKS).context("could not write agy's hooks")?;
+        write_hooks(workspace).context("could not write agy's hooks")?;
         let mut command = Command::new(program);
         command
             .args(["--print=", "--input-format", "stream-json"])
@@ -569,6 +595,29 @@ mod tests {
     }
     use super::*;
 
+    fn isolated_usage_test(name: &str) -> Option<PathBuf> {
+        const ROOT: &str = "ISLE_AGY_TEST_ROOT";
+        if let Some(root) = std::env::var_os(ROOT) {
+            return Some(root.into());
+        }
+        let root = std::env::temp_dir().join(format!("isle-agy-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("user")).unwrap();
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .arg("--exact")
+            .arg(format!("assistant::agy::tests::{name}"))
+            .env(ROOT, &root)
+            .env("HOME", root.join("user"))
+            .env("XDG_DATA_HOME", root.join("data"))
+            .env("XDG_CONFIG_HOME", root.join("config"))
+            .env("XDG_STATE_HOME", root.join("state"))
+            .env("XDG_CACHE_HOME", root.join("cache"))
+            .status()
+            .unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(status.success(), "isolated test failed: {name}");
+        None
+    }
+
     #[test]
     fn checks_which_agy_versions_support_usage() {
         // Before 1.1.11, `--print /usage` started a model turn.
@@ -576,6 +625,8 @@ mod tests {
         assert!(!supports_usage("1.1.11-rc.1"));
         assert!(supports_usage("1.1.11"));
         assert!(supports_usage("1.4.12"));
+        assert!(supports_usage("agy 1.4.12"));
+        assert!(supports_usage("v1.4.12"));
         assert!(!supports_usage(""));
         assert!(!supports_usage("1.1"));
         assert!(!supports_usage("1.2.0.1"));
@@ -606,8 +657,9 @@ mod tests {
     /// An agy older than 1.1.11 would start a model turn on `/usage`: it is never asked for it.
     #[tokio::test]
     async fn refuses_usage_from_an_old_agy() {
-        let root = std::env::temp_dir().join(format!("isle-agy-old-{}", std::process::id()));
-        std::fs::create_dir_all(&root).unwrap();
+        let Some(root) = isolated_usage_test("refuses_usage_from_an_old_agy") else {
+            return;
+        };
         let marker = root.join("ran");
         let fake = root.join("agy");
         std::fs::write(
@@ -622,13 +674,69 @@ mod tests {
             .unwrap();
         assert_eq!(usage(&fake).await, Err(UsageError::NeedsUpdate));
         assert!(!marker.exists(), "an old agy was asked for /usage");
-        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn retries_failed_version_and_guards_usage() {
+        let Some(root) = isolated_usage_test("retries_failed_version_and_guards_usage") else {
+            return;
+        };
+        let fake = root.join("agy");
+        std::fs::write(
+            &fake,
+            r#"#!/bin/sh
+if [ "$1" = --version ]; then
+    [ "$PWD" = "$HOME" ] && [ "$AGY_CLI_DISABLE_AUTO_UPDATE" = 1 ] || exit 2
+    [ -z "${XDG_CONFIG_HOME+x}${XDG_DATA_HOME+x}${XDG_STATE_HOME+x}${XDG_CACHE_HOME+x}" ] || exit 3
+    if [ ! -e "$HOME/version-attempt" ]; then
+        touch "$HOME/version-attempt"
+        exit 1
+    fi
+    echo 'agy 1.4.12'
+    exit 0
+fi
+[ "$PWD" = "$HOME" ] && grep -q isle-guard .agents/hooks.json || exit 4
+echo 'Using keyring for authentication; network metrics disabled' >&2
+echo '{"status":"SUCCESS","command":{"name":"usage"}}'
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        assert_eq!(usage(&fake).await, Err(UsageError::Busy));
+        assert_eq!(
+            usage(&fake).await,
+            Ok(serde_json::json!({"status": "SUCCESS", "command": {"name": "usage"}}))
+        );
     }
 
     #[test]
     fn tells_why_reading_usage_failed() {
         let reported = serde_json::json!({"status": "SUCCESS", "command": {"name": "usage"}});
-        assert_eq!(parse_usage(&reported.to_string(), "", true), Ok(reported));
+        assert_eq!(
+            parse_usage(&reported.to_string(), "", true),
+            Ok(reported.clone())
+        );
+        assert_eq!(
+            parse_usage(
+                &reported.to_string(),
+                "Using keyring for authentication",
+                true
+            ),
+            Ok(reported.clone())
+        );
+        assert_eq!(
+            parse_usage(&reported.to_string(), "network metrics disabled", true),
+            Ok(reported.clone())
+        );
+        assert_eq!(
+            parse_usage(&reported.to_string(), "", false),
+            Err(UsageError::Busy)
+        );
+        assert_eq!(
+            parse_usage(r#"{"status":"ERROR","command":{"name":"usage"}}"#, "", true),
+            Err(UsageError::Busy)
+        );
         // Signed out, as agy says on stderr or in its JSON error.
         assert_eq!(
             parse_usage("", "Error: authentication required.", false),
