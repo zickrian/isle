@@ -707,7 +707,7 @@ fn grok_catalog(listed: &str, cache: &Value, settings: &Value) -> Catalog {
 /// Most of the user's recent opencode models offered.
 const OPENCODE_RECENT: usize = 8;
 
-/// `opencode models --verbose`, kept to what the user uses: the models they used last in opencode, OpenCode's free
+/// `opencode models`, kept to what the user uses: the models they used last in opencode, OpenCode's free
 /// ones, and their plan's (Zen's; Go's as OpenCode Go lists them now, `go`, when known). Never a model opencode
 /// doesn't list now. The default is their own pick.
 fn opencode_catalog(

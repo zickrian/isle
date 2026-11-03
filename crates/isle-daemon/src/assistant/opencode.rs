@@ -120,6 +120,8 @@ pub struct Opencode {
     workspace: PathBuf,
     /// Isle's job and the answer's shape, as the agent's own prompt.
     prompt: String,
+    /// opencode 2: lowercase log levels and `--standalone`; 1.x takes neither.
+    opencode2: bool,
     pub conversation: Option<String>,
 }
 
@@ -231,13 +233,14 @@ impl Opencode {
         workspace: &Path,
         instructions: &str,
     ) -> anyhow::Result<Self> {
-        check_version(program).await?;
+        let version = check_version(program).await?;
         std::fs::create_dir_all(workspace)?;
         write_config().context("could not write opencode's settings")?;
         Ok(Self {
             program: program.to_owned(),
             model: model.to_owned(),
             workspace: workspace.to_owned(),
+            opencode2: version[0] >= 2,
             prompt: format!(
                 "{instructions}\n\nAnswer every request with one JSON object and nothing else (no text or \
                  code fence around it), as this JSON Schema describes: {SCHEMA}"
@@ -292,12 +295,17 @@ impl Opencode {
         // Declared before the run, so it is dropped after it, however the turn ends.
         let _hand_back = HandBack;
         let mut command = Command::from(command(&self.program));
+        command.arg("run");
+        // opencode 2 otherwise starts a background service on its default port, which the user's own may hold.
+        if self.opencode2 {
+            command.arg("--standalone");
+        }
         command
-            .args([
-                "run", "--format", "json", "--agent", AGENT, "--title", TITLE,
-            ])
+            .args(["--format", "json", "--agent", AGENT, "--title", TITLE])
             // Its errors as they happen: a used-up plan is retried for a minute before the run says so.
-            .args(["--print-logs", "--log-level", "ERROR"])
+            .args(["--print-logs", "--log-level"])
+            // 2.x takes the lowercase names; 1.x's are uppercase only.
+            .arg(if self.opencode2 { "error" } else { "ERROR" })
             .env("OPENCODE_CONFIG", &config_path)
             .current_dir(&self.workspace)
             // The request goes in on stdin: on the command line, any user could read it.
@@ -370,15 +378,30 @@ fn write_config() -> std::io::Result<()> {
     std::fs::write(dir.join("opencode.json"), config())
 }
 
-/// What `opencode models --verbose` lists for the user's providers: each model's `provider/model` line
-/// followed by its details as JSON.
+/// What `opencode models` lists for the user's providers: each model's `provider/model` line, with
+/// its details as JSON when opencode still has `--verbose` (before 2.0).
 pub async fn models(program: &Path) -> anyhow::Result<String> {
-    use tokio::io::AsyncReadExt;
     write_config().context("could not write opencode's settings")?;
     let _hand_back = HandBack;
+    // opencode 2 dropped `--verbose` and starts a background service unless it runs standalone; 1.x has no
+    // `--standalone`.
+    let standalone = check_version(program)
+        .await
+        .is_ok_and(|version| version[0] >= 2);
+    models_listing(program, standalone).await
+}
+
+/// One `opencode models` run: 1.x's `--verbose` details, or 2.x's plain list, standalone.
+async fn models_listing(program: &Path, standalone: bool) -> anyhow::Result<String> {
+    use tokio::io::AsyncReadExt;
     let mut command = Command::from(command(program));
     command
-        .args(["models", "--verbose"])
+        .args(["models"])
+        .arg(if standalone {
+            "--standalone"
+        } else {
+            "--verbose"
+        })
         .current_dir(isle_home())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -398,7 +421,7 @@ pub async fn models(program: &Path) -> anyhow::Result<String> {
     Ok(listed)
 }
 
-/// A model as `opencode models --verbose` lists it.
+/// A model as `opencode models` lists it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Listed {
     /// `provider/model`, as opencode takes it.
@@ -409,8 +432,8 @@ pub struct Listed {
     pub free: bool,
 }
 
-/// The models in `opencode models --verbose`, in its order: only what the user's own providers (or OpenCode's
-/// free ones, signed in or not) offer now.
+/// The models in `opencode models` (or its older `--verbose` details), in its order: only what the
+/// user's own providers (or OpenCode's free ones, signed in or not) offer now.
 pub fn listed_models(listed: &str) -> Vec<Listed> {
     let mut models = Vec::new();
     let mut id: Option<&str> = None;
@@ -425,7 +448,12 @@ pub fn listed_models(listed: &str) -> Vec<Listed> {
                 .unwrap_or(model)
                 .to_owned();
             let cost = &details["cost"];
-            let free = cost["input"].as_f64() == Some(0.0) && cost["output"].as_f64() == Some(0.0);
+            // The plain list has no costs; OpenCode's free models say so in their id.
+            let free = if details.is_object() {
+                cost["input"].as_f64() == Some(0.0) && cost["output"].as_f64() == Some(0.0)
+            } else {
+                model.ends_with("-free")
+            };
             // Isle says "free" itself: "MiMo V2.5 Free" is "MiMo V2.5".
             let name = match name
                 .strip_suffix(" Free")
@@ -605,16 +633,23 @@ fn session_missing(err: &anyhow::Error) -> bool {
     format!("{err:#}").contains("Session not found")
 }
 
-/// Refuses an opencode older than `MIN_VERSION`, whose sandbox settings Isle can't rely on. Asked once per
-/// installed program (its path and when it changed).
-async fn check_version(program: &Path) -> anyhow::Result<()> {
-    static CHECKED: Mutex<Option<(PathBuf, std::time::SystemTime)>> = Mutex::new(None);
+/// Refuses an opencode older than `MIN_VERSION`, whose sandbox settings Isle can't rely on, and answers with
+/// the version it found. Asked once per installed program (its path and when it changed).
+async fn check_version(program: &Path) -> anyhow::Result<[u32; 3]> {
+    static CHECKED: Mutex<Option<(PathBuf, std::time::SystemTime, [u32; 3])>> = Mutex::new(None);
     let changed = std::fs::metadata(program)
         .and_then(|meta| meta.modified())
         .ok();
     let key = changed.map(|time| (program.to_owned(), time));
-    if key.is_some() && *CHECKED.lock().unwrap_or_else(PoisonError::into_inner) == key {
-        return Ok(());
+    let cached = {
+        let checked = CHECKED.lock().unwrap_or_else(PoisonError::into_inner);
+        checked
+            .as_ref()
+            .filter(|(path, time, _)| key.as_ref().is_some_and(|(p, t)| p == path && t == time))
+            .map(|(_, _, found)| *found)
+    };
+    if let Some(found) = cached {
+        return Ok(found);
     }
     let mut command = Command::from(command(program));
     command
@@ -630,8 +665,10 @@ async fn check_version(program: &Path) -> anyhow::Result<()> {
     let text = String::from_utf8_lossy(&output.stdout);
     match version(&text) {
         Some(found) if found >= MIN_VERSION => {
-            *CHECKED.lock().unwrap_or_else(PoisonError::into_inner) = key;
-            Ok(())
+            if let Some((path, time)) = key {
+                *CHECKED.lock().unwrap_or_else(PoisonError::into_inner) = Some((path, time, found));
+            }
+            Ok(found)
         }
         // Fails closed: an older sandbox might let tools through.
         _ => bail!(
@@ -1237,6 +1274,20 @@ mod tests {
                 listed[1].free
             ),
             ("anthropic/claude-x", "claude-x", false)
+        );
+        // opencode 2 lists ids only; a free model still says so in its id.
+        let plain = listed_models(
+            "opencode/deepseek-v4.1-flash-free\nopencode/big-pickle\nanthropic/claude-x\n",
+        );
+        assert_eq!(plain.len(), 3);
+        assert_eq!(
+            (
+                plain[0].name.as_str(),
+                plain[0].free,
+                plain[1].free,
+                plain[2].free
+            ),
+            ("deepseek-v4.1-flash-free", true, false, false)
         );
     }
 
