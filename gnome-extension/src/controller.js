@@ -546,6 +546,7 @@ export class Controller {
 
         this._topBar.connect('height-changed', () => this._updateGeometry());
         this._topBar.connect('style-changed', () => this._updateGeometry());
+        this._topBar.connect('moved', () => this._updateGeometry());
         this._topBar.connect('calendar-requested', () => this._toggleFromKeyboard());
         island.connect('key-press-event', (_actor, event) => {
             // A command waiting on the user: Enter runs it, Esc denies it.
@@ -892,9 +893,9 @@ export class Controller {
             this._updateGeometry();
     }
 
-    /** Whether the island is on the main display, in its top bar. */
+    /** Whether the island is on the main display, in its top bar; not with the bar moved off the top. */
     get _onBar() {
-        return this._monitor === Main.layoutManager.primaryMonitor;
+        return this._topBar.isOn(this._monitor);
     }
 
     /** Whether it grows out of a black top bar there. */

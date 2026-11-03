@@ -6,6 +6,14 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- With the top bar moved to the bottom of the screen by another extension (Simple Taskbar, say), the closed
+  island on the main display no longer shows as a square black block the bar's height at the top. It hangs
+  from the screen's top edge with rounded corners, as on a display without the bar, and the bar keeps its
+  clock. Isle leaves that bar's colour and height alone too, so it matches the extension's bars on the other
+  displays.
+
 ## [1.6.0] - 2026-11-03
 
 Send files between the Shelf and your phone, auto-hide, alerts over full-screen apps, a black top bar beside
