@@ -490,6 +490,31 @@ export const Island = GObject.registerClass({
             this.pick_box(context, new Clutter.ActorBox({x1: 0, y1: 0, x2: this.width, y2: this._band}));
     }
 
+    /** Takes the shape it is heading for at once: moved to another display, where the shape it had is no longer
+     * the one to grow from. With `views`, the shown view's fade and slide end too, the others hidden: a copy of
+     * the island (see mirror.js) shown again after a while out of sight. Not on an island that warms views up. */
+    settle({views = false} = {}) {
+        for (const spring of this._springs)
+            spring.reset(spring.target);
+        if (views) {
+            for (const view of this._views) {
+                view.remove_all_transitions();
+                slideBy(view, 'x', 0, 0);
+                slideBy(view, 'y', 0, 0);
+                view.opacity = view === this._view ? 255 : 0;
+                // Faded by auto-hide, its view stays hidden too (see `setAutoHidden`).
+                view.visible = view === this._view && !this._autoHidden;
+            }
+        }
+        this._sync();
+    }
+
+    /** The pointer came to the island, rather than the island changing under it: moved to where the pointer went
+     * to a copy of it (see mirror.js), it is a hover at once (see `changedUnderPointer`). */
+    pointerCame() {
+        this._pointerAtMorph = null;
+    }
+
     /** Shows `view` out of sight and reach (or hides it again) while the island rests closed, so its next
      * showing finds its style and layout ready. Never the view on screen: false then. */
     warmView(view, shown) {

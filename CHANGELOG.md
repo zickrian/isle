@@ -6,6 +6,14 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- With more than one display, the island can be on all of them: Settings → Appearance → Display → All
+  displays. Every display shows the closed island and each alert as it comes; pointing at one brings the
+  island there, to hold the alert or open as usual, and it goes back to the display in use once closed.
+  With a window fullscreen on one display, alerts keep showing on the others (and over it too, with Over
+  full-screen apps on). Auto-hide hides the island on each display as it would on that display alone.
+
 ## [1.6.0] - 2026-11-03
 
 Send files between the Shelf and your phone, auto-hide, alerts over full-screen apps, a black top bar beside

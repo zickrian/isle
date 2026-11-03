@@ -24,6 +24,7 @@ import {HAS_ACCENT, grabsKeyboard, inhibitScanout, isWayland, onUiScale, px, uiS
 import {Daemon} from './daemon.js';
 import {BOTTOM_PADDING, ExpandedView, PAGE_HEIGHT} from './expanded.js';
 import {Island} from './island.js';
+import {MirrorIsland} from './mirror.js';
 import {AudioOutputs} from './audio.js';
 import {CallMonitor} from './call.js';
 import {FocusMode} from './focusMode.js';
@@ -218,6 +219,14 @@ export class Controller {
         this._voiceAfter = [];
         /** The window text was last selected in, so a selection only goes to the AI from where it was made. */
         this._selectedIn = null;
+        /** With the island on every display, its copies on the others (see mirror.js), and what their closed
+         * views are told as the island's is (see `_setCompact`). */
+        this._mirrors = [];
+        this._compactState = {};
+        /** The display the pointer took the island to from a copy, until it leaves the island; else null. Taken
+         * there by a tap, which no pointer leaves, until it is closed again. */
+        this._pointedMonitor = null;
+        this._pointedByTap = false;
 
         // Built a part at a time, frames drawn in between: all at once, it held the screen still for a tenth
         // of a second at every login and unlock. Nothing outside calls in before the last part.
@@ -320,6 +329,12 @@ export class Controller {
         this._island.connect('notify::visible', () => {
             this._syncScanout();
             this._syncAutoHide();
+            // On every display, a fullscreen window sends it to another display, rather than hiding it: what it
+            // shows (an agent's ask) goes with it.
+            if (!this._island.visible && this._mirrors.length && this._wantedMonitor() !== this._monitor) {
+                this._updateGeometry();
+                return;
+            }
             if (!this._island.visible) {
                 this._onHidden();
                 return;
@@ -502,6 +517,8 @@ export class Controller {
             this._trackIsland();
             this._syncFullscreen();
             this._syncAutoHide(true);
+            // On every display, the island no longer needs to leave a full-screen app's display, or now does.
+            this._syncMonitor();
         }));
         this._settingsChanged.push(this._settings.connect('changed::island-monitor', () => this._updateGeometry()));
         // Notifications left to GNOME again: those in the island, shown or waiting, go as a fresh start has none.
@@ -516,6 +533,8 @@ export class Controller {
         }));
         // On the display in use, it follows the window in front, once closed.
         this._focusMonitorChanged = global.display.connect('window-entered-monitor', () => this._syncMonitor());
+        // On every display, it leaves one a fullscreen window takes (see `_wantedMonitor`).
+        this._fullscreenChanged = global.display.connect('in-fullscreen-changed', () => this._syncMonitor());
         this._settingsChanged.push(this._settings.connect('changed::voice-assistant', () => {
             this._syncVoiceEnabled();
             this._syncUsage();
@@ -706,24 +725,34 @@ export class Controller {
                 onWithdrawn: key => !this._destroying && this._withdrawAlert(key),
             }, this._sharing));
         });
-        notifications.connect('dnd-changed', () => (this._compact.doNotDisturb = notifications.dnd));
+        notifications.connect('dnd-changed', () => this._setCompact('doNotDisturb', notifications.dnd));
         notifications.connect('changed', () => this._syncUnseen());
         notifications.connect('seen-changed', () => this._syncUnseen());
-        this._compact.doNotDisturb = notifications.dnd;
+        this._setCompact('doNotDisturb', notifications.dnd);
         this._syncUnseen();
+    }
+
+    /** Tells the closed island, and its copies on other displays, what it shows: `name` is a CompactView setter. */
+    _setCompact(name, value) {
+        this._compactState[name] = value;
+        for (const compact of [this._compact, ...this._mirrors.map(mirror => mirror.compact)])
+            compact[name] = value;
     }
 
     /** The unread dot, unless the Notifications page it leads to is left out. */
     _syncUnseen() {
-        this._compact.unseenNotifications = this._notifications.unseenCount > 0 &&
-            !this._settings.get_strv('hidden-pages').includes('notifications');
+        this._setCompact('unseenNotifications', this._notifications.unseenCount > 0 &&
+            !this._settings.get_strv('hidden-pages').includes('notifications'));
     }
 
     // Layout
 
-    /** Places the island on its display, in or under the top bar, then redraws it. */
+    /** Places the island on its display, in or under the top bar, and its copies on the others; then redraws. */
     _updateGeometry() {
+        if (this._destroying)
+            return;
         const before = this._monitor;
+        this._syncMirrors();
         this._monitor = this._wantedMonitor();
         // On a black bar the island grows out of it, its shoulders below the
         // bar; on any other it hangs from the top of the screen like a notch.
@@ -732,32 +761,145 @@ export class Controller {
         // Without a top bar (another display) the open island's header is its own; in the bar, the bar's height
         // (the space below the closed island is the closed one's alone).
         this._expanded.topInset = this._onBar ? this._topBar.height : px(HEADER_WITHOUT_BAR);
-        this._topBar.clockShown = !this._onBar;
+        // A copy of the island in the bar keeps the clock away as the island does.
+        this._topBar.clockShown = !this._onBar && !this._mirrors.some(mirror => this._isOnBar(mirror.monitor));
+        for (const mirror of this._mirrors) {
+            mirror.island.topInset = this._isOnBar(mirror.monitor) && this._topBar.blendsIn ? this._topBar.height : 0;
+            mirror.shown = mirror.monitor !== this._monitor;
+        }
         this._render();
-        if (this._monitor !== before)
+        if (this._monitor !== before) {
             this._syncFullscreen();
+            // Where a copy showed the same, it takes the copy's shape at once rather than growing into it.
+            if (before && this._mirrors.length)
+                this._island.settle();
+        }
         this._syncScanout();
     }
 
-    /** GNOME sends a window covering the whole display straight to the screen, hiding the island that still
-     * takes the pointer. Painting stays on while both show, as for GNOME's own menus and OSDs. */
+    /** With the island on every display (Settings), a copy of it on each (see mirror.js); the one on the island's
+     * own display stays hidden. Made again as the displays change. */
+    _syncMirrors() {
+        const {monitors} = Main.layoutManager;
+        const wanted = this._settings.get_string('island-monitor') === 'all' && monitors.length > 1 ? monitors : [];
+        if (wanted.length === this._mirrors.length && wanted.every((monitor, i) => this._mirrors[i].monitor === monitor))
+            return;
+        // Displays changed: what was pending for the old copies goes, and the display pointed at is the new one
+        // in its place.
+        this._cancel('monitor');
+        this._cancel('pointed');
+        this._pointedMonitor = this._pointedMonitor ? wanted[this._pointedMonitor.index] ?? null : null;
+        this._destroyMirrors();
+        const services = {daemon: this._daemon, settings: this._settings, privacy: this._privacy, call: this._call};
+        this._mirrors = wanted.map(monitor => {
+            const mirror = new MirrorIsland(monitor, services, {
+                onHover: copy => this._onMirrorHover(copy),
+                onRelease: (released, event) => this._onMirrorRelease(released, event),
+                // Closed, as copies are but for alerts.
+                onResize: resized => this._presentation !== 'peek' && this._renderMirror(resized),
+                onShown: shown => {
+                    this._renderMirror(shown);
+                    this._syncAutoHide();
+                },
+                onClose: () => this._alert && !this._expandWanted && this._dismissAlert(true),
+            });
+            for (const [name, value] of Object.entries(this._compactState))
+                mirror.compact[name] = value;
+            this._styleIsland(mirror.island);
+            if (this._alert)
+                mirror.setAlert(this._alert, this._alertDone(this._alert));
+            return mirror;
+        });
+        this._keepAbovePanel();
+    }
+
+    _destroyMirrors() {
+        this._mirrors.forEach(mirror => {
+            this._cancel(mirror.autoHideKey);
+            mirror.destroy();
+        });
+        this._mirrors = [];
+    }
+
+    /** The pointer came onto a copy (see `_useMirror`), or left it: a hidden copy comes back as the island does. */
+    _onMirrorHover(mirror) {
+        if (mirror.island.hovered)
+            this._useMirror(mirror);
+        if (this._mirrors.includes(mirror))
+            this._syncAutoHideOf(mirror);
+    }
+
+    /** The pointer came onto a copy of the island: the island itself takes the copy's place, unless it is open on
+     * another display (then once it closes, see `_render`). Presses on a copy go no further. */
+    _useMirror(mirror, {press = false} = {}) {
+        if (this._destroying || !this._mirrors.includes(mirror) || !mirror.shown || this._expandWanted || this._voiceOpen)
+            return Clutter.EVENT_STOP;
+        // A copy that grew under a still pointer (an alert): no hover yet, on the island either (see `_onHoverChanged`).
+        const came = !mirror.island.changedUnderPointer;
+        this._pointedMonitor = mirror.monitor;
+        this._pointedByTap = false;
+        this._updateGeometry();
+        // Under the pointer, where the copy was: a hover as soon as GNOME sees the pointer on it.
+        if (came)
+            this._island.pointerCame();
+        this._island.syncHover();
+        // A tap moves no pointer, which may never come: it goes back once closed again (see `_render`).
+        if (press) {
+            this._pointedByTap = !this._island.hovered;
+            return Clutter.EVENT_STOP;
+        }
+        // Only passed over, the pointer gone by then: back to the display in use.
+        this._later('pointed', MOVE_CHECK_MS, () => {
+            this._island.syncHover();
+            if (!this._island.hovered)
+                this._leavePointed();
+        });
+        return Clutter.EVENT_STOP;
+    }
+
+    /** A click or a tap on a copy, without a hover first: the island comes there and takes it as a primary click
+     * on the closed island (see `_onClick`, `_onTap`). Open on another display, nothing. */
+    _onMirrorRelease(mirror, event) {
+        const tap = event.type() === Clutter.EventType.TOUCH_END;
+        if (!tap && event.get_button() !== Clutter.BUTTON_PRIMARY)
+            return Clutter.EVENT_STOP;
+        this._useMirror(mirror, {press: true});
+        if (this._monitor !== mirror.monitor || this._expandWanted || this._voiceOpen)
+            return Clutter.EVENT_STOP;
+        this._openFromClosed();
+        if (tap && this._expandWanted && !this._keyboardGrab)
+            this._holdOpen();
+        return Clutter.EVENT_STOP;
+    }
+
+    /** The pointer left the island it took to another display: back to the display in use once closed. */
+    _leavePointed() {
+        if (!this._pointedMonitor)
+            return;
+        this._pointedMonitor = null;
+        this._pointedByTap = false;
+        this._syncMonitor();
+    }
+
+    /** GNOME sends a window covering the whole display straight to the screen, hiding the island (or a copy of
+     * it) that still takes the pointer. Painting stays on while both show, as for GNOME's own menus and OSDs. */
     _syncScanout() {
-        const inhibit = !this._destroying && this._island.visible && !this._autoHidden &&
-            this._windowCoversDisplay();
+        const shownOn = [...this._island.visible && !this._autoHidden ? [this._monitor] : [],
+            ...this._mirrors.filter(mirror => mirror.island.visible && !mirror.autoHidden).map(mirror => mirror.monitor)];
+        const inhibit = !this._destroying && shownOn.some(monitor => this._windowCoversDisplay(monitor));
         if (inhibit === Boolean(this._scanoutInhibited))
             return;
         this._scanoutInhibited = inhibit;
         inhibitScanout(inhibit);
     }
 
-    /** Whether the top window on the island's display covers all of it with no top bar drawn there. The top one
-     * only, as GNOME picks: not the desktop's own (Ubuntu's desktop icons cover the display under every window). */
-    _windowCoversDisplay() {
-        const monitor = this._monitor;
+    /** Whether the top window on `monitor` covers all of it with no top bar drawn there. The top one only, as
+     * GNOME picks: not the desktop's own (Ubuntu's desktop icons cover the display under every window). */
+    _windowCoversDisplay(monitor) {
         if (!monitor)
             return false;
         const panelBox = Main.layoutManager.panelBox;
-        if (this._onBar && panelBox.mapped && panelBox.get_transformed_position()[1] >= monitor.y)
+        if (this._isOnBar(monitor) && panelBox.mapped && panelBox.get_transformed_position()[1] >= monitor.y)
             return false;
         const workspace = global.workspace_manager.get_active_workspace();
         const top = global.get_window_actors().map(actor => actor.meta_window).reverse().find(window =>
@@ -781,58 +923,82 @@ export class Controller {
 
     /** Over a full-screen app with Settings' alerts over it: the island stays there, hidden but for them. */
     get _overFullscreen() {
-        return this._settings.get_boolean('alerts-over-fullscreen') && global.window_group.visible &&
-            Boolean(this._monitor?.inFullscreen);
+        return this._overFullscreenOn(this._monitor);
     }
 
-    /** Whether the island hides now ('now'), after Settings' wait ('later'), or shows (false); and, hidden, how
-     * much of its top still brings it back. See visibilityRules.js. */
-    _autoHideState() {
+    /** Whether `monitor` has a full-screen app that Settings show alerts over. */
+    _overFullscreenOn(monitor) {
+        return this._settings.get_boolean('alerts-over-fullscreen') && global.window_group.visible &&
+            Boolean(monitor?.inFullscreen);
+    }
+
+    /** Whether the island, or a copy of it (`mirror`), hides now ('now'), after Settings' wait ('later'), or shows
+     * (false); and, hidden, how much of its top still brings it back. Each on its own display, by the same rules.
+     * See visibilityRules.js. */
+    _autoHideState(mirror = null) {
+        const island = mirror?.island ?? this._island;
+        const monitor = mirror?.monitor ?? this._monitor;
         const mode = this._settings.get_string('auto-hide');
-        const fullscreen = this._overFullscreen;
+        const fullscreen = this._overFullscreenOn(monitor);
         const when = autoHide({
             mode, fullscreen,
-            presentation: this._presentation,
-            visible: this._island.visible,
-            hovered: this._island.hovered,
-            barHidden: mode === 'top-bar' && this._barHidden(),
-            windowAtTop: mode === 'windows' && this._windowAtTop(),
+            // A copy shows the island's alert, or else the closed island.
+            presentation: !mirror || this._presentation === 'peek' ? this._presentation : 'compact',
+            visible: island.visible,
+            hovered: island.hovered,
+            barHidden: mode === 'top-bar' && this._barHidden(monitor),
+            windowAtTop: mode === 'windows' && this._windowAtTop(monitor, island),
         });
         // A bar another extension hid is not there to point at.
-        const band = revealBand({mode, fullscreen, barHeight: this._onBar && !this._barHidden() ? this._topBar.height : 0,
-            edge: px(REVEAL_EDGE_PX)});
+        const barHeight = this._isOnBar(monitor) && !this._barHidden(monitor) ? this._topBar.height : 0;
+        const band = revealBand({mode, fullscreen, barHeight, edge: px(REVEAL_EDGE_PX)});
         return {when, band};
     }
 
-    /** Hides the closed island as Settings say, unless it is in use; brings it back the moment it is needed
-     * again (an alert, the open island, the pointer at its place). */
+    /** Hides the closed island and its copies as Settings say, unless in use; brings them back the moment they are
+     * needed again (an alert, the open island, the pointer at its place). */
     _syncAutoHide(restart = false) {
         if (this._destroying)
             return;
+        this._syncAutoHideOf(null, restart);
+        for (const mirror of this._mirrors)
+            this._syncAutoHideOf(mirror, restart);
+    }
+
+    /** Auto-hide for the island, or a copy of it (`mirror`), each with its own wait. */
+    _syncAutoHideOf(mirror, restart = false) {
+        const key = mirror?.autoHideKey ?? 'auto-hide';
         if (restart)
-            this._cancel('auto-hide');
-        const {when, band} = this._autoHideState();
+            this._cancel(key);
+        const {when, band} = this._autoHideState(mirror);
         if (when !== 'later')
-            this._cancel('auto-hide');
+            this._cancel(key);
         if (!when || when === 'now') {
-            this._setAutoHidden(Boolean(when), band);
+            this._setAutoHidden(Boolean(when), band, mirror);
             return;
         }
-        if (this._autoHidden) {
-            this._setAutoHidden(true, band);
+        if (mirror?.autoHidden ?? this._autoHidden) {
+            this._setAutoHidden(true, band, mirror);
             return;
         }
-        if (this._timeouts.has('auto-hide'))
+        if (this._timeouts.has(key))
             return;
-        this._later('auto-hide', this._settings.get_int('auto-hide-delay') * 1000, () => {
-            const now = this._autoHideState();
+        this._later(key, this._settings.get_int('auto-hide-delay') * 1000, () => {
+            if (mirror && !this._mirrors.includes(mirror))
+                return;
+            const now = this._autoHideState(mirror);
             if (now.when)
-                this._setAutoHidden(true, now.band);
+                this._setAutoHidden(true, now.band, mirror);
         });
     }
 
-    /** Fades the island out or back (see Island.setAutoHidden). */
-    _setAutoHidden(hidden, band = 0) {
+    /** Fades the island, or a copy of it (`mirror`), out or back (see Island.setAutoHidden). */
+    _setAutoHidden(hidden, band = 0, mirror = null) {
+        if (mirror) {
+            if (mirror.setAutoHidden(hidden, band, this._isOnBar(mirror.monitor)))
+                this._syncScanout();
+            return;
+        }
         this._island.setAutoHidden(hidden, band);
         if (hidden === this._autoHidden)
             return;
@@ -862,28 +1028,38 @@ export class Controller {
         Main.layoutManager.trackChrome(this._island, {...params});
     }
 
-    /** Whether the top bar over the island is away: hidden or slid off the screen by another extension. */
-    _barHidden() {
-        if (!this._onBar)
+    /** Whether the top bar over the island (on `monitor`) is away: hidden or slid off the screen by another
+     * extension. */
+    _barHidden(monitor = this._monitor) {
+        if (!this._isOnBar(monitor))
             return false;
         const panelBox = Main.layoutManager.panelBox;
-        return !panelBox.mapped || panelBox.get_transformed_position()[1] + panelBox.height <= this._monitor.y + 1;
+        return !panelBox.mapped || panelBox.get_transformed_position()[1] + panelBox.height <= monitor.y + 1;
     }
 
-    /** Whether an app's window under the island reaches the top of its display: maximized, tiled or moved up there. */
-    _windowAtTop() {
-        const monitor = this._monitor;
-        const top = monitor ? monitor.y + (this._onBar ? this._topBar.height : 0) : 0;
-        return windowAtTop(monitor, top + REACH_PX * uiScale(), [this._island.x, this._island.x + this._island.width]);
+    /** Whether an app's window under the island (or `island`, a copy on `monitor`) reaches the top of its display:
+     * maximized, tiled or moved up there. */
+    _windowAtTop(monitor = this._monitor, island = this._island) {
+        const top = monitor ? monitor.y + (this._isOnBar(monitor) ? this._topBar.height : 0) : 0;
+        return windowAtTop(monitor, top + REACH_PX * uiScale(), [island.x, island.x + island.width]);
     }
 
-    /** The display the island belongs on: the main one, or the one of the window in use (see Settings). */
+    /** The display the island belongs on: the main one, or the one of the window in use (see Settings). On every
+     * display, the one the pointer took it to from a copy, while the pointer stays on it. */
     _wantedMonitor() {
         const {monitors, primaryMonitor} = Main.layoutManager;
-        if (this._settings.get_string('island-monitor') !== 'active')
+        const where = this._settings.get_string('island-monitor');
+        if (where !== 'active' && where !== 'all')
             return primaryMonitor;
+        if (where === 'all' && monitors.includes(this._pointedMonitor))
+            return this._pointedMonitor;
         const index = global.display.focus_window?.get_monitor() ?? -1;
-        return monitors[index] ?? primaryMonitor;
+        const inUse = monitors[index] ?? primaryMonitor;
+        // On every display, it shows its alerts on another while a fullscreen window hides it on the one in use
+        // (unless Settings show alerts over full-screen apps: then it stays, as do the copies).
+        if (where === 'all' && inUse.inFullscreen && !this._settings.get_boolean('alerts-over-fullscreen'))
+            return monitors.find(monitor => !monitor.inFullscreen) ?? inUse;
+        return inUse;
     }
 
     /** Moves the island to the display in use, once it is closed (never mid-alert or open). */
@@ -894,7 +1070,12 @@ export class Controller {
 
     /** Whether the island is on the main display, in its top bar. */
     get _onBar() {
-        return this._monitor === Main.layoutManager.primaryMonitor;
+        return this._isOnBar(this._monitor);
+    }
+
+    /** Whether `monitor` has the top bar: the main display. */
+    _isOnBar(monitor) {
+        return Boolean(monitor) && monitor === Main.layoutManager.primaryMonitor;
     }
 
     /** Whether it grows out of a black top bar there. */
@@ -929,20 +1110,31 @@ export class Controller {
     /** The island in Isle's black or in glass, the glass with GNOME's accent (see theme.js). */
     _syncTheme() {
         Theme.setTheme(this._settings.get_string('island-theme'), this._settings.get_int('glass-tint'));
+        for (const island of [this._island, ...this._mirrors.map(mirror => mirror.island)])
+            this._styleIsland(island);
+        // An agent's alert glows in the new theme's colours on the copies too.
+        for (const mirror of this._mirrors) {
+            mirror.glowAlert = null;
+            this._tintMirror(mirror);
+        }
+        // An agent's alert on show takes the new theme's glow (see alerts.js); none while still building.
+        if (this._expanded)
+            this._syncTint();
+    }
+
+    /** The theme on `island` (the island, or a copy of it on another display): its style, shape and parts. */
+    _styleIsland(island) {
         const see = Theme.translucent();
         // The controls follow the tint in three steps (CSS can't blend): clear, middle, and dark like GNOME's menus.
         const tint = see ? this._settings.get_int('glass-tint') : 0;
         for (const [name, on] of [['isle-translucent', see], ['isle-accent-system', see && HAS_ACCENT],
             ['isle-glass-mid', see && tint >= 34 && tint < 67], ['isle-glass-dark', see && tint >= 67]]) {
             if (on)
-                this._island.add_style_class_name(name);
+                island.add_style_class_name(name);
             else
-                this._island.remove_style_class_name(name);
+                island.remove_style_class_name(name);
         }
-        this._island.refreshTheme();
-        // An agent's alert on show takes the new theme's glow (see alerts.js); none while still building.
-        if (this._expanded)
-            this._syncTint();
+        island.refreshTheme();
     }
 
     /** Times the app in front while the Apps page's switch is on; clears when asked. */
@@ -1126,11 +1318,8 @@ export class Controller {
         // CSS ones (padding) are divided by `scale` again, as St multiplies them.
         const scale = uiScale();
         const top = this._onBar ? this._topBar.height : 0;
-        const inBar = this._onBar && this._settings.get_boolean('island-in-top-bar');
-        // Closed inside the bar, it leaves the bar's last few pixels free (Settings); open, it fills the bar.
-        const band = top - (inBar ? this._topBar.gap : 0);
         // Before measuring it: inside the bar it is smaller.
-        this._compact.inBar = inBar;
+        this._compact.inBar = this._onBar && this._settings.get_boolean('island-in-top-bar');
 
         // Alerts hang below the top bar; the open island's header sits in the bar. The compact island
         // either hangs too or sits inside the bar like a notch, covering no window.
@@ -1154,24 +1343,13 @@ export class Controller {
             view.style = `padding-top: ${inset / scale}px;`;
             break;
         }
-        case 'peek': {
-            // Off a black bar its room above counts from the screen's top, as much as below.
-            const inset = this._blendsIn ? top : 0;
-            size = {width: this._peek.preferredWidth, height: inset + this._peek.preferredHeight, radius: PEEK_RADIUS * scale,
-                shoulder: PEEK_SHOULDER * scale};
+        case 'peek':
+            size = this._peekShape(this._peek, this._onBar);
             view = this._peek;
-            view.style = `padding-top: ${inset / scale}px;`;
             break;
-        }
         default:
-            size = {
-                width: this._compact.preferredWidth,
-                height: inBar ? band : top + this._settings.get_int('notch-depth') * scale,
-                radius: (inBar ? IN_BAR_RADIUS : COMPACT_RADIUS) * scale,
-                shoulder: (inBar ? IN_BAR_SHOULDER : COMPACT_SHOULDER) * scale,
-            };
+            size = this._compactShape(this._compact, this._onBar);
             view = this._compact;
-            view.style = inBar ? null : `padding-top: ${top / scale}px;`;
         }
         // An even width: centred on the display to the pixel, as much room on either side.
         size.width = 2 * Math.round(size.width / 2);
@@ -1184,13 +1362,89 @@ export class Controller {
         // A new alert under the pointer: its × shows (or not) at once.
         this._syncClose();
         this._syncTint();
-        // Closed again, it goes to the display in use if that changed meanwhile.
-        if (presentation === 'compact' && this._monitor && this._wantedMonitor() !== this._monitor)
+        this._renderMirrors();
+        if (presentation === 'compact' && this._pointedByTap && !this._island.hovered)
+            this._leavePointed();
+        // Closed again, it goes to the display in use if that changed meanwhile; or to a copy the pointer went to
+        // while it was open (see `_useMirror`).
+        const pointed = (presentation === 'compact' || presentation === 'peek') &&
+            this._mirrors.find(mirror => mirror.shown && mirror.island.hovered);
+        if (pointed)
+            this._later('monitor', 0, () => this._useMirror(pointed));
+        else if (presentation === 'compact' && this._monitor && this._wantedMonitor() !== this._monitor)
             this._later('monitor', 0, () => this._syncMonitor());
         // Have the helper running before it is needed: starting takes a moment.
         if (presentation === 'expanded' && this._expanded.page === this._shelf)
             this._shelfHelper.prepare();
         this._shelfHelper.sync();
+    }
+
+    /** The closed island's size on a display with the top bar (`onBar`) or without, `compact` styled for it. */
+    _compactShape(compact, onBar) {
+        const scale = uiScale();
+        const top = onBar ? this._topBar.height : 0;
+        const inBar = onBar && this._settings.get_boolean('island-in-top-bar');
+        // Closed inside the bar, it leaves the bar's last few pixels free (Settings); open, it fills the bar.
+        const band = top - (inBar ? this._topBar.gap : 0);
+        compact.inBar = inBar;
+        const size = {
+            width: compact.preferredWidth,
+            height: inBar ? band : top + this._settings.get_int('notch-depth') * scale,
+            radius: (inBar ? IN_BAR_RADIUS : COMPACT_RADIUS) * scale,
+            shoulder: (inBar ? IN_BAR_SHOULDER : COMPACT_SHOULDER) * scale,
+        };
+        compact.style = inBar ? null : `padding-top: ${top / scale}px;`;
+        return size;
+    }
+
+    /** An alert's size on a display with the top bar (`onBar`) or without, `peek` (showing it) styled for it. */
+    _peekShape(peek, onBar) {
+        const scale = uiScale();
+        // Off a black bar its room above counts from the screen's top, as much as below.
+        const inset = onBar && this._topBar.blendsIn ? this._topBar.height : 0;
+        const size = {width: peek.preferredWidth, height: inset + peek.preferredHeight, radius: PEEK_RADIUS * scale,
+            shoulder: PEEK_SHOULDER * scale};
+        peek.style = `padding-top: ${inset / scale}px;`;
+        return size;
+    }
+
+    /** The copies of the island on other displays show the alert it shows, else the closed island: only the
+     * island itself opens. */
+    _renderMirrors() {
+        for (const mirror of this._mirrors)
+            this._renderMirror(mirror);
+    }
+
+    _renderMirror(mirror) {
+        if (this._destroying)
+            return;
+        const onBar = this._isOnBar(mirror.monitor);
+        const alert = this._presentation === 'peek';
+        const view = alert ? mirror.peek : mirror.compact;
+        mirror.compact.inBar = onBar && this._settings.get_boolean('island-in-top-bar');
+        const size = alert ? this._peekShape(view, onBar) : this._compactShape(view, onBar);
+        size.width = 2 * Math.round(size.width / 2);
+        view.set_size(size.width, size.height);
+        if (onBar && mirror.shown)
+            this._topBar.reserveWidth(mirror.compact.preferredWidth);
+        mirror.island.morph(size, view);
+        this._tintMirror(mirror);
+    }
+
+    /** A copy glows with the alert it shows, as the island does (see `_syncTint`). */
+    _tintMirror(mirror) {
+        const alert = this._presentation === 'peek' && this._alert?.glow ? this._alert : null;
+        if (alert === mirror.glowAlert)
+            return;
+        mirror.glowAlert = alert;
+        const island = mirror.island;
+        island.breathing = false;
+        island.setTint(alert?.glow ?? null, 'aura');
+        if (alert?.sticky)
+            island.setTintMotion(ALERT_GLOW_TIME, ALERT_GLOW_LEVEL);
+        else if (alert)
+            island.pulseTint(ALERT_GLOW_TIME, ALERT_GLOW_LEVEL);
+        island.breathing = Boolean(alert?.sticky);
     }
 
     /** Lays out ahead, closed and a step at a time, what the frames showing it would otherwise style and lay
@@ -1205,10 +1459,15 @@ export class Controller {
         // The voice view only while the assistant is turned on.
         const steps = [];
         if (all) {
-            // Each alert view shown with a ring alert's parts until the next step: a frame lays them out.
-            for (const peek of this._peeks) {
-                steps.push(() => island.warmView(peek, true) && peek.setAlert(WARM_ALERT, null, {fresh: true}));
-                steps.push(() => island.warmView(peek, false));
+            // Each alert view shown with a ring alert's parts until the next step: a frame lays them out. Those of
+            // the copies on other displays too, but on the island's own (hidden, nothing is laid out there).
+            const peeks = [...this._peeks.map(peek => [island, peek]),
+                ...this._mirrors.filter(mirror => mirror.island.visible).flatMap(mirror => mirror.peeks.map(peek => [mirror.island, peek]))];
+            // A copy goes with its display, maybe between two steps.
+            const kept = owner => owner === island || this._mirrors.some(mirror => mirror.island === owner);
+            for (const [owner, peek] of peeks) {
+                steps.push(() => kept(owner) && owner.warmView(peek, true) && peek.setAlert(WARM_ALERT, null, {fresh: true}));
+                steps.push(() => kept(owner) && owner.warmView(peek, false));
             }
             if (this._voiceBound)
                 steps.push(() => island.warmView(this._voice, true) && island.warmView(this._voice, false));
@@ -1315,6 +1574,13 @@ export class Controller {
 
     /** The pointer came or went: holds or times out alerts and answers, and opens or closes the island. */
     _onHoverChanged(moved = false) {
+        // With copies, the island stays on the display the pointer is on it in, until the pointer leaves.
+        if (this._island.hovered && this._mirrors.length) {
+            this._pointedMonitor = this._monitor;
+            this._pointedByTap = false;
+        }
+        else if (!this._island.hovered)
+            this._leavePointed();
         // Under the pointer, a hidden island comes back; away, its time to hide starts.
         const wasHidden = this._autoHidden;
         this._syncAutoHide();
@@ -1808,7 +2074,8 @@ export class Controller {
     /** `inPlace` for a newer version of the alert on screen (the volume moving): it doesn't animate in again. */
     _showAlert(alert, {inPlace = false} = {}) {
         // Another alert on screen takes the other view; the same one (the volume moving) updates in place.
-        if (this._presentation === 'peek' && this._shownAlertKey !== alert.key)
+        const turn = this._presentation === 'peek' && this._shownAlertKey !== alert.key;
+        if (turn)
             this._peek = this._peeks[1 - this._peeks.indexOf(this._peek)];
         this._shownAlertKey = alert.key;
         this._alert = alert;
@@ -1817,11 +2084,10 @@ export class Controller {
                 alert.shown = true;
                 alert.onShown?.();
             }
-            // Its button does what it says, and that is the end of the alert (not of one fading in over it).
-            this._peek.setAlert(alert, () => {
-                if (this._alert === alert)
-                    this._dismissAlert(true);
-            }, {fresh: !inPlace});
+            this._peek.setAlert(alert, this._alertDone(alert), {fresh: !inPlace});
+            // Shown on every display: the copies show it too.
+            for (const mirror of this._mirrors)
+                mirror.setAlert(alert, this._alertDone(alert), {inPlace, turn});
         } catch (e) {
             // One that can't be shown must not hold up those behind it, never timed out.
             console.warn(`Isle: could not show an alert: ${e.message}`);
@@ -1838,6 +2104,14 @@ export class Controller {
             if (this._presentation === 'peek')
                 this._render();
         });
+    }
+
+    /** Its button does what it says, and that is the end of `alert` (not of one fading in over it). */
+    _alertDone(alert) {
+        return () => {
+            if (this._alert === alert)
+                this._dismissAlert(true);
+        };
     }
 
     // An alert goes after its time; a reminder or a notification only counts it while someone is there.
@@ -1932,8 +2206,10 @@ export class Controller {
     _showOsd(icon, label, level, maxLevel) {
         if (!this._settings.get_boolean('replace-osd') || !this._island.visible)
             return false;
-        // Working on another display, the user would not see it: GNOME shows its own there.
-        if (Main.layoutManager.monitors.length > 1 && global.display.get_current_monitor() !== this._monitor?.index)
+        // Working on another display, the user would not see it: GNOME shows its own there. Not with a copy of
+        // the island on each display, which shows it too.
+        if (Main.layoutManager.monitors.length > 1 && !this._mirrors.length &&
+            global.display.get_current_monitor() !== this._monitor?.index)
             return false;
         // While the island is open the OSD would cover it; let GNOME show it.
         if (this._expandWanted || this._voiceOpen)
@@ -1965,7 +2241,7 @@ export class Controller {
     _onServiceChanged() {
         if (this._daemon.running) {
             this._cancel('service-check');
-            this._compact.serviceDown = false;
+            this._setCompact('serviceDown', false);
             if (this._alert?.key === 'service-down')
                 this._dismissAlert(true);
             this._queue = this._queue.filter(queued => queued.key !== 'service-down');
@@ -1976,7 +2252,7 @@ export class Controller {
             this._later('service-check', SERVICE_GRACE_MS, () => {
                 if (this._daemon.running)
                     return;
-                this._compact.serviceDown = true;
+                this._setCompact('serviceDown', true);
                 this._post(Alerts.serviceDown(() => this._daemon.start()));
             });
         });
@@ -2253,7 +2529,7 @@ export class Controller {
 
     /** The closed island shows the assistant at work. */
     _syncAssistantBusy() {
-        this._compact.assistantBusy = this._voiceWorking;
+        this._setCompact('assistantBusy', this._voiceWorking);
     }
 
     /** Shows "Listening…" and sends isled a Listen with the request's context; `greet` for a conversation's first. */
@@ -2676,14 +2952,14 @@ export class Controller {
     _watchIdle() {
         const monitor = global.backend.get_core_idle_monitor();
         const rest = () => {
-            this._compact.idle = true;
+            this._setCompact('idle', true);
             // Away: a reminder or a notification on screen waits for them.
             if (this._alert && waitsWhileAway(this._alert))
                 this._cancel('alert');
             if (!this._activeWatch) {
                 this._activeWatch = monitor.add_user_active_watch(() => {
                     this._activeWatch = 0;
-                    this._compact.idle = false;
+                    this._setCompact('idle', false);
                     // Back: one that waited is seen, and starts its time now.
                     this._timeAlert();
                 });
@@ -2748,6 +3024,7 @@ export class Controller {
         Main.layoutManager.uiGroup.disconnect(this._panelAdded);
         global.display.disconnect(this._focusChanged);
         global.display.disconnect(this._focusMonitorChanged);
+        global.display.disconnect(this._fullscreenChanged);
         stopPending();
         if (this._voiceBound)
             Main.wm.removeKeybinding('voice-shortcut');
@@ -2782,6 +3059,7 @@ export class Controller {
         this._focusMode.destroy();
 
         // The views listen to the services below, so they go first.
+        this._destroyMirrors();
         this._island.destroy();
         this._writer.destroy();
         this._installedApps.destroy();
@@ -2802,8 +3080,11 @@ export class Controller {
     _keepAbovePanel() {
         const group = Main.layoutManager.uiGroup;
         const children = group.get_children();
-        if (children.indexOf(Main.layoutManager.panelBox) > children.indexOf(this._island))
-            group.set_child_below_sibling(Main.layoutManager.panelBox, this._island);
+        // Below the lowest of the island and its copies, one of which may be in the bar.
+        const lowest = [this._island, ...this._mirrors.map(mirror => mirror.island)]
+            .reduce((low, island) => children.indexOf(island) < children.indexOf(low) ? island : low);
+        if (children.indexOf(Main.layoutManager.panelBox) > children.indexOf(lowest))
+            group.set_child_below_sibling(Main.layoutManager.panelBox, lowest);
     }
 
     _releaseScanout() {
@@ -2827,7 +3108,7 @@ export class Controller {
             global.display.get_selection().disconnect(this._primaryChanged);
         if (this._panelAdded)
             Main.layoutManager.uiGroup.disconnect(this._panelAdded);
-        for (const id of [this._focusChanged, this._focusMonitorChanged].filter(Boolean))
+        for (const id of [this._focusChanged, this._focusMonitorChanged, this._fullscreenChanged].filter(Boolean))
             global.display.disconnect(id);
         if (this._voiceBound)
             Main.wm.removeKeybinding('voice-shortcut');
@@ -2851,6 +3132,7 @@ export class Controller {
             if (!this._expanded)
                 this._pages.forEach(page => page.destroy());
         }
+        this._destroyMirrors();
         this._island?.destroy();
         for (const service of [this._topBar, this._writer, this._appUsage, this._clipboard, this._focusMode, this._call,
             this._privacy, this._audio, this._notifications, this._daemon])
