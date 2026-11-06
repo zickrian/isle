@@ -57,6 +57,11 @@ export function longDate(dateTime = GLib.DateTime.new_now_local()) {
     return dateTime.format('%a %-d %b');
 }
 
+/** "Tue 20", beside the closed island's clock (Settings). */
+export function shortDate(dateTime = GLib.DateTime.new_now_local()) {
+    return dateTime.format('%a %-d');
+}
+
 /** Formats a duration as "3:07" or "1:02:07". */
 export function duration(ms) {
     const total = Math.max(0, Math.round(ms / 1000));

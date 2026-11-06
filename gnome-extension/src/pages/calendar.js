@@ -22,9 +22,13 @@ import {Page} from './page.js';
 import {onHover} from './tasks.js';
 
 /** The month grid's height, shared by its rows: what the page has under the title and weekdays (39 of its
- * 144 inside); sizes in CSS pixels (see `px`). Five weeks fill it, six take smaller days (`isle-cal-six-weeks`). */
+ * 144 inside); sizes in CSS pixels (see `px`). Five weeks fill it, six take smaller days (`isle-cal-six-weeks`).
+ * A taller page (Settings → Size) gives the grid its extra height and its days more room
+ * (`isle-cal-tall`), rows no taller than TALL_ROW_HEIGHT. */
 const GRID_HEIGHT = 105;
 const MAX_ROW_HEIGHT = 21;
+const STANDARD_PAGE_HEIGHT = 150;
+const TALL_ROW_HEIGHT = 32;
 /** Events of a desktop calendar with no colour of its own (blue), and Isle's own (orange), as RGB. */
 const SYSTEM_COLOR = [10, 132, 255];
 const OWN_COLOR = [255, 159, 10];
@@ -129,6 +133,7 @@ export const CalendarPage = GObject.registerClass({
             height,
         });
         this.name = 'calendar';
+        this._gridHeight = GRID_HEIGHT + Math.max(0, (height ?? STANDARD_PAGE_HEIGHT) - STANDARD_PAGE_HEIGHT);
         onUiScale(this, scale => (this.layout_manager.spacing = 24 * scale));
         this._today = startOfDay(new Date());
         /** The day whose events are listed. */
@@ -325,7 +330,7 @@ export const CalendarPage = GObject.registerClass({
         column.add_child(weekdays);
 
         this._grid = new St.BoxLayout({...VERTICAL, style_class: 'isle-cal-grid', y_align: Clutter.ActorAlign.START});
-        onUiScale(this._grid, scale => (this._grid.height = GRID_HEIGHT * scale));
+        onUiScale(this._grid, scale => (this._grid.height = this._gridHeight * scale));
         column.add_child(this._grid);
         return column;
     }
@@ -672,6 +677,15 @@ export const CalendarPage = GObject.registerClass({
         return true;
     }
 
+    /** Taller or back (Settings → Size): the month drawn again for its new room. */
+    onPageHeight(height) {
+        this._gridHeight = GRID_HEIGHT + Math.max(0, height - STANDARD_PAGE_HEIGHT);
+        this._grid.height = px(this._gridHeight);
+        this._shownMonth = null;
+        this._refresh();
+        this.markCold();
+    }
+
     /** Isle's 12/24-hour setting changed: the times on show, and the field's example, as it says now. */
     clockChanged() {
         this._tickWorld();
@@ -722,10 +736,12 @@ export const CalendarPage = GObject.registerClass({
         const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
         const lead = (month.getDay() - this._weekStart + 7) % 7;
         const rows = Math.ceil((lead + daysInMonth) / 7);
-        const rowHeight = px(Math.min(MAX_ROW_HEIGHT, Math.floor(GRID_HEIGHT / rows)));
+        const tall = this._gridHeight > GRID_HEIGHT;
+        const rowHeight = px(Math.min(tall ? TALL_ROW_HEIGHT : MAX_ROW_HEIGHT, Math.floor(this._gridHeight / rows)));
 
         this._grid.destroy_all_children();
-        this._grid.set_style_class_name(rows > 5 ? 'isle-cal-grid isle-cal-six-weeks' : 'isle-cal-grid');
+        this._grid.set_style_class_name(['isle-cal-grid', rows > 5 && 'isle-cal-six-weeks', tall && 'isle-cal-tall']
+            .filter(Boolean).join(' '));
         this._dayButtons = [];
         for (let row = 0; row < rows; row++) {
             const week = new St.BoxLayout({style_class: 'isle-cal-week', height: rowHeight});

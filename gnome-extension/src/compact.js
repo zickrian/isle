@@ -31,6 +31,11 @@ const SIZES = {
 /** The island's height below the top bar, or in it, until it is laid out (see `vfunc_allocate`); and its
  * corners' radius (COMPACT_RADIUS and IN_BAR_RADIUS in controller.js). */
 const PILL_HEIGHT = {hanging: 30, inBar: 32};
+/** The clock alone in a pill (Settings → Shape), which needs not hold the bar's middle as the notch does: narrower. */
+const PILL_CLOCK = {hanging: 128, inBar: 112};
+/** The room each side of the time (and the day before it) at least, in CSS pixels: past the clock's own width, the
+ * island grows by what it shows, by this much each side. */
+const CLOCK_SIDE = {hanging: 26, inBar: 22};
 const CORNER_RADIUS = {hanging: 16, inBar: 10};
 /** How far in from the island's end text on the right sits, in CSS pixels: as far as the round sign's ink on the
  * left looks, where the inset that suits a round sign would crowd text. */
@@ -87,6 +92,8 @@ export const CompactView = GObject.registerClass({
         this._call = call;
         this._idle = false;
         this._inBar = false;
+        /** In a pill (Settings → Shape): its ends as round as half its height (see `_fit`). */
+        this._pill = false;
         this._timeouts = {};
 
         const row = new St.BoxLayout({style_class: 'isle-compact-row', x_expand: true, y_expand: true});
@@ -119,17 +126,22 @@ export const CompactView = GObject.registerClass({
 
         const center = new St.Widget({layout_manager: new CentreLayout(), x_expand: true});
         const times = new St.Widget({layout_manager: new CentreLayout(), y_align: Clutter.ActorAlign.CENTER});
-        // The time and, with a 12-hour clock, a smaller AM or PM: two labels, so each keeps its own size.
+        // The day before the time (Settings), quieter; the time and, with a 12-hour clock, a smaller AM or PM: each
+        // its own label, so each keeps its own size. The day goes beside an activity, where the room is the sides'.
+        this._clockDate = new St.Label({style_class: 'isle-compact-date', y_align: Clutter.ActorAlign.END, visible: false});
         this._clockTime = new St.Label({style_class: 'isle-compact-clock', y_align: Clutter.ActorAlign.END});
         this._meridiem = new St.Label({style_class: 'isle-compact-meridiem', y_align: Clutter.ActorAlign.END, visible: false});
         this._clock = new St.BoxLayout({style_class: 'isle-compact-clock-row', x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+        this._clock.add_child(this._clockDate);
         this._clock.add_child(this._clockTime);
         this._clock.add_child(this._meridiem);
         // How long the screen has been recording, in place of the clock. A call keeps the clock.
         this._elapsed = new St.Label({style_class: 'isle-compact-clock', x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER, visible: false});
         // Never "1:0…": the one fading out may be wider than the room left for the one fading in.
-        for (const time of [this._clockTime, this._meridiem, this._elapsed])
+        for (const time of [this._clockDate, this._clockTime, this._meridiem, this._elapsed])
             time.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+        /** The clock alone with its sides (see CLOCK_SIDE), in stage pixels; 0 beside an activity. See `_fit`. */
+        this._clockWidth = 0;
         times.add_child(this._clock);
         times.add_child(this._elapsed);
         // Do Not Disturb: a moon before the time (or what takes its place), whatever the sides hold.
@@ -182,6 +194,10 @@ export const CompactView = GObject.registerClass({
                 this._refresh();
         });
         this._settingsChanged = settings.connect('changed::privacy-indicators', () => this._refresh());
+        this._dateChanged = settings.connect('changed::clock-date', () => {
+            this._tickClock();
+            this._refit();
+        });
         this._pagesChanged = settings.connect('changed::hidden-pages', () => this._refresh());
         this._privacyChanged = privacy.connect('changed', () => this._refresh());
         this._callChanged = call.connect('changed', () => this._refresh());
@@ -219,9 +235,10 @@ export const CompactView = GObject.registerClass({
     /** The width the island should have to fit what is shown. */
     get preferredWidth() {
         const size = SIZES[this._inBar ? 'inBar' : 'hanging'];
-        // The clock alone (the island widens for the moon), and no narrower beside an activity.
+        // The clock alone (the island widens for the moon and the day), and no narrower beside an activity.
         const moon = this._moon.visible ? size.moon + MOON_GAP : 0;
-        return Math.max(px(size.clock + moon), this._contentWidth);
+        const clock = this._pill ? PILL_CLOCK[this._inBar ? 'inBar' : 'hanging'] : size.clock;
+        return Math.max(px(clock + moon), this._clockWidth, this._contentWidth);
     }
 
     /** Sizes both sides as wide as the wider (its sign, and its gap to the centre), and finds the width
@@ -240,7 +257,9 @@ export const CompactView = GObject.registerClass({
         // island's than that (a hanging island's are wider), in CSS pixels (St scales the style).
         const place = this._inBar ? 'inBar' : 'hanging';
         const pill = this._pillHeight / uiScale() || PILL_HEIGHT[place];
-        const inset = Math.max(0, Math.round((pill - size.art) / 2), CORNER_RADIUS[place] - size.artRadius);
+        // In a pill the ends are half its height round: a cover at an end keeps concentric with them.
+        const corner = this._pill ? pill / 2 : CORNER_RADIUS[place];
+        const inset = Math.max(0, Math.round((pill - size.art) / 2), Math.round(corner - size.artRadius));
         if (inset !== this._inset) {
             this._inset = inset;
             this._row.style = `padding: 0 ${inset}px;`;
@@ -265,14 +284,30 @@ export const CompactView = GObject.registerClass({
         const moon = this._moon.visible ? widthOf(this._moon) : 0;
         setWidth(this._moonBalance, moon);
         this._moonBalance.visible = this._moon.visible;
+        // The day before the time, the two centred together; not beside an activity (music, a call, the timer, a
+        // recording, the assistant at work), whose sides take its room. The unseen dot alone leaves it.
+        const activity = (this._lead.visible && this._lead.child !== this._dot) || this._right.visible;
+        const date = this._settings.get_boolean('clock-date') && !activity && !this._privacy.recording;
+        this._clockDate.visible = date;
+        // The time (and the day), each label measured itself, not the row round them, which may still give its size
+        // from before; the moon's room on both sides of it.
+        let time = 0, moonRoom = 0;
+        if (stage) {
+            const labels = [this._clockDate, this._clockTime, this._meridiem].filter(label => label.visible);
+            const dayGap = date ? Math.ceil(this._clockDate.get_theme_node().get_margin(St.Side.RIGHT)) : 0;
+            time = this._privacy.recording ? widthOf(this._elapsed)
+                : labels.reduce((sum, label) => sum + widthOf(label), 0) +
+                  this._clock.get_theme_node().get_length('spacing') * (labels.length - 1) + dayGap;
+            moonRoom = moon ? 2 * (moon + this._centerRow.get_theme_node().get_length('spacing')) : 0;
+        }
+        // The clock alone with its sides: the island no wider than that needs, nor than the clock alone.
+        const clockWidth = !side && time ? time + moonRoom + 2 * px(CLOCK_SIDE[place]) : 0;
+        this._clockWidth = 2 * Math.ceil(clockWidth / 2);
         if (!side) {
             this._contentWidth = 0;
             return;
         }
-        // The time shown, not both while one fades into the other; the moon's room on both sides of it.
-        const time = this._privacy.recording ? this._elapsed : this._clock;
-        const center = widthOf(time) + (moon ? 2 * (moon + this._centerRow.get_theme_node().get_length('spacing')) : 0);
-        const width = 2 * px(inset) + 2 * (side + gap) + center;
+        const width = 2 * px(inset) + 2 * (side + gap) + time + moonRoom;
         // Even, so the centre sits on whole pixels.
         this._contentWidth = 2 * Math.ceil(width / 2);
     }
@@ -340,6 +375,24 @@ export const CompactView = GObject.registerClass({
             return;
         this._assistantBusy = busy;
         this._refresh();
+    }
+
+    /** In a pill (Settings → Shape): its ends round as half its height, and its clock alone narrower. */
+    set pill(pill) {
+        if (pill === this._pill)
+            return;
+        this._pill = pill;
+        // Measured afresh, not told: the island reads the width as it shapes itself (see `bodyHeight`).
+        this._fit();
+    }
+
+    /** The island's height where the signs sit, in stage pixels, as the controller shapes it: known before it is laid
+     * out, so its first frame has the width its next one would (see `vfunc_allocate`, which measures it after). */
+    set bodyHeight(height) {
+        if (Math.abs(height - this._pillHeight) < 0.5)
+            return;
+        this._pillHeight = height;
+        this._fit();
     }
 
     /** Fits the view inside the top bar, like a notch, or below it. */
@@ -564,12 +617,15 @@ export const CompactView = GObject.registerClass({
     /** Sets the clock's text; `watchClock` calls it again as the minute changes. */
     _tickClock() {
         const before = `${this._clockTime.text}${this._meridiem.text}`;
+        const dateBefore = this._clockDate.text;
         const {time, meridiem} = Format.clockParts();
         this._clockTime.text = time;
         this._meridiem.text = meridiem;
         this._meridiem.visible = Boolean(meridiem);
+        this._clockDate.text = this._settings.get_boolean('clock-date') ? Format.shortDate() : '';
         // Longer or shorter (12:59 to 1:00, or the format changed): the centre is measured again; not while being built.
-        if (`${time}${meridiem}`.length !== before.length && this._contentWidth)
+        // A new day is measured as it comes: "Thu 30" and "Fri 31" are as long, not as wide.
+        if (`${time}${meridiem}`.length !== before.length || this._clockDate.text !== dateBefore)
             this._refit();
     }
 
@@ -604,6 +660,7 @@ export const CompactView = GObject.registerClass({
             this._cancel(name);
         this._daemon.disconnect(this._daemonChanged);
         this._settings.disconnect(this._settingsChanged);
+        this._settings.disconnect(this._dateChanged);
         this._settings.disconnect(this._pagesChanged);
         for (const id of this._botLookChanged)
             this._settings.disconnect(id);

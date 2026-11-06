@@ -95,7 +95,7 @@ export function rimUniforms({left, right, top, radius, shoulder}, height, colors
 // The shader's uniforms (vec4s): the actor's size and the light's texel size (`frame`), the texels across and down
 // (`grid`), then what `rimUniforms` gives.
 export const RIM_UNIFORMS = Object.fromEntries(['frame', 'body', 'corner', 'strokes', 'shift', 'alpha', 'streaks', 'c0', 'c1', 'c2']
-    .map(name => [name, 4]).concat([['grid', 2]]));
+    .map(name => [name, 4]).concat([['grid', 2], ['pill', 2]]));
 
 // What `paintRim` draws, per texel of a drawing `frame.z` units a pixel (soft light needs no finer), and its stops;
 // the island's `outlineBody` and `outlineBeside` come before them (see island.js).

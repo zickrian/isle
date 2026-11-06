@@ -123,6 +123,22 @@ const PEEK_SHOULDER = 13;
 const EXPANDED_RADIUS = 32;
 const EXPANDED_SHOULDER = 22;
 const VOICE_RADIUS = 26;
+// The pill (Settings → Shape) floats with room above it: centred in the top bar (36 px round a pill, see shell.js), 3 px
+// above and below; just below a bar it hangs under; from a display's top edge without one. Closed, it is 30 px tall in
+// the bar and 32 off it, its signs and clock the bar's size in it as the notch's are (larger off it), and fully round;
+// open, an alert or the assistant grow down from where it sits, round all over.
+const PILL_IN_BAR_GAP = 3;
+const PILL_BELOW_BAR_GAP = 6;
+const PILL_EDGE_GAP = 8;
+const PILL_HEIGHT = 32;
+/** Open, a pill's tabs sit this much lower in it (CSS px): 11 px from its edge, clear of its 32 px corners, as the
+ * notch's sit in the bar; its pages keep their 20 px to the sides and the bottom. */
+const PILL_HEADER_TOP = 8;
+
+/** The pages a shortcut of their own may open from anywhere (Settings → Shortcuts; `shortcut-<page>`, none set at
+ * first: the usual ones are GNOME's). As prefs.js lists them. */
+const SHORTCUT_PAGES = ['music', 'notifications', 'focus', 'reminders', 'shelf', 'calendar', 'apps', 'devices',
+    'usage'];
 
 /** A question back is shown this long before the island listens for the reply. */
 const VOICE_LISTEN_AGAIN_MS = 900;
@@ -329,6 +345,8 @@ export class Controller {
             this._passToAgentWindow(focus);
             this._syncMonitor();
         });
+        // Drawn into the edge by auto-hide: GNOME may send a window covering the display straight to the screen again.
+        this._island.connect('auto-hide-settled', () => this._syncScanout());
         // Hidden by a fullscreen window meanwhile: what waited shows now.
         this._island.connect('notify::visible', () => {
             this._syncScanout();
@@ -386,6 +404,7 @@ export class Controller {
             }));
         });
         this._syncVoiceEnabled();
+        this._bindPageShortcuts();
         this._syncUsage();
         this._syncEventAlerts();
         this._syncPages();
@@ -433,11 +452,13 @@ export class Controller {
         });
         expanded.connect('page-settled', () => this._shelfHelper?.sync());
         expanded.pageNamed('shelf').connect('helper-area-changed', () => this._shelfHelper?.sync());
-        // Lyrics widen the island and wash it with the cover's colour.
-        expanded.connect('width-changed', () => {
-            if (this._presentation === 'expanded')
-                this._render();
-        });
+        // Lyrics widen the island and wash it with the cover's colour; a page that lists things may be taller.
+        for (const signal of ['width-changed', 'height-changed']) {
+            expanded.connect(signal, () => {
+                if (this._presentation === 'expanded')
+                    this._render();
+            });
+        }
         expanded.connect('tint-changed', () => this._syncTint());
         expanded.connect('tint-motion', (_view, time, level) => {
             if (this._presentation === 'expanded')
@@ -516,6 +537,8 @@ export class Controller {
 
         this._settingsChanged = ['notch-depth', 'island-in-top-bar'].map(key =>
             this._settings.connect(`changed::${key}`, () => this._render()));
+        // Notch or pill: where the island starts, whether it blends into a black bar, and its open header.
+        this._settingsChanged.push(this._settings.connect('changed::island-shape', () => this._updateGeometry()));
         for (const key of ['auto-hide', 'auto-hide-delay'])
             this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => this._syncAutoHide(true)));
         this._settingsChanged.push(this._settings.connect('changed::alerts-over-fullscreen', () => {
@@ -551,7 +574,7 @@ export class Controller {
             this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => this._syncUsage()));
         for (const key of ['event-alerts', 'event-alert-minutes'])
             this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => this._syncEventAlerts()));
-        for (const key of ['hidden-pages', 'world-clocks', 'app-usage', 'devices-page'])
+        for (const key of ['hidden-pages', 'world-clocks', 'app-usage', 'devices-page', 'open-size'])
             this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => this._syncPages()));
         this._settingsChanged.push(this._settings.connect('changed::app-usage-clear', () => this._syncAppUsage()));
         for (const key of ['island-theme', 'glass-tint'])
@@ -571,7 +594,7 @@ export class Controller {
         this._topBar.connect('height-changed', () => this._updateGeometry());
         this._topBar.connect('style-changed', () => this._updateGeometry());
         this._topBar.connect('moved', () => this._updateGeometry());
-        this._topBar.connect('calendar-requested', () => this._toggleFromKeyboard());
+        this._topBar.connect('calendar-requested', (_bar, page) => this._toggleFromKeyboard(page));
         island.connect('key-press-event', (_actor, event) => {
             // A command waiting on the user: Enter runs it, Esc denies it.
             const key = event.get_key_symbol();
@@ -584,6 +607,9 @@ export class Controller {
                 this.collapse();
                 return Clutter.EVENT_STOP;
             }
+            // Open and holding the keyboard: Ctrl+Tab (Shift back) or Ctrl+PageDown/Up turns the tabs, Ctrl+1…9 picks one.
+            if (this._presentation === 'expanded' && this._pageKey(event))
+                return Clutter.EVENT_STOP;
             // Typing while it listens: the request is typed instead.
             const typed = event.get_key_unicode();
             const modified = event.get_state() & (Clutter.ModifierType.CONTROL_MASK | Clutter.ModifierType.MOD1_MASK |
@@ -766,12 +792,12 @@ export class Controller {
         this._island.topInset = this._blendsIn ? this._topBar.height : 0;
         this._island.monitor = this._monitor;
         // Without a top bar (another display) the open island's header is its own; in the bar, the bar's height
-        // (the space below the closed island is the closed one's alone).
-        this._expanded.topInset = this._onBar ? this._topBar.height : px(HEADER_WITHOUT_BAR);
+        // (the space below the closed island is the closed one's alone). A pill's is always its own.
+        this._expanded.topInset = this._onBar && !this._pill ? this._topBar.height : px(HEADER_WITHOUT_BAR);
         // A copy of the island in the bar keeps the clock away as the island does.
         this._topBar.clockShown = !this._onBar && !this._mirrors.some(mirror => this._isOnBar(mirror.monitor));
         for (const mirror of this._mirrors) {
-            mirror.island.topInset = this._isOnBar(mirror.monitor) && this._topBar.blendsIn ? this._topBar.height : 0;
+            mirror.island.topInset = this._blendsInOn(this._isOnBar(mirror.monitor)) ? this._topBar.height : 0;
             mirror.shown = mirror.monitor !== this._monitor;
         }
         this._render();
@@ -810,6 +836,7 @@ export class Controller {
                 },
                 onClose: () => this._alert && !this._expandWanted && this._dismissAlert(true),
             });
+            mirror.island.connect('auto-hide-settled', () => this._syncScanout());
             for (const [name, value] of Object.entries(this._compactState))
                 mirror.compact[name] = value;
             this._styleIsland(mirror.island);
@@ -891,8 +918,9 @@ export class Controller {
     /** GNOME sends a window covering the whole display straight to the screen, hiding the island (or a copy of
      * it) that still takes the pointer. Painting stays on while both show, as for GNOME's own menus and OSDs. */
     _syncScanout() {
-        const shownOn = [...this._island.visible && !this._autoHidden ? [this._monitor] : [],
-            ...this._mirrors.filter(mirror => mirror.island.visible && !mirror.autoHidden).map(mirror => mirror.monitor)];
+        // Until auto-hide has drawn it into the edge, it still shows (see Island.drawn).
+        const shownOn = [...this._island.visible && this._island.drawn ? [this._monitor] : [],
+            ...this._mirrors.filter(mirror => mirror.island.visible && mirror.island.drawn).map(mirror => mirror.monitor)];
         const inhibit = !this._destroying && shownOn.some(monitor => this._windowCoversDisplay(monitor));
         if (inhibit === Boolean(this._scanoutInhibited))
             return;
@@ -901,7 +929,7 @@ export class Controller {
     }
 
     /** Whether the top window on `monitor` covers all of it with no top bar drawn there. The top one only, as
-     * GNOME picks: not the desktop's own (Ubuntu's desktop icons cover the display under every window). */
+     * GNOME picks: not the desktop's own (a desktop-icons extension's covers the display under every window). */
     _windowCoversDisplay(monitor) {
         if (!monitor)
             return false;
@@ -1088,7 +1116,36 @@ export class Controller {
 
     /** Whether it grows out of a black top bar there. */
     get _blendsIn() {
-        return this._onBar && this._topBar.blendsIn;
+        return this._blendsInOn(this._onBar);
+    }
+
+    /** Whether the island grows out of a black top bar on a display with the bar (`onBar`): never a pill, which
+     * floats. */
+    _blendsInOn(onBar) {
+        return onBar && this._topBar.blendsIn && !this._pill;
+    }
+
+    /** Whether the closed island's contents take the bar's size (a 15 px clock), notch or pill alike; hanging below
+     * the bar, or on a display without it, their larger one (17 px). */
+    _compactInBar(onBar) {
+        return onBar && this._settings.get_boolean('island-in-top-bar');
+    }
+
+    /** Whether the island is a pill (Settings → Shape) rather than a notch. */
+    get _pill() {
+        return this._settings.get_string('island-shape') === 'pill';
+    }
+
+    /** A pill's room above it on a display with the top bar (`onBar`) or without, in stage pixels; null for the
+     * notch. */
+    _pillGapOn(onBar) {
+        if (!this._pill)
+            return null;
+        const scale = uiScale();
+        if (!onBar)
+            return PILL_EDGE_GAP * scale;
+        return this._settings.get_boolean('island-in-top-bar') ? PILL_IN_BAR_GAP * scale
+            : this._topBar.height + PILL_BELOW_BAR_GAP * scale;
     }
 
     // Calendar and AI agents
@@ -1116,6 +1173,8 @@ export class Controller {
         this._syncLyrics();
         this._syncAppUsage();
         this._expanded.pageNamed('calendar').worldClocks = this._settings.get_boolean('world-clocks');
+        // Settings → Appearance → Size: the open island and every page larger, each laid out for it.
+        this._expanded.large = this._settings.get_string('open-size') === 'large';
     }
 
     /** The island in Isle's black or in glass, the glass with GNOME's accent (see theme.js). */
@@ -1330,26 +1389,33 @@ export class Controller {
         const scale = uiScale();
         const top = this._onBar ? this._topBar.height : 0;
         // Before measuring it: inside the bar it is smaller.
-        this._compact.inBar = this._onBar && this._settings.get_boolean('island-in-top-bar');
+        this._compact.inBar = this._compactInBar(this._onBar);
 
         // Alerts hang below the top bar; the open island's header sits in the bar. The compact island
         // either hangs too or sits inside the bar like a notch, covering no window.
+        // A pill floats this far below the top, whatever it shows; the notch starts at it.
+        const gap = this._pillGapOn(this._onBar);
+        this._island.pillGap = gap;
         let size, view;
         switch (presentation) {
-        case 'expanded':
+        case 'expanded': {
+            const inset = gap === null ? 0 : gap + PILL_HEADER_TOP * scale;
+            const header = gap === null ? (this._onBar ? top : HEADER_WITHOUT_BAR * scale) : inset + HEADER_WITHOUT_BAR * scale;
             size = {
                 width: this._expanded.preferredWidth,
-                height: (this._onBar ? top : HEADER_WITHOUT_BAR * scale) + (PAGE_HEIGHT + BOTTOM_PADDING) * scale,
+                height: header + (this._expanded.pageHeight + BOTTOM_PADDING) * scale,
                 radius: EXPANDED_RADIUS * scale,
-                shoulder: EXPANDED_SHOULDER * scale,
+                shoulder: gap === null ? EXPANDED_SHOULDER * scale : 0,
             };
             view = this._expanded;
+            view.style = gap === null ? null : `padding-top: ${inset / scale}px;`;
             break;
+        }
         case 'voice': {
-            // Like an alert, it hangs below the bar (or near the top of the screen).
-            const inset = this._blendsIn ? top : PEEK_TOP_GLASS * scale;
+            // Like an alert, it hangs below the bar (or near the top of the screen); a pill's from where it floats.
+            const inset = gap ?? (this._blendsIn ? top : PEEK_TOP_GLASS * scale);
             size = {width: this._voice.preferredWidth, height: inset + this._voice.fit(), radius: VOICE_RADIUS * scale,
-                shoulder: PEEK_SHOULDER * scale};
+                shoulder: gap === null ? PEEK_SHOULDER * scale : 0};
             view = this._voice;
             view.style = `padding-top: ${inset / scale}px;`;
             break;
@@ -1395,12 +1461,24 @@ export class Controller {
         const scale = uiScale();
         const top = onBar ? this._topBar.height : 0;
         const inBar = onBar && this._settings.get_boolean('island-in-top-bar');
+        compact.inBar = this._compactInBar(onBar);
+        const gap = this._pillGapOn(onBar);
+        if (gap !== null) {
+            // A pill: centred in the bar, or PILL_HEIGHT tall off it; round all over (the island caps the radius).
+            const body = inBar ? Math.max(0, top - 2 * gap) : PILL_HEIGHT * scale;
+            compact.pill = true;
+            compact.bodyHeight = body;
+            compact.style = `padding-top: ${gap / scale}px;`;
+            return {width: compact.preferredWidth, height: gap + body, radius: body / 2, shoulder: 0};
+        }
+        compact.pill = false;
         // Closed inside the bar, it leaves the bar's last few pixels free (Settings); open, it fills the bar.
         const band = top - (inBar ? this._topBar.gap : 0);
-        compact.inBar = inBar;
+        const depth = this._settings.get_int('notch-depth') * scale;
+        compact.bodyHeight = inBar ? band : depth;
         const size = {
             width: compact.preferredWidth,
-            height: inBar ? band : top + this._settings.get_int('notch-depth') * scale,
+            height: inBar ? band : top + depth,
             radius: (inBar ? IN_BAR_RADIUS : COMPACT_RADIUS) * scale,
             shoulder: (inBar ? IN_BAR_SHOULDER : COMPACT_SHOULDER) * scale,
         };
@@ -1411,10 +1489,11 @@ export class Controller {
     /** An alert's size on a display with the top bar (`onBar`) or without, `peek` (showing it) styled for it. */
     _peekShape(peek, onBar) {
         const scale = uiScale();
-        // Off a black bar its room above counts from the screen's top, as much as below.
-        const inset = onBar && this._topBar.blendsIn ? this._topBar.height : 0;
+        // Off a black bar its room above counts from the screen's top, as much as below; a pill's from where it floats.
+        const gap = this._pillGapOn(onBar);
+        const inset = gap ?? (this._blendsInOn(onBar) ? this._topBar.height : 0);
         const size = {width: peek.preferredWidth, height: inset + peek.preferredHeight, radius: PEEK_RADIUS * scale,
-            shoulder: PEEK_SHOULDER * scale};
+            shoulder: gap === null ? PEEK_SHOULDER * scale : 0};
         peek.style = `padding-top: ${inset / scale}px;`;
         return size;
     }
@@ -1432,7 +1511,8 @@ export class Controller {
         const onBar = this._isOnBar(mirror.monitor);
         const alert = this._presentation === 'peek';
         const view = alert ? mirror.peek : mirror.compact;
-        mirror.compact.inBar = onBar && this._settings.get_boolean('island-in-top-bar');
+        mirror.compact.inBar = this._compactInBar(onBar);
+        mirror.island.pillGap = this._pillGapOn(onBar);
         const size = alert ? this._peekShape(view, onBar) : this._compactShape(view, onBar);
         size.width = 2 * Math.round(size.width / 2);
         view.set_size(size.width, size.height);
@@ -1957,14 +2037,27 @@ export class Controller {
 
     // Keyboard
 
-    // Super+V (GNOME's calendar shortcut, taken over) opens the clipboard history, search ready, and
-    // holds the island open without the pointer; Super+V again, Esc or a click elsewhere closes it.
-    _toggleFromKeyboard() {
+    // Super+V (GNOME's calendar shortcut, taken over) opens the clipboard history, search ready, or the Calendar
+    // page (Settings), and holds the island open without the pointer; Super+V again, Esc or a click elsewhere
+    // closes it.
+    _toggleFromKeyboard(page = 'clipboard') {
         // Hidden by a fullscreen window, it would take the keyboard unseen.
         if (!this._island.visible)
             return;
+        const pageName = page === 'clipboard' ? 'shelf' : page;
+        // A page's own shortcut while it has no tab (Devices with none connected, a page left out): nothing to open.
+        if (pageName && !this._expanded.pageNamed(pageName)?.available)
+            return;
         if (this._expandWanted && this._keyboardGrab) {
-            this.collapse();
+            // Open on that page (or on any, with no page asked for), it closes; on another, it turns to that one.
+            if (!pageName || this._expanded.page === this._expanded.pageNamed(pageName)) {
+                this.collapse();
+                return;
+            }
+        }
+        if (page !== 'clipboard') {
+            this.expand(pageName);
+            this._holdOpen();
             return;
         }
         this._shelf.showTab('clipboard');
@@ -1972,6 +2065,43 @@ export class Controller {
         this._holdOpen();
         if (this._keyboardGrab)
             this._shelf.showTab('clipboard', {focusSearch: true});
+    }
+
+    /** Turns the open island's tabs from the keyboard (see the key handler); whether `event` did. */
+    _pageKey(event) {
+        const state = event.get_state();
+        if (!(state & Clutter.ModifierType.CONTROL_MASK) || state & (Clutter.ModifierType.MOD1_MASK | Clutter.ModifierType.SUPER_MASK))
+            return false;
+        const key = event.get_key_symbol();
+        const back = Boolean(state & Clutter.ModifierType.SHIFT_MASK);
+        if (key === Clutter.KEY_Tab || key === Clutter.KEY_ISO_Left_Tab)
+            this._expanded.stepPage(back || key === Clutter.KEY_ISO_Left_Tab ? -1 : 1);
+        else if (key === Clutter.KEY_Page_Down || key === Clutter.KEY_Page_Up)
+            this._expanded.stepPage(key === Clutter.KEY_Page_Down ? 1 : -1);
+        else if (key >= Clutter.KEY_1 && key <= Clutter.KEY_9 && !back)
+            this._expanded.showTab(key - Clutter.KEY_1 + 1);
+        else
+            return false;
+        return true;
+    }
+
+    /** Each page's own shortcut (Settings), bound once: GNOME follows a key set or cleared later. They open the
+     * island on that page as Super+V does (see `_toggleFromKeyboard`); none is set at first. */
+    _bindPageShortcuts() {
+        for (const page of SHORTCUT_PAGES) {
+            Main.wm.addKeybinding(`shortcut-${page}`, this._settings, Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
+                Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW | Shell.ActionMode.POPUP,
+                () => this._toggleFromKeyboard(page));
+        }
+        this._pageShortcutsBound = true;
+    }
+
+    _unbindPageShortcuts() {
+        if (!this._pageShortcutsBound)
+            return;
+        for (const page of SHORTCUT_PAGES)
+            Main.wm.removeKeybinding(`shortcut-${page}`);
+        this._pageShortcutsBound = false;
     }
 
     /** Opened without the pointer, it takes the keyboard: Esc or a click elsewhere closes it. */
@@ -3039,6 +3169,7 @@ export class Controller {
         stopPending();
         if (this._voiceBound)
             Main.wm.removeKeybinding('voice-shortcut');
+        this._unbindPageShortcuts();
         // A command waiting for Run or Deny ends with Isle; built again, it is asked again (see `_onAssistant`).
         this._deciding?.done(false);
         if (this._voiceOpen)
@@ -3123,6 +3254,7 @@ export class Controller {
             global.display.disconnect(id);
         if (this._voiceBound)
             Main.wm.removeKeybinding('voice-shortcut');
+        this._unbindPageShortcuts();
         this._setKeyboard(false);
         const monitor = global.backend.get_core_idle_monitor();
         for (const watch of [this._idleWatch, this._batteryIdleWatch, this._activeWatch].filter(Boolean))

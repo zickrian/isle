@@ -20,7 +20,8 @@ window.isle-shelf :drop(active) {
   outline: none;
 }
 
-/* Takes drops all over. Outline, fill and light are the island's beneath (files.js, dropLight.js):
+/* Takes drops all over. Its border insets the tiles 1 px, as the island's row is (stylesheet.css). Outline, fill and
+ * light are the island's beneath (files.js, dropLight.js):
  * GTK draws 1 px dashes as dots. The border keeps its room, and is never quite clear (0 or 1 of 255): with
  * nothing at all to draw GTK draws no frame, and the last one stayed up (a removed tile), or, on a first
  * show, none came (a black window). */
@@ -48,7 +49,8 @@ window.isle-shelf :drop(active) {
   transition: background-color 120ms;
 }
 
-.tile:hover { background-color: #1c1c1e; }
+/* See-through, as the names beneath show through it. */
+.tile:hover { background-color: alpha(#ffffff, 0.1); }
 
 /* A new file drops into place: in from small, a touch past full size, then settles. */
 @keyframes arrive {
@@ -59,8 +61,9 @@ window.isle-shelf :drop(active) {
 
 .tile.fresh { animation: arrive 560ms cubic-bezier(0.2, 0.9, 0.3, 1); }
 
-/* Two lines high, as the island's (stylesheet.css). */
-.tile .name { font-size: 12px; min-height: 2.5em; }
+/* Two lines high, as the island's (stylesheet.css), and unseen: the names are the island's beneath (files.js),
+ * as GTK breaks and draws text its own way and a name changed as this window came over it. */
+.tile .name { font-size: 12px; min-height: 2.5em; opacity: 0; }
 
 .tile .preview { border-radius: 12px; }
 

@@ -58,6 +58,8 @@ const NO_THUMBNAIL: &[&str] = &[
     "application/x-executable",
     "application/x-sharedlib",
 ];
+/// The ×, white: drawn the same as the island's own (icons/isle-close-symbolic.svg), not the icon theme's.
+const CLOSE_ICON: &[u8] = br##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect fill="#ffffff" x="7.1" y="2.2" width="1.8" height="11.6" rx=".9" transform="rotate(45 8 8)"/><rect fill="#ffffff" x="7.1" y="2.2" width="1.8" height="11.6" rx=".9" transform="rotate(-45 8 8)"/></svg>"##;
 /// The ↓, white: drawn the same as the island's own (icons/isle-save-symbolic.svg).
 const SAVE_ICON: &[u8] = br##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="#ffffff" d="M7.25 2h1.5v6.6l2.2-2.2 1.06 1.06L8 11.47 3.99 7.46 5.05 6.4l2.2 2.2zM3 12.5h10V14H3z"/></svg>"##;
 
@@ -89,8 +91,11 @@ const PICTURE_TYPES: &[&str] = &[
 /// Builds the tile for `item`; `fresh` makes it pop in, `on_remove` gets its URI on ×.
 pub fn new(item: &Item, fresh: bool, on_remove: impl Fn(String) + 'static) -> gtk::Widget {
     let file = gio::File::for_uri(&item.uri);
-    // Known once the file's details arrive; until then it copies as a file.
-    let content_type: Rc<RefCell<Option<String>>> = Rc::default();
+    // The type and icon its name says, from the first frame: the icon the island's tile beneath shows, not a stand-in
+    // swapped a moment later. Guessed, as nothing may wait on the disk here (a file on a network mount that went away
+    // would hang the window); `load_preview` then sets what the file itself says.
+    let (guess, _) = gio::content_type_guess(Some(item.name.as_str()), None::<&[u8]>);
+    let content_type: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(Some(guess.to_string())));
 
     let preview = preview_square(&["preview"]);
     let icon = gtk::Image::builder()
@@ -100,6 +105,7 @@ pub fn new(item: &Item, fresh: bool, on_remove: impl Fn(String) + 'static) -> gt
         .valign(gtk::Align::Center)
         .hexpand(true)
         .build();
+    icon.set_from_gicon(&gio::content_type_get_icon(&guess));
     preview.append(&icon);
     load_preview(&file, &preview, &icon, &content_type);
 
@@ -124,7 +130,7 @@ pub fn new(item: &Item, fresh: bool, on_remove: impl Fn(String) + 'static) -> gt
     let remove = gtk::Button::builder()
         .child(
             &gtk::Image::builder()
-                .icon_name("window-close-symbolic")
+                .gicon(&gio::BytesIcon::new(&glib::Bytes::from_static(CLOSE_ICON)))
                 .pixel_size(10)
                 .build(),
         )

@@ -19,6 +19,20 @@
       <summary>The island's look</summary>
       <description>black: Isle's own black island. glass: clear dark glass over what is behind it, blurred, with a lit rim.</description>
     </key>
+    <key name="open-size" type="s">
+      <choices>
+        <choice value="standard"/>
+        <choice value="large"/>
+      </choices>
+      <default>'standard'</default>
+      <summary>How large the open island is</summary>
+      <description>"standard": 600 px wide, its pages 150 px tall. "large": 720 px wide and every page 210 px tall, each laid out for the room (a larger cover, timer ring and month, more rows and cards); the type keeps its size.</description>
+    </key>
+    <key name="clock-date" type="b">
+      <default>false</default>
+      <summary>The day beside the closed island's clock</summary>
+      <description>"Fri 6" before the time while the island shows the clock alone.</description>
+    </key>
     <key name="clock-format" type="s">
       <choices>
         <choice value="system"/>
@@ -50,6 +64,15 @@
       <default>true</default>
       <summary>Compact top bar</summary>
       <description>Smaller text and spacing in the top bar; with the island below the bar, a slimmer bar too.</description>
+    </key>
+    <key name="island-shape" type="s">
+      <choices>
+        <choice value="notch"/>
+        <choice value="pill"/>
+      </choices>
+      <default>'notch'</default>
+      <summary>The island's shape</summary>
+      <description>"notch": joined to the top of the screen, its shoulders flaring into it. "pill": floating free, round all over, a little below the top: centred in the top bar with the closed island inside it, else just below the bar, or 8 px from the top of a display without one.</description>
     </key>
     <key name="island-in-top-bar" type="b">
       <default>true</default>
@@ -224,11 +247,13 @@
     <key name="super-v" type="s">
       <choices>
         <choice value="isle"/>
+        <choice value="calendar"/>
+        <choice value="none"/>
         <choice value="gnome"/>
       </choices>
-      <default>'isle'</default>
+      <default>'calendar'</default>
       <summary>What Super+V (GNOME's calendar shortcut) opens</summary>
-      <description>"isle": the island's clipboard history. "gnome": GNOME's own calendar and notification list.</description>
+      <description>"isle": the island's clipboard history. "calendar": the island's Calendar page. "none": nothing. "gnome" is from before and reads as "calendar". With that page left out of the island, it opens the other one. It is GNOME's own shortcut (Super+V and Super+M), so Isle adds none.</description>
     </key>
     <key name="track-peek" type="b">
       <default>false</default>
@@ -276,6 +301,51 @@
       <default>true</default>
       <summary>Voice assistant</summary>
       <description>Listen for requests on the shortcut and the mic button, and answer them with the AI chosen: Claude Code, Codex, Grok, opencode or Antigravity (agy).</description>
+    </key>
+    <key name="shortcut-music" type="as">
+      <default>[]</default>
+      <summary>Shortcut to the Music page</summary>
+      <description>Opens the island on the Music page from anywhere, holding the keyboard; pressed again, it closes. None at first.</description>
+    </key>
+    <key name="shortcut-notifications" type="as">
+      <default>[]</default>
+      <summary>Shortcut to the Notifications page</summary>
+      <description>Opens the island on the Notifications page from anywhere, holding the keyboard; pressed again, it closes. None at first.</description>
+    </key>
+    <key name="shortcut-focus" type="as">
+      <default>[]</default>
+      <summary>Shortcut to the Timer page</summary>
+      <description>Opens the island on the Timer page from anywhere, holding the keyboard; pressed again, it closes. None at first.</description>
+    </key>
+    <key name="shortcut-reminders" type="as">
+      <default>[]</default>
+      <summary>Shortcut to the Reminders page</summary>
+      <description>Opens the island on the Reminders page from anywhere, holding the keyboard; pressed again, it closes. None at first.</description>
+    </key>
+    <key name="shortcut-shelf" type="as">
+      <default>[]</default>
+      <summary>Shortcut to the Shelf page</summary>
+      <description>Opens the island on the Shelf page from anywhere, holding the keyboard; pressed again, it closes. None at first.</description>
+    </key>
+    <key name="shortcut-calendar" type="as">
+      <default>[]</default>
+      <summary>Shortcut to the Calendar page</summary>
+      <description>Opens the island on the Calendar page from anywhere, holding the keyboard; pressed again, it closes. None at first.</description>
+    </key>
+    <key name="shortcut-apps" type="as">
+      <default>[]</default>
+      <summary>Shortcut to the Apps page</summary>
+      <description>Opens the island on the Apps page from anywhere, holding the keyboard; pressed again, it closes. None at first.</description>
+    </key>
+    <key name="shortcut-devices" type="as">
+      <default>[]</default>
+      <summary>Shortcut to the Devices page</summary>
+      <description>Opens the island on the Devices page from anywhere, holding the keyboard; pressed again, it closes. None at first.</description>
+    </key>
+    <key name="shortcut-usage" type="as">
+      <default>[]</default>
+      <summary>Shortcut to the AI Usage page</summary>
+      <description>Opens the island on the AI Usage page from anywhere, holding the keyboard; pressed again, it closes. None at first.</description>
     </key>
     <key name="voice-shortcut" type="as">
       <default><![CDATA[['<Super>i']]]></default>

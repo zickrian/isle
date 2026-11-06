@@ -23,6 +23,8 @@ const SHELF_ICON: &[u8] = include_bytes!("../../../gnome-extension/icons/isle-sh
 const CAPACITY: usize = 6;
 /// Hidden this long, the helper quits, its memory freed; the extension's next Show starts it again.
 const IDLE_QUIT_SECS: u32 = 20;
+/// Files dropped this recently (µs) are new on the shelf: their tiles pop in as they land.
+const JUST_DROPPED_US: i64 = 3_000_000;
 
 /// Why the files dragged over the window can't all land.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -68,6 +70,8 @@ struct Inner {
     over: Cell<bool>,
     /// The local files dragged over the window, once read; none at all if it carries only others.
     dragged: RefCell<Option<Vec<String>>>,
+    /// When files were last dropped here (monotonic µs): only their tiles pop in, not a list read afresh.
+    dropped_at: Cell<i64>,
     /// Quits the helper once hidden for `IDLE_QUIT_SECS`.
     idle_quit: RefCell<Option<glib::SourceId>>,
 }
@@ -127,6 +131,7 @@ impl ShelfWindow {
             near: Cell::default(),
             over: Cell::default(),
             dragged: RefCell::default(),
+            dropped_at: Cell::new(i64::MIN / 2),
             idle_quit: RefCell::default(),
         }));
         shelf.accept_drops();
@@ -396,6 +401,7 @@ impl ShelfWindow {
                 return false;
             }
             // The island flashes its outline as the file lands (files.js).
+            shelf.0.dropped_at.set(glib::monotonic_time());
             shelf.call("Add", Some(&(uris,).to_variant()));
             true
         });
@@ -433,7 +439,11 @@ impl ShelfWindow {
                     if let Some(inner) = weak.upgrade() {
                         inner.items.replace(items);
                         let shelf = ShelfWindow(inner);
-                        shelf.render_tiles(true);
+                        // Only what was just dropped here pops in: a list read again (the island asks as the
+                        // Files tab opens, the helper started anew) shows its tiles as they are, not arriving.
+                        let fresh =
+                            glib::monotonic_time() - shelf.0.dropped_at.get() < JUST_DROPPED_US;
+                        shelf.render_tiles(fresh);
                         shelf.render();
                     }
                     None

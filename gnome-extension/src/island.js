@@ -48,7 +48,9 @@ const BREATHS = 4;
 const GLOW_SCALE = 2;
 
 // The outline `_box` gives, in GLSL, as (how far inside, the edge's normal) for the nearest edge: of the body below
-// the top bar (its sides and rounded bottom), and of the band above it with the shoulders that flare from it.
+// the top bar (its sides and rounded bottom), and of the band above it with the shoulders that flare from it. A pill
+// (`pill`: its top corners' radius, how far below the top it starts) is the body alone, round all over; 0, 0 for the
+// notch, whose body runs up to the top and is cut there.
 const OUTLINE = `
 vec3 edgeMin(vec3 a, vec3 b) {
     return a.x < b.x ? a : b;
@@ -57,12 +59,17 @@ vec3 edgeMax(vec3 a, vec3 b) {
     return a.x > b.x ? a : b;
 }
 vec3 outlineBody(vec2 q) {
-    float r = corner.x;
-    vec2 c = vec2(clamp(q.x, body.x + r, body.y - r), min(q.y, body.w - r));
+    // The notch (no gap): bottom corners only, its body running up past the top. A pill: its bottom corners below
+    // its middle, its top ones above it, and a top edge.
+    float gap = pill.y;
+    bool lower = gap <= 0.0 || q.y >= 0.5 * (gap + body.w);
+    float r = lower ? corner.x : pill.x;
+    vec2 c = vec2(clamp(q.x, body.x + r, body.y - r), lower ? min(q.y, body.w - r) : max(q.y, gap + r));
     float off = length(q - c);
     if (off > 0.0)
         return vec3(r - off, (q - c) / off);
-    return edgeMin(edgeMin(vec3(q.x - body.x, 1.0, 0.0), vec3(body.y - q.x, 1.0, 0.0)), vec3(body.w - q.y, 0.0, 1.0));
+    vec3 sides = edgeMin(edgeMin(vec3(q.x - body.x, 1.0, 0.0), vec3(body.y - q.x, 1.0, 0.0)), vec3(body.w - q.y, 0.0, 1.0));
+    return gap > 0.0 ? edgeMin(sides, vec3(q.y - gap, 0.0, 1.0)) : sides;
 }
 vec3 outlineFlare(vec2 q, float x, float side) {
     float sh = corner.y;
@@ -131,7 +138,7 @@ cogl_color_out = color * cogl_color_in.a;
 `;
 
 /** The island's shape, drawn by the GPU as it changes (see `_syncShape`). */
-const ShapeFill = shaderEffect('ShapeFill', {frame: 4, body: 4, corner: 4, fill: 4, tint: 4, style: 1, edge: 4, edgeAlpha: 2},
+const ShapeFill = shaderEffect('ShapeFill', {frame: 4, body: 4, corner: 4, pill: 2, fill: 4, tint: 4, style: 1, edge: 4, edgeAlpha: 2},
     SHAPE_CODE, OUTLINE);
 
 // What the views draw, cut to the outline as the shape is (see SHAPE_CODE).
@@ -141,7 +148,7 @@ cogl_color_out *= coverage(edgeMin(edgeMax(outlineBody(p), outlineBeside(p)), ve
 `;
 
 /** Keeps the views inside the island's rounded outline while it changes shape (see `_syncViews`). */
-const ViewsMask = shaderEffect('ViewsMask', {frame: 4, body: 4, corner: 4}, VIEWS_CODE, OUTLINE);
+const ViewsMask = shaderEffect('ViewsMask', {frame: 4, body: 4, corner: 4, pill: 2}, VIEWS_CODE, OUTLINE);
 
 /** The 'aura' light, drawn by the GPU each frame (see glow.js). */
 const RimLight = shaderEffect('RimLight', RIM_UNIFORMS, rimCode(effectPoint('frame.xy')), OUTLINE + RIM_FUNCTIONS);
@@ -149,13 +156,18 @@ const RimLight = shaderEffect('RimLight', RIM_UNIFORMS, rimCode(effectPoint('fra
 /** Cross-fade timings in milliseconds. */
 const FADE_OUT = 160;
 const FADE_IN = 320;
-/** How long auto-hide takes to fade the island out or back in. */
-const AUTO_HIDE_FADE = 180;
+/** Auto-hide draws the closed island up into the top edge (ms), and back down; it fades over the last part of
+ * going, so nothing is left at the edge, and over the first part of coming. */
+const AUTO_HIDE_UP = 260;
+const AUTO_HIDE_DOWN = 300;
+const AUTO_HIDE_FADE_SHARE = 0.35;
 /** The incoming view waits for the shape to make room before appearing. */
 const FADE_IN_DELAY = 120;
 /** How far (CSS px) the views slide as the shape grows or shrinks: they travel with it. Whole
  * pixels only, never a scale: a scaled picture or text is resampled every frame and seems to shiver. */
 const VIEW_SHIFT = 8;
+/** A pill's hairline on a look with none of its own (black): faint, lit from above. */
+const PILL_EDGE = {color: [1, 1, 1], top: 0.16, bottom: 0.06};
 /** Below this shoulder size (CSS px) the corners may climb into the top bar, so the island rounds smoothly. */
 const SHOULDER_FADE = 4;
 
@@ -168,7 +180,8 @@ export const Island = GObject.registerClass({
         // Like `hover`, without its :hover pseudo class: setting that restyles every view.
         'hovered': GObject.ParamSpec.boolean('hovered', null, null, GObject.ParamFlags.READABLE, false),
     },
-    Signals: {'geometry-changed': {}},
+    // `auto-hide-settled`: drawn into the edge by auto-hide, it shows no more (see `drawn`).
+    Signals: {'geometry-changed': {}, 'auto-hide-settled': {}},
 }, class Island extends St.Widget {
     /** Starts at zero size; the first `morph` gives it a shape. */
     _init() {
@@ -180,9 +193,16 @@ export const Island = GObject.registerClass({
 
         /** Height of the top bar the island grows out of; 0 for none. */
         this._topInset = 0;
+        /** A pill's room above it, in stage pixels; null for the notch (see `pillGap`). */
+        this._pillGap = null;
         this._hovered = false;
         this._autoHidden = false;
         this._band = 0;
+        /** How far auto-hide has drawn the island's layers up, in whole pixels (≤ 0), and the timeline doing it. */
+        this._lift = 0;
+        this._liftTimeline = null;
+        /** Drawn all the way into the edge: it shows no more (see `drawn`). */
+        this._tucked = false;
         this._monitor = null;
         this._view = null;
         this._pointerAtMorph = null;
@@ -278,6 +298,19 @@ export const Island = GObject.registerClass({
         if (!event.get_event_sequence() && (!related || !this.contains(related)))
             this._setHovered(false);
         return super.vfunc_leave_event(event);
+    }
+
+    /** Shaped as a pill (Settings → Shape) `gap` px below the top, round all over and with no shoulders; null for the
+     * notch. The island itself stays at the top, so the room above still takes the pointer. */
+    set pillGap(gap) {
+        if (gap === this._pillGap)
+            return;
+        this._pillGap = gap;
+        this._sync();
+    }
+
+    get pillGap() {
+        return this._pillGap;
     }
 
     /** The height of the bar the island grows out of; its body starts below. */
@@ -406,7 +439,7 @@ export const Island = GObject.registerClass({
         const [left, top] = this.get_transformed_position();
         const bodyLeft = left + Math.max(0, this._shoulder.value);
         const bodyRight = bodyLeft + Math.max(0, this._width.value);
-        return x >= bodyLeft && x + width <= bodyRight && y >= top &&
+        return x >= bodyLeft && x + width <= bodyRight && y >= top + (this._pillGap ?? 0) &&
             y + height <= top + Math.max(0, this._height.value);
     }
 
@@ -417,7 +450,7 @@ export const Island = GObject.registerClass({
         const {x: monitorX, y: top, width: monitorWidth} = this._monitor;
         const bodyWidth = Math.max(0, this._width.target);
         const bodyLeft = monitorX + (monitorWidth - bodyWidth) / 2;
-        return x >= bodyLeft && x + width <= bodyLeft + bodyWidth && y >= top &&
+        return x >= bodyLeft && x + width <= bodyLeft + bodyWidth && y >= top + (this._pillGap ?? 0) &&
             y + height <= top + Math.max(0, this._height.target);
     }
 
@@ -445,36 +478,118 @@ export const Island = GObject.registerClass({
         this._showView(view, growing);
     }
 
-    /** Fades the closed island away for auto-hide (its view hidden then, so nothing ticks unseen), or back.
-     * Hidden, only its top `band` px take the pointer (see `vfunc_pick`). */
+    /** Draws the closed island up into the top edge for auto-hide (its view hidden then, so nothing ticks unseen),
+     * or back down. Its layers move, not the island: hidden, its top `band` px still take the pointer where it was
+     * (see `vfunc_pick`). */
     setAutoHidden(hidden, band = 0) {
         this._band = band;
         if (hidden === this._autoHidden)
             return;
         this._autoHidden = hidden;
+        this._tucked = false;
         this.remove_transition('opacity');
+        // A slide still under way would move the layers back where they were going.
+        this._liftTimeline?.stop();
+        this._liftTimeline = null;
+        if (!hidden)
+            this._showSettledView();
+        const out = -Math.ceil(this.height);
         if (!St.Settings.get().enable_animations) {
+            this._setLift(hidden ? out : 0);
             this.opacity = hidden ? 0 : 255;
-            if (hidden)
+            if (hidden) {
                 this._view?.hide();
-            else
-                this._view?.show();
+                this._tucked = true;
+                this.emit('auto-hide-settled');
+            }
             return;
         }
-        if (hidden) {
-            this.ease({
-                opacity: 0,
-                duration: AUTO_HIDE_FADE,
-                mode: Clutter.AnimationMode.EASE_IN_QUAD,
-                onStopped: finished => {
-                    if (finished && this._autoHidden)
-                        this._view?.hide();
-                },
+        const duration = hidden ? AUTO_HIDE_UP : AUTO_HIDE_DOWN;
+        const fade = Math.round(duration * AUTO_HIDE_FADE_SHARE);
+        // Going: it speeds up into the edge, and fades only at the end. Coming: in at once, slowing as it lands.
+        this.ease({
+            opacity: hidden ? 0 : 255,
+            delay: hidden ? duration - fade : 0,
+            duration: fade,
+            mode: hidden ? Clutter.AnimationMode.EASE_IN_QUAD : Clutter.AnimationMode.EASE_OUT_QUAD,
+        });
+        this._liftTo(hidden ? out : 0, duration,
+            hidden ? Clutter.AnimationMode.EASE_IN_CUBIC : Clutter.AnimationMode.EASE_OUT_CUBIC, () => {
+                if (!this._autoHidden)
+                    return;
+                this._view?.hide();
+                this._tucked = true;
+                this.emit('auto-hide-settled');
             });
+    }
+
+    /** Back from auto-hide, the view as it should be now (#40): placed for the width the island took meanwhile (a
+     * hidden view is not placed, see `_sync`), its fade and slide ended, and a view still fading out from before it
+     * hid gone. Views warming up (see `warmView`) are left to it: they are clear. */
+    _showSettledView() {
+        for (const view of this._views) {
+            if (view === this._view || !view.visible || view.opacity === 0)
+                continue;
+            view.remove_all_transitions();
+            view.hide();
+            slideBy(view, 'y', 0, 0);
+        }
+        const view = this._view;
+        if (!view)
+            return;
+        view.remove_all_transitions();
+        slideBy(view, 'x', 0, 0);
+        slideBy(view, 'y', 0, 0);
+        view.opacity = 255;
+        view.show();
+        this._placeView(view);
+    }
+
+    /** Whether it shows on screen: not auto-hidden, or still on its way into the edge. GNOME must keep drawing it
+     * over a window covering the display until then (the controller's `_syncScanout`). */
+    get drawn() {
+        return !this._tucked;
+    }
+
+    /** Moves the layers to `target` px up from where they rest, from wherever they are now. */
+    _liftTo(target, duration, mode, onDone) {
+        this._liftTimeline?.stop();
+        this._liftTimeline = null;
+        const from = this._lift;
+        if (from === target || !this.mapped) {
+            this._setLift(target);
+            onDone();
             return;
         }
-        this._view?.show();
-        this.ease({opacity: 255, duration: AUTO_HIDE_FADE, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        const timeline = new Clutter.Timeline({actor: this, duration, progress_mode: mode});
+        timeline.connect('new-frame', () => this._setLift(Math.round(from + (target - from) * timeline.get_progress())));
+        timeline.connect('completed', () => {
+            this._setLift(target);
+            onDone();
+        });
+        timeline.connect('stopped', () => {
+            if (this._liftTimeline === timeline)
+                this._liftTimeline = null;
+        });
+        this._liftTimeline = timeline;
+        timeline.start();
+    }
+
+    /** Puts the layers `lift` px up (whole pixels keep text sharp), cut at the island's top: drawn into the edge, the
+     * island shows on no display above. The glass backdrop copies what is behind it where it now is. */
+    _setLift(lift) {
+        if (lift === this._lift)
+            return;
+        this._lift = lift;
+        for (const layer of [this._backdrop, this._shape, this._glow, this._viewsLayer])
+            layer.translation_y = lift;
+        if (lift === 0) {
+            this.remove_clip();
+        } else {
+            const room = Math.max(this._room.width, this.width) + 2 * SHAPE_PAD;
+            this.set_clip(-room, 0, 3 * room, Math.max(this._room.height, this.height));
+        }
+        this._placeBackdrop();
     }
 
     /** Faded away, the island leaves what is under it to the pointer: only its top band brings it back. */
@@ -668,7 +783,8 @@ export const Island = GObject.registerClass({
             if (view.visible)
                 this._placeView(view);
         }
-        this._placeBackdrop(outerWidth, height, margin, width, room);
+        this._backdropShape = {outerWidth, height, margin, width, room};
+        this._placeBackdrop();
         this._syncShape();
         this._syncViews(room);
         this._queueGlow();
@@ -699,26 +815,29 @@ export const Island = GObject.registerClass({
         if (!moving)
             return;
         const height = Math.max(0, this._height.value);
-        const {left, right, top, radius, shoulder} = this._box(height);
+        const {left, right, top, radius, shoulder, crown, gap} = this._box(height);
         this._viewsMask.setUniforms({
             frame: [room.width, room.height, this._viewsLayer.get_resource_scale() || 1, 0],
             body: [left + this._islandFraction, right + this._islandFraction, top, height],
             corner: [radius, shoulder, 0, 0],
+            pill: [crown, gap],
         });
     }
 
     /** The shape as it is now, in the theme's colour with its tint and edge, given to its shader. */
     _syncShape() {
         const height = Math.max(0, this._height.value);
-        const {left, right, top, radius, shoulder} = this._box(height);
+        const {left, right, top, radius, shoulder, crown, gap} = this._box(height);
         const shift = SHAPE_PAD + this._islandFraction;
         const [width, actorHeight] = this._shape.get_size();
         const tinted = this._tint && this._tintStyle !== 'aura';
-        const edge = Theme.edge();
+        // A pill stands apart from what is behind it: a hairline round it on black too.
+        const edge = Theme.edge() ?? (gap > 0 ? PILL_EDGE : null);
         this._fill.setUniforms({
             frame: [width, actorHeight, this._shape.get_resource_scale() || 1, 0],
             body: [left + shift, right + shift, top, height],
             corner: [radius, shoulder, 0, 0],
+            pill: [crown, gap],
             fill: Theme.fill(),
             tint: tinted ? [...this._tint, this._tintStrength] : [0, 0, 0, 0],
             style: {wash: 1, glow: 2}[this._tintStyle] ?? 0,
@@ -796,51 +915,68 @@ export const Island = GObject.registerClass({
             grid: [Math.ceil(outerWidth / GLOW_SCALE) * pixels, Math.ceil(height / GLOW_SCALE) * pixels],
             ...rimUniforms({...box, left: box.left + this._islandFraction, right: box.right + this._islandFraction},
                 height, this._tint, this._motion, this._tintStrength, uiScale()),
+            pill: [box.crown, box.gap],
         });
     }
 
-    /** The glass backdrop over the island as it is now drawn: its body, corners and shoulders (see `_box`). */
-    _placeBackdrop(outerWidth, height, margin, width, room) {
-        if (!this._monitor || !Theme.blur())
+    /** The glass backdrop over the island as it is now drawn (see `_sync`): its body, corners and shoulders (see
+     * `_box`), where auto-hide has drawn it (see `_setLift`). */
+    _placeBackdrop() {
+        if (!this._monitor || !this._backdropShape || !Theme.blur())
             return;
-        const top = Math.min(this._topInset, height);
+        const {height, margin, width, room} = this._backdropShape;
+        const {top, radius, crown, gap} = this._box(height);
         const fraction = this._islandFraction;
+        // A pill's glass starts where it does, below its gap.
+        this._backdrop.y = gap;
         this._backdrop.place({
-            stageX: this._islandX, stageY: this._monitor.y,
-            width: room.width, height: room.height, bottom: height,
+            stageX: this._islandX, stageY: this._monitor.y + this._lift + gap,
+            width: room.width, height: Math.max(0, room.height - gap), bottom: Math.max(0, height - gap),
             left: margin + fraction, right: margin + width + fraction,
-            radius: this._bodyRadius(height),
-            shoulder: top > 0 ? 0 : Math.min(margin, Math.max(0, height / 2)),
+            radius, crown,
+            shoulder: top > 0 || gap > 0 ? 0 : Math.min(margin, Math.max(0, height / 2)),
             reach: GLASS_GLOW_REACH * uiScale(),
             open: Math.max(0, Math.min(1, (height / uiScale() - GLASS_CLOSED) / (GLASS_OPEN - GLASS_CLOSED))),
         });
     }
 
-    /** The radius of the body's bottom corners, `height` tall. */
+    /** The radius of the body's bottom corners, `height` tall; a pill's are all as round, at most half its height. */
     _bodyRadius(height) {
+        const width = Math.max(0, this._width.value);
+        if (this._pillGap !== null)
+            return Math.max(0, Math.min(this._radius.value, (height - this._pillGap) / 2, width / 2));
         const top = Math.min(this._topInset, height);
         const margin = Math.max(0, this._shoulder.value);
         const shoulder = Math.min(margin, Math.max(0, (height - top) / 2));
         const hanging = Math.min(1, margin / px(SHOULDER_FADE));
-        return Math.max(0, Math.min(this._radius.value, height - top * hanging - shoulder, Math.max(0, this._width.value) / 2));
+        return Math.max(0, Math.min(this._radius.value, height - top * hanging - shoulder, width / 2));
     }
 
     /** The island's shape `height` tall: its body `left` to `right` below `top`, its bottom corners' `radius` and
-     * its `shoulder`s', which flare from the band above the body (the top bar's, `top` deep) to its sides. */
+     * its `shoulder`s', which flare from the band above the body (the top bar's, `top` deep) to its sides; a pill's
+     * body `gap` below the top, its top corners `crown` round, with no band or shoulders. */
     _box(height) {
+        const margin = Math.max(0, this._shoulder.value);
+        const left = margin;
+        const right = left + Math.max(0, this._width.value);
+        if (this._pillGap !== null) {
+            const gap = Math.min(this._pillGap, height);
+            const radius = this._bodyRadius(height);
+            return {left, right, top: 0, radius, shoulder: 0, crown: radius, gap};
+        }
         const top = Math.min(this._topInset, height);
         // Shoulders and corners must share the part below the top bar; an
         // island without shoulders may round its corners inside the bar.
-        const margin = Math.max(0, this._shoulder.value);
         const shoulder = Math.min(margin, Math.max(0, (height - top) / 2));
-        const left = margin;
-        return {left, right: left + Math.max(0, this._width.value), top, radius: this._bodyRadius(height), shoulder};
+        return {left, right, top, radius: this._bodyRadius(height), shoulder, crown: 0, gap: 0};
     }
 
     /** Stops the springs and a pending glow redraw. */
     _onDestroy() {
         this._pulse?.stop();
         this._pulse = null;
+        this._liftTimeline?.stop();
+        this._liftTimeline = null;
         this._driver?.destroy();
         this._driver = null;
         if (this._glowLater)

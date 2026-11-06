@@ -360,6 +360,8 @@ export const ClipsView = GObject.registerClass({
             track_hover: true,
             x_expand: false,
             y_expand: false,
+            // At its own height, from the row's top: a taller page doesn't stretch it.
+            y_align: Clutter.ActorAlign.START,
             // Long text must not spill out of the card.
             clip_to_allocation: true,
         });

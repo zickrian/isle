@@ -2,7 +2,7 @@
 // Copyright (C) 2026 zickrian
 
 // The shelf's Files tab. The `isle-shelf` helper draws it over this view for drag and
-// drop; both look the same tile for tile, so the hand-over cannot be seen.
+// drop; both look the same tile for tile, so the hand-over cannot be seen. The names are only ever drawn here.
 
 import Cairo from 'cairo';
 import Clutter from 'gi://Clutter';
@@ -23,9 +23,8 @@ export const SHELF_CAPACITY = 6;
 const TILE_WIDTH = 84;
 const PREVIEW_SIZE = 52;
 const ICON_SIZE = 46;
+/** The ×'s disc, as the helper's (crates/isle-shelf/src/style.css). */
 const REMOVE_SIZE = 18;
-/** The ×'s disc as the helper draws it: GTK puts its 1.5 px border outside the 18 px. */
-const REMOVE_DISC = REMOVE_SIZE + 3;
 const NAME_WIDTH = 76;
 /** The preview's square plus room above it for the ×. */
 const FRAME_HEIGHT = PREVIEW_SIZE + 6;
@@ -43,6 +42,26 @@ const ZONE = {idle: [0.22, 0.025], near: [0.35, 0.035], over: [0.65, 0.06]};
 const ZONE_GLOW = [[0.43, 0.48, 1], [0.54, 0.36, 1]];
 const ZONE_GLOW_ALPHA = [0.45, 0.12];
 const FILES_TYPE = 'x-special/gnome-copied-files';
+
+/** Pango's line separator: a line break that keeps the name one paragraph, centred line by line. */
+const LINE_BREAK = '\u2028';
+
+/** `name` for `label`, `width` wide: one too long for a line whose name before the extension fits breaks after the
+ * dot ("MuriSugi12." over "txt"), not inside the word ("MuriSugi12.t-" over "xt"); any other as it is. */
+function splitAtExtension(label, name, width) {
+    const dot = name.lastIndexOf('.');
+    if (dot <= 0 || dot === name.length - 1)
+        return name;
+    const layout = label.clutter_text.get_layout().copy();
+    layout.set_width(-1);
+    const widthOf = text => {
+        layout.set_text(text, -1);
+        return layout.get_pixel_size()[0];
+    };
+    if (widthOf(name) <= width || widthOf(name.slice(0, dot + 1)) > width)
+        return name;
+    return `${name.slice(0, dot + 1)}${LINE_BREAK}${name.slice(dot + 1)}`;
+}
 
 /** How fast the ↓ shows and goes with the pointer. */
 const SAVE_FADE_MS = 120;
@@ -65,8 +84,6 @@ export const FilesView = GObject.registerClass({
         /** isled's last list: kept while it is away, as the helper keeps its own, so the two never disagree. */
         this._items = [];
         this._helperActive = false;
-        /** Fading out under the helper's window as it fades in (see `handOver`). */
-        this._handingOver = false;
         this._helperAvailable = false;
         this._dropping = false;
         this._dropOver = false;
@@ -131,42 +148,11 @@ export const FilesView = GObject.registerClass({
         }, {now: false});
     }
 
-    /** While the helper window covers this tab, show nothing of its own so the two never mix. */
+    /** While the helper's window covers this tab, its pictures and × are the window's (see `update`). */
     set helperActive(active) {
-        this._handingOver = false;
         if (active === this._helperActive)
             return;
         this._helperActive = active;
-        this.update();
-    }
-
-    /** The helper's window fading in over the tiles: they fade out with it, so the names are never drawn twice in
-     * full (doubled, as if bold). Ended by `helperActive`, or `handBack` when the window doesn't come. */
-    handOver(duration) {
-        this._handingOver = true;
-        // Only the names and ×: the pictures are the same in the window, so they stay (fading both would dim them).
-        for (const part of this._handedOverParts())
-            part.ease({opacity: 0, duration, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
-    }
-
-    /** Each tile's name and ×, which the helper's window draws again a pixel or two off. */
-    _handedOverParts() {
-        return [...this._tileFor.values()].flatMap(tile => tile._handedOver ?? []);
-    }
-
-    /** The parts `handOver` faded, whole again (unseen under the window, or shown again). */
-    _restoreParts() {
-        for (const part of this._handedOverParts()) {
-            part.remove_transition('opacity');
-            part.opacity = 255;
-        }
-    }
-
-    /** The helper's window went before it was in: the tiles show again. */
-    handBack() {
-        if (!this._handingOver)
-            return;
-        this._handingOver = false;
         this.update();
     }
 
@@ -277,12 +263,11 @@ export const FilesView = GObject.registerClass({
         this._syncZone();
         this._tiles.visible = items.length > 0;
         this._empty.visible = items.length === 0;
-        // Under the helper's window the tiles stay laid out but unseen (hidden, the tab would shrink and the
-        // window go, blinking). The empty shelf's words are only drawn here: the helper's are see-through.
-        if (!this._handingOver) {
-            this._tiles.opacity = this._helperActive ? 0 : 255;
-            this._restoreParts();
-        }
+        // Under the helper's window each tile's picture and × stay laid out but unseen (hidden, the tab would shrink
+        // and the window go, blinking): the window draws them. The names are only ever drawn here, as the empty
+        // shelf's words: GTK breaks and draws text its own way, and a name changing as the window came in blinked.
+        for (const tile of this._tileFor.values())
+            tile._frame.opacity = this._helperActive ? 0 : 255;
         this._updateEmptyText();
     }
 
@@ -349,17 +334,15 @@ export const FilesView = GObject.registerClass({
         });
         const remove = iconButton('isle-close-symbolic', 'isle-shelf-remove',
             () => this._daemon.call('shelf', 'Remove', item.uri), {size: 10, accessibleName: 'Remove from the shelf'});
-        remove.set_size(px(REMOVE_DISC), px(REMOVE_DISC));
+        remove.set_size(px(REMOVE_SIZE), px(REMOVE_SIZE));
 
         // Files the Shelf keeps itself (sent from the phone, a clipboard picture): ↓ saves one into Downloads,
         // shown under the pointer, mirroring the ×.
         const save = isShelfCopy(item.uri) ? iconButton('isle-save-symbolic', 'isle-shelf-remove isle-shelf-save',
             () => this.emit('save', item.uri), {size: 10, accessibleName: 'Save to Downloads'}) : null;
-        save?.set_size(px(REMOVE_DISC), px(REMOVE_DISC));
+        save?.set_size(px(REMOVE_SIZE), px(REMOVE_SIZE));
         save?.set({opacity: 0, reactive: false});
         const tile = this._tileBox(this._frame(preview, {copied, remove, save}), item.name);
-        // What fades as the helper's window comes in (see `handOver`): its picture is the same, drawn over.
-        tile._handedOver = [tile._names, remove];
         if (save) {
             tile.connect('notify::hover', () => {
                 save.reactive = tile.hover;
@@ -406,7 +389,7 @@ export const FilesView = GObject.registerClass({
         if (save) {
             frame.add_child(save);
             // The ×'s place mirrored, over the preview's other corner.
-            save.set_position((TILE_WIDTH - (left + PREVIEW_SIZE - REMOVE_SIZE + 6) - REMOVE_DISC) * scale, 0);
+            save.set_position((TILE_WIDTH - (left + PREVIEW_SIZE - REMOVE_SIZE + 6) - REMOVE_SIZE) * scale, 0);
         }
         return frame;
     }
@@ -419,6 +402,8 @@ export const FilesView = GObject.registerClass({
         // Two lines ("Alex Morgan / CV.pdf" whole); only a longer name loses its middle.
         text.clutter_text.set({line_wrap: true, line_wrap_mode: Pango.WrapMode.WORD_CHAR,
             line_alignment: Pango.Alignment.CENTER, ellipsize: Pango.EllipsizeMode.MIDDLE});
+        // Measured in the label's own font, known once styled.
+        text.connect_after('style-changed', () => (text.text = splitAtExtension(text, name, px(NAME_WIDTH))));
         // Two lines' room, a shorter name in its middle, as the helper's (crates/isle-shelf).
         // The label is given its lines' height whole: on GNOME 50 and later it measures one, and a long name showed on
         // one line here but two in the helper's window.
@@ -433,7 +418,7 @@ export const FilesView = GObject.registerClass({
             width: px(TILE_WIDTH),
             y_align: Clutter.ActorAlign.CENTER,
         });
-        button._names = lines;
+        button._frame = frame;
         return button;
     }
 

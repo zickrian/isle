@@ -12,6 +12,7 @@ import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import {VERTICAL, onUiScale, px, uiScale} from '../compat.js';
+import {PAGE_HEIGHT} from '../expanded.js';
 import * as Format from '../format.js';
 import {roundCorners} from '../glass.js';
 import * as Theme from '../theme.js';
@@ -51,6 +52,8 @@ class WindowPreview extends St.Widget {
             x_expand: false,
             y_expand: false,
         });
+        /** How much larger than its usual size it is drawn (Settings → Size), and its width in CSS pixels. */
+        this._factor = 1;
         this._width = PLACEHOLDER_WIDTH;
         this._window = null;
         this._actor = null;
@@ -84,7 +87,7 @@ class WindowPreview extends St.Widget {
             this.add_child(child);
         this.connect('destroy', () => this._detach());
         onUiScale(this, scale => {
-            this.set_size(this._width * scale, PREVIEW_HEIGHT * scale);
+            this.set_size(this._width * scale, this._height * scale);
             if (this._clone)
                 this._layout();
             this.syncTheme();
@@ -111,7 +114,25 @@ class WindowPreview extends St.Widget {
         this._hint.text = hint ?? '';
         this._hint.visible = Boolean(hint);
         if (!live)
-            this._setWidth(PLACEHOLDER_WIDTH);
+            this._setWidth(Math.round(PLACEHOLDER_WIDTH * this._factor));
+    }
+
+    /** Its height in CSS pixels. */
+    get _height() {
+        return Math.round(PREVIEW_HEIGHT * this._factor);
+    }
+
+    /** Drawn `factor` times its usual size (the page taller, Settings → Size). */
+    set factor(factor) {
+        if (factor === this._factor)
+            return;
+        this._factor = factor;
+        this.height = px(this._height);
+        if (this._clone)
+            this._layout();
+        else
+            this._setWidth(Math.round(PLACEHOLDER_WIDTH * factor));
+        this.syncTheme();
     }
 
     /** Shows the "go to the call" mark while the pointer is over it. */
@@ -153,11 +174,12 @@ class WindowPreview extends St.Widget {
         const buffer = this._window.get_buffer_rect();
         if (frame.width <= 0 || frame.height <= 0)
             return;
-        const width = Math.min(PREVIEW_MAX_WIDTH, Math.max(PREVIEW_MIN_WIDTH,
-            Math.round(PREVIEW_HEIGHT * frame.width / frame.height)));
+        const factor = this._factor;
+        const width = Math.min(Math.round(PREVIEW_MAX_WIDTH * factor), Math.max(Math.round(PREVIEW_MIN_WIDTH * factor),
+            Math.round(this._height * frame.width / frame.height)));
         this._setWidth(width);
         // On the stage, in its pixels, as the window's frame is.
-        const [stageWidth, stageHeight] = [px(width), px(PREVIEW_HEIGHT)];
+        const [stageWidth, stageHeight] = [px(width), px(this._height)];
         const scale = Math.max(stageWidth / frame.width, stageHeight / frame.height);
         this._clone.set_size(Math.round(buffer.width * scale), Math.round(buffer.height * scale));
         this._clone.set_position(
@@ -341,6 +363,11 @@ class CallPage extends Page {
         this._duration.text = Format.duration(elapsedMs);
         if (this.active)
             this.later('tick', 1000 - (elapsedMs % 1000) + 10, () => this._tick());
+    }
+
+    /** Settings → Size: the window's copy as much larger as the page is taller. */
+    onPageHeight(height) {
+        this._preview.factor = height / PAGE_HEIGHT;
     }
 
     /** Starts the preview and the clock. */

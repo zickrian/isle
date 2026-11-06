@@ -17,6 +17,7 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 import {DesktopAppInfo} from './src/appInfo.js';
 import {Bot, COLORS, SHAPES, paletteFor} from './src/bot.js';
 import {paintRim} from './src/glow.js';
+import {listenForSuperV} from './src/shortcutRecorder.js';
 import * as WorldClocks from './src/worldClocks.js';
 
 const DAEMON = 'io.github.zickrian.isle.Daemon';
@@ -310,29 +311,27 @@ export default class IslePreferences extends ExtensionPreferences {
 
         const history = new Adw.PreferencesGroup({
             title: 'Clipboard History',
-            description: 'Super+V opens it. Everything stays on this computer.',
+            description: 'Everything stays on this computer.',
         });
         const keep = switchRow(settings, 'clipboard-history', 'Keep clipboard history',
             'Text, links, images and files you copy. Passwords from password managers are never kept.');
         history.add(keep);
-        const superV = choiceRow(settings, 'super-v', 'Super+V', 'GNOME’s calendar shortcut', [
-            ['isle', 'Isle’s clipboard history'],
-            ['gnome', 'GNOME’s calendar and notifications'],
-        ]);
-        history.add(superV);
-        // The history lives on the Shelf page: with that page off, nothing is kept and Super+V is GNOME's.
-        const byShelf = () => {
+        // Its shortcut is set with the others' (Island → Shortcuts), so a page never has two: said here.
+        const describe = () => {
             const off = settings.get_strv('hidden-pages').includes('shelf');
-            keep.sensitive = superV.sensitive = !off;
+            keep.sensitive = !off;
+            const shortcut = superVPage(settings) === 'shelf' && !settings.get_strv('shortcut-shelf').length ? 'Super+V'
+                : settings.get_strv('shortcut-shelf')[0] ? Gtk.accelerator_get_label(...parsedAccelerator(settings.get_strv('shortcut-shelf')[0]))
+                    : null;
             history.description = off ? 'Off while the Shelf page is off (Island → Pages).'
-                : 'Super+V opens it. Everything stays on this computer.';
+                : `${shortcut ? `${shortcut} opens it` : 'No shortcut opens it'} (Island → Shortcuts). Everything stays on this computer.`;
         };
-        const shelfChanged = settings.connect('changed::hidden-pages', byShelf);
+        const described = ['hidden-pages', 'super-v', 'shortcut-shelf'].map(key => settings.connect(`changed::${key}`, describe));
         window.connect('close-request', () => {
-            settings.disconnect(shelfChanged);
+            described.forEach(id => settings.disconnect(id));
             return false;
         });
-        byShelf();
+        describe();
         const clear = new Adw.ActionRow({title: 'Clear history', subtitle: 'Pinned items are kept'});
         const clearButton = new Gtk.Button({label: 'Clear…', valign: Gtk.Align.CENTER});
         clearButton.connect('clicked', () => confirmClear(window));
@@ -359,24 +358,43 @@ export default class IslePreferences extends ExtensionPreferences {
             ['glass', 'Glass'],
         ]));
         look.add(glassRow(settings, window));
+        look.add(choiceRow(settings, 'island-shape', 'Shape', 'Joined to the top of the screen, or floating free', [
+            ['notch', 'Notch'],
+            ['pill', 'Pill'],
+        ]));
         look.add(topBarRow(settings, window));
         look.add(blackBesideWindowsRow(settings, window));
         look.add(switchRow(settings, 'compact-top-bar', 'Compact top bar', 'Smaller text and spacing in the top bar; slimmer too with the island below it'));
         look.add(switchRow(settings, 'island-in-top-bar', 'Island inside the top bar',
             'Like a notch: the closed island never covers windows'));
-        // One of the two, as the island sits: below the bar, or inside it.
+        // One of the two, as the notch sits: below the bar, or inside it. A pill sizes itself.
         const depth = spinRow(settings, 'notch-depth', 'Island height', 'How far the closed island hangs below the top bar, in pixels', 24, 40);
-        settings.bind('island-in-top-bar', depth, 'visible', Gio.SettingsBindFlags.GET | Gio.SettingsBindFlags.INVERT_BOOLEAN);
         look.add(depth);
         const gap = switchRow(settings, 'notch-gap', 'Space below the island',
             'A little room between the closed island and the windows below');
-        settings.bind('island-in-top-bar', gap, 'visible', Gio.SettingsBindFlags.GET);
         look.add(gap);
+        const byShape = () => {
+            const notch = settings.get_string('island-shape') === 'notch';
+            const inBar = settings.get_boolean('island-in-top-bar');
+            depth.visible = notch && !inBar;
+            gap.visible = notch && inBar;
+        };
+        const shapeChanged = ['island-shape', 'island-in-top-bar'].map(key => settings.connect(`changed::${key}`, byShape));
+        window.connect('close-request', () => {
+            shapeChanged.forEach(id => settings.disconnect(id));
+            return false;
+        });
+        byShape();
         look.add(choiceRow(settings, 'clock-format', 'Clock', 'The time in the island and its pages', [
             ['system', 'As GNOME'],
             ['24h', '24-hour (20:40)'],
             ['12h', '12-hour (8:40 PM)'],
         ]));
+        look.add(choiceRow(settings, 'open-size', 'Size', 'The open island, every page', [
+            ['standard', 'Standard'],
+            ['large', 'Large'],
+        ]));
+        look.add(switchRow(settings, 'clock-date', 'Show the date', 'The day beside the time on the closed island, as “Fri 6”'));
         look.add(switchRow(settings, 'privacy-indicators', 'Privacy indicators', 'Dots when the camera, microphone or screen sharing is in use'));
         look.add(choiceRow(settings, 'island-monitor', 'Display', 'With more than one display, where the island is', [
             ['primary', 'Main display'],
@@ -411,6 +429,10 @@ export default class IslePreferences extends ExtensionPreferences {
         look.add(hideDelay);
         page.add(look);
         page.add(pagesGroup(settings, window));
+        // "gnome", from before, opens the island's calendar now: shown as that.
+        if (settings.get_string('super-v') === 'gnome')
+            settings.set_string('super-v', 'calendar');
+        page.add(shortcutsGroup(settings));
         page.add(appUsageGroup(settings, window));
         page.add(worldClocksGroup(settings, window));
 
@@ -921,6 +943,99 @@ const PAGES = [
     ['calendar', 'Calendar', 'x-office-calendar-symbolic', 'The month, its events and world clocks'],
 ];
 
+/** The pages a shortcut of their own may open from anywhere, as the controller's SHORTCUT_PAGES, with their names. */
+const SHORTCUT_PAGES = [...PAGES.map(([name, title, iconName]) => [name, title, iconName]),
+    ['apps', 'Apps', 'view-app-grid-symbolic'], ['devices', 'Devices', 'bluetooth-active-symbolic'],
+    ['usage', 'AI Usage', 'power-profile-performance-symbolic']];
+
+/** A shortcut per page, none at first: GNOME's own shortcuts keep their keys (see `shortcutRow`). */
+function shortcutsGroup(settings) {
+    const group = new Adw.PreferencesGroup({
+        title: 'Shortcuts',
+        description: 'Open a page from anywhere; the same shortcut closes it. Super+V opens the Shelf’s clipboard or the Calendar: press it on either. In the open island, Ctrl+Tab and Ctrl+1–9 change pages.',
+    });
+    for (const [name, title, iconName] of SHORTCUT_PAGES) {
+        const row = SUPER_V_PAGES[name] ? superVPageRow(settings, name, title) : shortcutRow(settings, `shortcut-${name}`, title, null);
+        row.add_prefix(new Gtk.Image({icon_name: iconName}));
+        group.add(row);
+    }
+    return group;
+}
+
+/** The pages GNOME's calendar shortcut (Super+V, Super+M) may open, as the `super-v` setting names them. */
+const SUPER_V_PAGES = {shelf: 'isle', calendar: 'calendar'};
+
+/** Which of SUPER_V_PAGES Super+V opens now ('gnome', from before, is the calendar), or null when it opens none. */
+function superVPage(settings) {
+    const setting = settings.get_string('super-v');
+    return setting === 'none' ? null : setting === 'isle' ? 'shelf' : 'calendar';
+}
+
+/** Whether `accelerator` is GNOME's calendar shortcut, which Isle takes (Super+V, Super+M). */
+function isSuperV(accelerator) {
+    const gnome = new Gio.Settings({schema_id: 'org.gnome.shell.keybindings'}).get_strv('toggle-message-tray');
+    const [keyval, modifiers] = parsedAccelerator(accelerator);
+    return gnome.some(other => {
+        const [otherKey, otherModifiers] = parsedAccelerator(other);
+        return otherKey === keyval && otherModifiers === modifiers;
+    });
+}
+
+/** Gives `page` (one of SUPER_V_PAGES) `accelerator` ('' for none), one shortcut a page: Super+V taken from the other
+ * page, or, given another, Super+V taken off it. Why it wasn't, or null. */
+function setPageShortcut(settings, page, accelerator) {
+    const key = `shortcut-${page}`;
+    if (accelerator && isSuperV(accelerator)) {
+        settings.set_strv(key, []);
+        settings.set_string('super-v', SUPER_V_PAGES[page]);
+        return null;
+    }
+    const taken = accelerator && shortcutTakenBy(accelerator, settings, key);
+    if (taken)
+        return `${Gtk.accelerator_get_label(...parsedAccelerator(accelerator))} is already ${taken}`;
+    settings.set_strv(key, accelerator ? [accelerator] : []);
+    // Another shortcut takes Super+V's place on this page: Super+V opens nothing until given again. Taking its own
+    // off leaves Super+V where it is.
+    if (accelerator && superVPage(settings) === page)
+        settings.set_string('super-v', 'none');
+    return null;
+}
+
+/** The Shelf's or the Calendar's shortcut, one shortcut a page: Super+V shows on the page it opens. Given another,
+ * that page lets Super+V go to the other one (Clipboard, or Calendar); given Super+V, it takes it from the other. The
+ * Clipboard page's Super+V choice is the same setting. */
+function superVPageRow(settings, name, title) {
+    const key = `shortcut-${name}`;
+    const row = new Adw.ActionRow({title, activatable: true});
+    const shown = new Gtk.ShortcutLabel({disabled_text: 'Off', valign: Gtk.Align.CENTER});
+    // Takes off what it shows: its own shortcut, or else Super+V (which then opens nothing, until given again).
+    const remove = removeButton(() => {
+        if (settings.get_strv(key).length)
+            setPageShortcut(settings, name, '');
+        else
+            settings.set_string('super-v', 'none');
+    });
+    const sync = () => {
+        const own = settings.get_strv(key)[0] ?? '';
+        const superV = superVPage(settings) === name;
+        shown.accelerator = own || (superV ? '<Super>v' : '');
+        remove.visible = Boolean(own) || superV;
+        // Both set (each page given its own): Super+V still opens one of them, said here.
+        row.subtitle = own && superV ? 'Super+V opens it too' : '';
+    };
+    const changed = ['super-v', key].map(changedKey => settings.connect(`changed::${changedKey}`, sync));
+    row.connect('destroy', () => changed.forEach(id => settings.disconnect(id)));
+    sync();
+    row.add_suffix(shown);
+    row.add_suffix(remove);
+    row.connect('activated', () => recordShortcut(row.get_root(), accelerator => {
+        const problem = setPageShortcut(settings, name, accelerator);
+        if (problem)
+            row.get_root()?.add_toast?.(new Adw.Toast({title: problem}));
+    }, {superV: true}));
+    return row;
+}
+
 /** A switch per page; the last one on can't be turned off, so the island always has a page. */
 function pagesGroup(settings, window) {
     const group = new Adw.PreferencesGroup({title: 'Pages', description: 'The tabs of the open island. Turn off the ones you don’t use.'});
@@ -1395,30 +1510,124 @@ function spinRow(settings, key, title, subtitle, min, max) {
     return row;
 }
 
+/** A small × beside a shortcut that takes it off; `onClick` does. */
+function removeButton(onClick) {
+    const button = new Gtk.Button({icon_name: 'window-close-symbolic', valign: Gtk.Align.CENTER,
+        css_classes: ['flat', 'circular'], tooltip_text: 'Remove the shortcut'});
+    button.update_property([Gtk.AccessibleProperty.LABEL], ['Remove the shortcut']);
+    button.connect('clicked', onClick);
+    return button;
+}
+
 /** A row showing `key`'s shortcut; clicking it records a new one. */
 function shortcutRow(settings, key, title, subtitle) {
     const row = new Adw.ActionRow({title, subtitle, activatable: true});
     const shown = new Gtk.ShortcutLabel({disabled_text: 'Off', valign: Gtk.Align.CENTER});
-    const sync = () => (shown.accelerator = settings.get_strv(key)[0] ?? '');
+    const remove = removeButton(() => settings.set_strv(key, []));
+    const sync = () => {
+        shown.accelerator = settings.get_strv(key)[0] ?? '';
+        remove.visible = Boolean(shown.accelerator);
+    };
     const changed = settings.connect(`changed::${key}`, sync);
     row.connect('destroy', () => settings.disconnect(changed));
     sync();
     row.add_suffix(shown);
-    row.connect('activated', () => recordShortcut(row.get_root(), accelerator =>
-        settings.set_strv(key, accelerator ? [accelerator] : [])));
+    row.add_suffix(remove);
+    row.connect('activated', () => recordShortcut(row.get_root(), accelerator => {
+        // One GNOME or Isle already uses would take it from there: kept as it was, and said why.
+        const taken = accelerator && shortcutTakenBy(accelerator, settings, key);
+        if (taken) {
+            row.get_root()?.add_toast?.(new Adw.Toast({title: `${Gtk.accelerator_get_label(...parsedAccelerator(accelerator))} is already ${taken}`}));
+            return;
+        }
+        settings.set_strv(key, accelerator ? [accelerator] : []);
+    }));
     return row;
 }
 
-/** Waits for a key combination with a modifier, then hands it to `done`; Esc cancels, Backspace clears it. */
-function recordShortcut(window, done) {
-    const dialog = new Adw.Window({transient_for: window, modal: true, title: 'Shortcut', default_width: 420, default_height: 240});
-    dialog.set_content(new Adw.StatusPage({
-        title: 'Press the new shortcut',
-        description: 'With Super, Ctrl or Alt. Esc cancels; Backspace turns it off.',
-        icon_name: 'preferences-desktop-keyboard-shortcuts-symbolic',
-    }));
-    const keys = new Gtk.EventControllerKey();
-    keys.connect('key-pressed', (_keys, keyval, keycode, state) => {
+/** `accelerator` as [keyval, modifiers], the key lower case, for comparing. */
+function parsedAccelerator(accelerator) {
+    const [, keyval, modifiers] = Gtk.accelerator_parse(accelerator);
+    return [Gdk.keyval_to_lower(keyval), modifiers];
+}
+
+/** GNOME's shortcut settings, and what they are for (said in the warning). */
+const GNOME_SHORTCUTS = [
+    ['org.gnome.desktop.wm.keybindings', 'a GNOME window shortcut'],
+    ['org.gnome.shell.keybindings', 'a GNOME Shell shortcut'],
+    ['org.gnome.mutter.keybindings', 'a GNOME window shortcut'],
+    ['org.gnome.mutter.wayland.keybindings', 'a GNOME shortcut'],
+    ['org.gnome.settings-daemon.plugins.media-keys', 'a GNOME system shortcut'],
+];
+
+/** What already uses `accelerator` ("a GNOME Shell shortcut", "Isle's Calendar shortcut"), or null; `ownKey` is the
+ * key being set, which may keep its own. */
+function shortcutTakenBy(accelerator, settings, ownKey) {
+    const [keyval, modifiers] = parsedAccelerator(accelerator);
+    const same = list => list.some(other => {
+        const [otherKey, otherModifiers] = parsedAccelerator(other);
+        return otherKey === keyval && otherModifiers === modifiers;
+    });
+    const source = Gio.SettingsSchemaSource.get_default();
+    for (const [id, what] of GNOME_SHORTCUTS) {
+        const schema = source.lookup(id, true);
+        if (!schema)
+            continue;
+        const gnome = new Gio.Settings({settings_schema: schema});
+        const used = schema.list_keys().some(name =>
+            schema.get_key(name).get_value_type().dup_string() === 'as' && same(gnome.get_strv(name)));
+        if (used)
+            return `used by ${what}`;
+    }
+    // The user's own shortcuts (Settings → Keyboard → Custom Shortcuts), each at a path of its own.
+    const media = source.lookup('org.gnome.settings-daemon.plugins.media-keys', true);
+    const custom = source.lookup('org.gnome.settings-daemon.plugins.media-keys.custom-keybinding', true);
+    if (media && custom) {
+        for (const path of new Gio.Settings({settings_schema: media}).get_strv('custom-keybindings')) {
+            const own = new Gio.Settings({settings_schema: custom, path});
+            const binding = own.get_string('binding');
+            if (binding && same([binding]))
+                return `your shortcut “${own.get_string('name')}”`;
+        }
+    }
+    const isle = [['voice-shortcut', 'Assistant'], ...SHORTCUT_PAGES.map(([name, title]) => [`shortcut-${name}`, title])];
+    for (const [other, title] of isle) {
+        if (other !== ownKey && same(settings.get_strv(other)))
+            return `Isle’s ${title} shortcut`;
+    }
+    return null;
+}
+
+/** Waits for a key combination with a modifier, then hands it to `done`; Esc cancels, Backspace clears it. With
+ * `superV`, Super+V too: GNOME takes it before any window sees it, so Isle hands it over (shortcutRecorder.js). */
+function recordShortcut(window, done, {superV = false} = {}) {
+    // A small sheet, as tall as what it says (no scrolling): the keyboard on a tile, what to do, and the two keys
+    // that do something else.
+    const dialog = new Adw.Window({transient_for: window, modal: true, resizable: false, title: 'Shortcut', default_width: 340});
+    const box = new Gtk.Box({orientation: Gtk.Orientation.VERTICAL, spacing: 6, margin_start: 28, margin_end: 28,
+        margin_top: 4, margin_bottom: 24, halign: Gtk.Align.CENTER});
+    const tile = new Gtk.Image({icon_name: 'input-keyboard-symbolic', pixel_size: 32,
+        css_classes: ['card'], width_request: 64, height_request: 64, halign: Gtk.Align.CENTER, margin_bottom: 10});
+    box.append(tile);
+    box.append(new Gtk.Label({label: 'Press the new shortcut', css_classes: ['title-3']}));
+    box.append(new Gtk.Label({label: 'With Super, Ctrl or Alt', css_classes: ['dim-label'], margin_bottom: 14}));
+    const keys = new Gtk.Box({spacing: 18, halign: Gtk.Align.CENTER});
+    for (const [key, what] of [['Esc', 'Cancel'], ['Backspace', 'Remove']]) {
+        const pair = new Gtk.Box({spacing: 8});
+        // A key as a shortcut's are drawn, named as on the key: its name on a small raised card.
+        const cap = new Gtk.Box({css_classes: ['card'], valign: Gtk.Align.CENTER});
+        cap.append(new Gtk.Label({label: key, css_classes: ['caption-heading'], margin_start: 8, margin_end: 8,
+            margin_top: 3, margin_bottom: 3}));
+        pair.append(cap);
+        pair.append(new Gtk.Label({label: what, css_classes: ['dim-label'], valign: Gtk.Align.CENTER}));
+        keys.append(pair);
+    }
+    box.append(keys);
+    const view = new Adw.ToolbarView({content: box});
+    view.add_top_bar(new Adw.HeaderBar({show_title: false}));
+    dialog.set_content(view);
+    const presses = new Gtk.EventControllerKey();
+    presses.connect('key-pressed', (_presses, keyval, keycode, state) => {
         const modifiers = state & Gtk.accelerator_get_default_mod_mask();
         if (!modifiers && keyval === Gdk.KEY_Escape) {
             dialog.close();
@@ -1433,7 +1642,14 @@ function recordShortcut(window, done) {
         }
         return Gdk.EVENT_STOP;
     });
-    dialog.add_controller(keys);
+    dialog.add_controller(presses);
+    if (superV) {
+        const stop = listenForSuperV(() => {
+            done('<Super>v');
+            dialog.close();
+        });
+        dialog.connect('destroy', stop);
+    }
     dialog.present();
 }
 

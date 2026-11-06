@@ -39,9 +39,23 @@ All sizes are logical pixels.
 | Compact, hanging | as wide as it shows, at least 164 × (P + 30; Settings 24–40) | 16 | 10 | As above |
 | Peek (alert) | fits its content, up to 380 wide × (P + 56); 56 high off a black bar; 12 px round the badge on every side, and the value or button as far from the right edge | 28 | 13 | Badge · title/subtitle (a notification's words on up to two lines) · value, level bar or button, centred |
 | Peek with buttons | fits its words up to 440, its buttons whole up to 560; buttons that don't fit go on to a line below; 16 px round one lit along its edges | 28 | 13 | Badge · title/subtitle · code · small buttons under the words, from the left |
-| Expanded | at least 600 × (P + 170) on every page; wider when its tabs and status need room (about 650 with the usual tabs); 720 for lyrics | 32 | 22 | Header row (tabs) · page, 20 px in from the sides and the bottom |
+| Expanded | at least 600 × (P + 170) on every page; wider when its tabs and status need room (about 650 with the usual tabs); 720 for lyrics. With Settings → Appearance → Size on Large, 720 wide (840 for lyrics) × (P + 230): every page 210 tall, each laid out for the room (the cover and the timer's ring 146 px, the month's days 24 px (22 with six weeks), more rows of notifications and reminders, the call's window copy larger), the type its usual size and the clipboard's cards theirs (107 px, from the top) | 32 | 22 | Header row (tabs) · page, 20 px in from the sides and the bottom |
 
 Every width is even, so the island sits centred on its display to the pixel.
+
+**Shape: notch or pill** (Settings → Appearance → Shape; notch by default). The table is the
+notch, joined to the screen's top with its shoulders. A pill floats free, round all over, with no
+shoulders and no band. Inside the bar it is 30 tall, 3 px of bar above and below it: the bar is 36 px
+round a pill (32 round the notch), as a notched display's menu bar holds its notch, whatever the compact
+bar setting; hanging, 6 px below the bar, 32 tall; on a display without the bar, 8 px from its top. Its
+clock and signs are the notch's: the bar's size inside it (a 15 px clock, a 22 px cover), larger off it
+(17 px, 24 px). Closed, its ends are half its height round; an alert, the open island and the
+assistant grow down from where it sits, their corners as in the table on all four sides (no larger
+than half their height), the open island with a header of its own (32 px) 8 px down, its tabs 11 px from
+the pill's edge and clear of its corners, its pages 20 px from the sides and the bottom as the notch's. It never blends into a
+black bar, and a faint hairline (lit from above) sets it apart from what is behind it on black too.
+The island itself still starts at the top, so the room above a pill takes the pointer like the rest
+(auto-hide's band, hovering).
 
 **The closed island's width.** Each end's sign sits in a square as big as the
 cover (22 px in the bar, 24 hanging), as far in from the end as from the top
@@ -174,16 +188,21 @@ place, dimmed, so the layout never jumps.
 | Input | Closed / alert | Open |
 |---|---|---|
 | Pointer rests 120 ms (Settings: 60–1000 ms, or click only) | Open on the default page | – |
-| Pointer on the hidden island (Settings: auto-hide) | Fades back in; then as the row above | – |
+| Pointer on the hidden island (Settings: auto-hide) | Comes back down; then as the row above | – |
 | Pointer leaves | – | Close after 300 ms (not while typing or dragging a file) |
 | Click | Open now (an alert opens on its page) | Normal button clicks |
 | Middle-click | Play / pause | Play / pause |
 | Right-click | On an alert: put it away; else bring the call, or the music player, to the front | Bring the music player to the front |
 | Pointer on an alert | Holds it; it goes 1.5 s after the pointer leaves (one asking, a reminder or an event keeps its own time). One the pointer doesn't open (with a button) and an answer show a × on their icon to put them away | – |
 | Two-finger swipe up / down on an alert | Put it away / open it | – |
-| Super+V (GNOME's calendar shortcut) | Open the clipboard history, search ready, held open (Settings → Clipboard → Clipboard History may leave it to GNOME's calendar) | Close |
+| Super+V (GNOME's calendar shortcut) | Open the Calendar page, held open (Settings → Island → Shortcuts may give it to the clipboard history instead, search ready, pressed on the Shelf's row; with the page it opens left out of the island, it opens the other one) | Close; on another page, turn to this one |
 | Super+I (Settings: any shortcut) | Ask the assistant; typing while it listens types the request instead | Speak again |
 | Click a tab | – | Go to that page |
+| Ctrl+Tab, Ctrl+Shift+Tab (or Ctrl+Page Down / Up), held open from the keyboard | – | The next or previous page with a tab, round from the last to the first |
+| Ctrl+1 … Ctrl+9, held open from the keyboard | – | The first … ninth tab shown |
+| A page's own shortcut (Settings → Island → Shortcuts; none at first) | Open on that page, held open as with Super+V | Close; on another page, turn to that one |
+
+Shortcuts are set in one place, Settings → Island → Shortcuts, one a page: Super+V shows on the row of the page it opens (the Shelf's clipboard or the Calendar). Given another shortcut there, that page lets go of Super+V, which then opens nothing; Super+V pressed in the sheet that asks for either row's shortcut takes it back: GNOME takes the keys before any window sees them, so Isle hands them to the sheet while it waits. One GNOME or Isle already uses is refused, saying which. A row's × takes off what it shows (its own shortcut, or else Super+V, which then opens nothing until given again); the sheet that asks for a shortcut fits what it says, no scrolling, with Esc to cancel and Backspace to remove. The Clipboard page says which shortcut opens the history.
 | Scroll, or swipe with two fingers, over the header (tabs and status) | – | Change page: down or right the next, up or left the one before; one page a swipe, one a wheel click (at most one every 0.2 s while it spins); stops at the first and last page |
 | Scroll, or swipe with two fingers, over a page | – | Lists, lyrics and the calendar's events scroll; the page never changes |
 | ← → Enter (search field) | – | Choose a clipboard card; Enter pastes it into the window in front |
@@ -223,8 +242,12 @@ with the wheel or touchpad and never show a scrollbar.
   closed island for the chosen wait (3 s by default); **With the top bar**, at once as another
   extension hides the bar (Hide Top Bar, Just Perfection) and back with it; **Beside windows**, after
   the wait while an app's window under it reaches the top (its top within 5 px of the bar:
-  maximized, tiled or moved up there), not in the overview. It fades out (180 ms), clock and
-  activities with it, and the clock's place in the bar stays empty. Hidden, only its top band (the
+  maximized, tiled or moved up there), not in the overview. It is drawn up into the top edge
+  (260 ms, speeding up, fading only over its last third), clock and activities with it, and the clock's
+  place in the bar stays empty; it comes back down (300 ms, slowing as it lands). Whole pixels, cut at
+  the island's top, so nothing shows on a display above; GNOME keeps drawing it over a full-screen
+  window until it is all the way in. Shown again, what it shows is placed for the width it took
+  meanwhile. Hidden, only its top band (the
   bar's height, or 2 px at a display's top without the bar or with the bar hidden by another
   extension) takes the pointer: pointing there brings it back without opening it (it opens once the
   pointer moves on it and rests again), and what is below takes clicks as if it weren't there; on X11
@@ -233,7 +256,7 @@ with the wheel or touchpad and never show a scrollbar.
 - Over a full-screen app the island is GNOME's to hide, and alerts wait until the app leaves full
   screen; with Settings → Alerts → Over full-screen apps on, it stays there hidden instead and shows
   only for alerts (and the open island or assistant asked for), never on pointing.
-- Centre: the clock (24- or 12-hour as Settings → Appearance → Clock says, by default as GNOME's clock; with 12 hours a smaller, dimmer AM or PM beside it), exactly centred; while the screen records,
+- Centre: the clock (24- or 12-hour as Settings → Appearance → Clock says, by default as GNOME's clock; with 12 hours a smaller, dimmer AM or PM beside it), exactly centred; with Settings → Appearance → Show the date, the day before it ("Fri 6", as large, 70% white, 6 px from it), day and time centred together and the island only as much wider as they need, also beside the unseen dot, not beside an activity (music, a call, the timer, the assistant at work: their sides take its room); while the screen records,
   how long it has been recording in its place. A call keeps the clock (its length is on the open
   island).
 - One island, one sign on each side of the clock. Left: the first activity that applies, in the order
@@ -638,16 +661,24 @@ clears them.
 **Devices**: the connected Bluetooth devices' batteries. Off until its
 switch in Settings → Pages is on; then its tab (headphones) shows only while
 a device is connected, and goes with the last one (the island moves to the
-next page if it was open). A card per device in a row, in the order they
-connected, 112 px wide and as tall as the page, 8 px apart; a few sit in the
-middle, more scroll sideways with the wheel or touchpad, with no scrollbar.
-On each, the device's icon (Isle's own for headphones, a speaker, a mouse, a
-keyboard, a controller…; Bluetooth's for a kind it has none for) in a 56 px
-ring of its battery, white, red at 20% or less; under it the level ("72%",
-tabular figures, red when low) and the name, cut with "…" when long. A
-device that reports no battery shows only its icon and name, no ring. The
-cards change only as `isled`'s state does (BlueZ says when a level moves):
-nothing is asked, polled or timed for the page, open or not.
+next page if it was open). A card per device, every card alike, in the order
+they connected: the device's icon (Isle's own for headphones, a speaker, a
+mouse, a keyboard, a controller…; Bluetooth's for a kind it has none for) in
+white on a 32 px grey tile, 10 px from the card's edge (8 px corners within the
+card's 12); its name, and under it a green dot and "Connected" ("Low battery"
+and the dot in red at 20% or less); then its battery on its side, filled from
+the left to the level in green, and the level ("72%", tabular figures,
+right-aligned in a fixed width so the batteries line up), both red when low. A
+device that reports no battery says "No battery info" there instead. The
+battery and the level keep their width and the name gives way ("…"), so
+nothing overlaps. Only how the cards sit changes with how many there are,
+always from the page's top, 52 px tall and 8 px apart: up to three, a row each
+across the page; from four, two side by side, an odd last card across both (so
+no cell is left empty). Three rows to the page take 42 px each, a touch denser
+(a 28 px tile); more scroll with the wheel or touchpad, with no scrollbar. The cards change
+only as `isled`'s state does (BlueZ says when a level moves; a new level only
+moves that card's fill and number): nothing is asked, polled or timed for the
+page, open or not.
 
 ## 6. Alerts
 
@@ -824,7 +855,7 @@ pointer leaves; a click keeps it open, Esc putting it back.
 
 The island replaces GNOME's banners and its calendar drop-down while the
 extension runs, so nothing shows twice (hovering opens Notifications; Super+V
-opens the clipboard history instead of the drop-down). Rules
+opens the island's Calendar page instead of the drop-down). Rules
 match GNOME's: low-urgency and already-seen notifications never pop up, and
 apps whose banners are turned off in Settings stay quiet. Do Not Disturb is
 GNOME's own setting, so it stays in sync with Quick Settings; while it is on,

@@ -58,9 +58,11 @@ const CANNOT_START = [
 const DRAG_PROXIMITY = 120;
 /** How soon a new place for the window is looked at again; see `sync`. */
 const RECHECK_MS = 24;
-/** The helper's window fades in over the island's own tiles for this long (ms), then takes over. */
+/** The helper's window fades in over the island's own tiles for this long (ms), then takes over from them. Shown at
+ * once, a window that came up again could show its last, empty frame for one more before GTK's new one reached the
+ * screen: the tiles beneath, already gone, left the tab blank for that frame. */
 const FADE_IN_MS = 120;
-/** A helper from before 1.5 never says it has drawn: its window fades in this long (ms) after its first frame. */
+/** A helper from before 1.5 never says it has drawn: its window shows this long (ms) after its first frame. */
 const DRAWN_WAIT_MS = 300;
 /** A `Drawn` this recent (µs) still counts for a window that comes up just after it. */
 const DRAWN_RECENT_US = 500 * 1000;
@@ -142,7 +144,7 @@ export class ShelfHelper extends Signals.EventEmitter {
         });
         /** Whether the window shows over the tab now (faded in), so the tab's own tiles can go. */
         this._windowShown = false;
-        /** A window waiting to fade in (see `_watchWindow`), and when the helper last said it drew. */
+        /** A window waiting to show (see `_watchWindow`), and when the helper last said it drew. */
         this._reveal = null;
         this._drawnAt = 0;
     }
@@ -327,7 +329,7 @@ export class ShelfHelper extends Signals.EventEmitter {
     }
 
     /** Follows the helper's window while it is up, to check its size (see `_checkScale`). One just mapped
-     * (`fresh`) fades in over the tab's own tiles, which go once it is in. */
+     * (`fresh`) shows over the tab's own tiles, which go once it is in. */
     _watchWindow(window, {fresh = false} = {}) {
         if (!window || window === this._window || !isHelperWindow(window))
             return;
@@ -351,12 +353,11 @@ export class ShelfHelper extends Signals.EventEmitter {
                 timer: 0,
                 actor,
                 frameId: 0,
-                fadeIn: () => {
+                show: () => {
                     if (this._reveal !== reveal || !reveal.framed || !reveal.drawn)
                         return;
                     this._cancelReveal();
-                    // The tab's own tiles fade out as the window fades in: a crossfade, never both in full.
-                    this._page.handOver(FADE_IN_MS);
+                    // Over the tab's own tiles, the same to the pixel: they stay, whole, until it is in (`helperActive`).
                     actor.ease({
                         opacity: 255,
                         duration: FADE_IN_MS,
@@ -375,11 +376,11 @@ export class ShelfHelper extends Signals.EventEmitter {
                     reveal.timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, DRAWN_WAIT_MS, () => {
                         reveal.timer = 0;
                         reveal.drawn = true;
-                        reveal.fadeIn();
+                        reveal.show();
                         return GLib.SOURCE_REMOVE;
                     });
                 }
-                reveal.fadeIn();
+                reveal.show();
             });
         } else {
             this._windowIn(window);
@@ -409,7 +410,6 @@ export class ShelfHelper extends Signals.EventEmitter {
     /** Lets go of the helper's window once it is gone. */
     _forgetWindow() {
         this._cancelReveal();
-        this._page.handBack();
         this._windowIds?.forEach(id => this._window.disconnect(id));
         this._windowIds = null;
         this._window = null;
@@ -511,11 +511,11 @@ export class ShelfHelper extends Signals.EventEmitter {
                     // Before 1.0 the helper never says; the light keeps its own colours then.
                     this._hoveringId = proxy.connectSignal('Hovering', (_proxy, _sender, [uris]) =>
                         this.emit('drag-files', uris));
-                    // 1.5: the window drew since it came up; it fades in on that (see `_watchWindow`).
+                    // 1.5: the window drew since it came up; it shows on that (see `_watchWindow`).
                     this._drawnId = proxy.connectSignal('Drawn', () => {
                         if (this._reveal) {
                             this._reveal.drawn = true;
-                            this._reveal.fadeIn();
+                            this._reveal.show();
                         } else if (!this._window) {
                             // Before its window is seen: kept for it (see `_watchWindow`).
                             this._drawnAt = GLib.get_monotonic_time();

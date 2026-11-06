@@ -11,6 +11,7 @@ import St from 'gi://St';
 
 import {vividColorOfFile} from '../colors.js';
 import {VERTICAL, onUiScale, px} from '../compat.js';
+import {EXPANDED_WIDTH, LARGE_WIDTH, PAGE_HEIGHT} from '../expanded.js';
 import * as Format from '../format.js';
 import * as Playback from '../playback.js';
 import {Art, Bars, Slider, fence, icon, iconButton, label, ownIcon, restsAt, setButtonIcon, setEnabled, smallCover, coverKey} from '../widgets.js';
@@ -44,7 +45,7 @@ class LyricsWidthLayout extends Clutter.LayoutManager {
         // The page is allocated before its children: its width now is the one it has.
         const page = container.get_parent().get_allocation_box().get_width();
         const wide = box.copy();
-        wide.x2 += Math.max(0, px(LYRICS_WIDTH) - page);
+        wide.x2 += Math.max(0, px(container.get_parent()?._lyricsWidth ?? LYRICS_WIDTH) - page);
         container.get_first_child().allocate(wide);
     }
 });
@@ -108,9 +109,20 @@ class MediaPage extends Page {
         return Playback.showsClosed(this.daemon.state.nowPlaying);
     }
 
+    /** Lyrics' width: as much wider as the island is (Settings → Size). */
+    get _lyricsWidth() {
+        return LYRICS_WIDTH + (this.pageHeight > PAGE_HEIGHT ? LARGE_WIDTH - EXPANDED_WIDTH : 0);
+    }
+
+    /** Settings → Size: the cover as much larger as the page is taller, the lyrics as much wider as the island. */
+    onPageHeight(height) {
+        this._playerArt?.resize(Math.round(ART_SIZE * height / PAGE_HEIGHT / 2) * 2, 16);
+        this.emit('width-changed');
+    }
+
     /** Wider only with the lyrics open. */
     get preferredWidth() {
-        return this._shown('lyrics') ? px(LYRICS_WIDTH) : null;
+        return this._shown('lyrics') ? px(this._lyricsWidth) : null;
     }
 
     /** The cover's colour, behind the lyrics only. */
@@ -225,6 +237,8 @@ class MediaPage extends Page {
     _buildPlayer() {
         const player = new St.BoxLayout({style_class: 'isle-player', x_expand: true, y_expand: true});
         player.add_child(this._art(ART_SIZE, 16));
+        // The cover itself (`_art` gives it with its badge round it), resized with the page (`onPageHeight`).
+        this._playerArt = this._arts[this._arts.length - 1];
 
         const column = new St.BoxLayout({...VERTICAL, x_expand: true, y_align: Clutter.ActorAlign.CENTER, style_class: 'isle-player-column'});
         // Title and artist, with lyrics and output as small buttons at the right.
