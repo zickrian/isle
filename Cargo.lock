@@ -1054,7 +1054,7 @@ dependencies = [
 
 [[package]]
 name = "isle-core"
-version = "1.6.0"
+version = "1.7.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1062,7 +1062,7 @@ dependencies = [
 
 [[package]]
 name = "isle-daemon"
-version = "1.6.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1088,7 +1088,7 @@ dependencies = [
 
 [[package]]
 name = "isle-shelf"
-version = "1.6.0"
+version = "1.7.0"
 dependencies = [
  "env_logger",
  "gdk4-x11",
@@ -1101,7 +1101,7 @@ dependencies = [
 
 [[package]]
 name = "isle-whisper"
-version = "1.6.0"
+version = "1.7.0"
 dependencies = [
  "isle-core",
  "libc",

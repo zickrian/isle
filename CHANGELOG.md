@@ -6,78 +6,103 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-06
+
+A new glass look, a pill-shaped island, a Large size, the date beside the clock, a shortcut for every page,
+Bluetooth battery alerts with a Devices page, and the island on every display. Super+V opens Isle's calendar
+again, and the island does less work while it moves than in 1.6.0. Tested on GNOME 46 to 51 (Ubuntu 24.04 to
+26.10, Debian 13, Fedora 41 to 45, Arch). To update: click Update on the new-version alert (or Settings → About →
+Update), then log out and back in.
+
 ### Added
 
-- With more than one display, the island can be on all of them: Settings → Appearance → Display → All
-  displays. Every display shows the closed island and each alert as it comes; pointing at one brings the
-  island there, to hold the alert or open as usual, and it goes back to the display in use once closed.
-  With a window fullscreen on one display, alerts keep showing on the others (and over it too, with Over
-  full-screen apps on). Auto-hide hides the island on each display as it would on that display alone.
-  Thanks to @jvspier.
-- **Low battery on Bluetooth devices (#49).** Settings → Alerts → Bluetooth battery: when earbuds, a mouse, a
-  keyboard or a controller gets down to 20%, 10% and 5%, the island says so as it does for the laptop, a red ring
-  round the device's icon with "Low battery". Once per level, each device on its own, and again after it has
-  charged. It shows during Do Not Disturb, like the laptop's. Off by default.
-- **Devices page (#49).** Turn it on in Settings → Island → Pages: a card for each connected Bluetooth
-  device, its icon, its name and "Connected" (or "Low battery"), then its battery and level, green, or red
-  when low. Up to three, a row each from the top of the page; from four, two side by side. Its tab shows
-  only while a device is connected. It uses the levels your devices already report: nothing is checked
-  over and over. Off by default.
-- **A pill-shaped island (#42).** Settings → Island → Appearance → Shape: Pill floats free of the top of the
-  screen, round all over: 30 px tall centred in the top bar (36 px round it), just below the bar, or 8 px
-  from the top of a display without one. Alerts and the open island grow down from it. The notch stays the default.
-- **The date beside the clock (#38).** Settings → Island → Appearance → Show the date: "Fri 6" before the
-  time on the closed island (beside the unseen dot too; not beside music, a call or the timer). Off by
-  default.
-- **A large island (#39).** Settings → Island → Appearance → Size → Large: the open island 720 px wide and
-  every page 210 px tall, each laid out for the room: more notifications and reminders at once, a larger
-  month, cover and timer ring. The type keeps its size.
-- **Keyboard for the pages.** In the island opened from the keyboard, Ctrl+Tab and Ctrl+Shift+Tab change
-  page and Ctrl+1–9 picks a tab. Settings → Island → Shortcuts gives any page a shortcut of its own, none
-  at first, and won't take one GNOME or Isle already uses; a × beside one takes it off, Super+V too, and Super+V pressed on the Shelf's or the Calendar's row gives
-  it back.
+- **A pill-shaped island (#42).** Settings → Island → Appearance → Shape → Pill: the island floats free of the
+  top of the screen, round all over: 30 px tall and centred in the top bar (which grows to 36 px round it), just
+  below the bar, or 8 px from the top of a display without one. Alerts and the open island grow down from it,
+  with the same spring. The notch stays the default.
+- **A large island (#39).** Settings → Island → Appearance → Size → Large: the open island 720 px wide instead of
+  600, and every page 210 px tall instead of 150, each laid out for the room: more notifications and reminders
+  at once, a larger month, cover and timer ring. The text keeps its size.
+- **The date beside the clock (#38).** Settings → Island → Appearance → Show the date: "Fri 6" before the time on
+  the closed island. It makes way for music, a call or the timer. Off by default.
+- **The island on every display.** Settings → Island → Appearance → Display → All displays: every display shows
+  the closed island and each alert as it comes; pointing at one brings the island there, to hold the alert or open
+  as usual, and it goes back to the display in use once closed. With a window full screen on one display, alerts
+  keep showing on the others (and over it too, with Over full-screen apps on). Auto-hide works on each display on
+  its own. Thanks to @jvspier.
+- **Low battery on Bluetooth devices (#49).** Settings → Island → Alerts → Bluetooth battery: when earbuds, a mouse,
+  a keyboard or a controller gets down to 20%, 10% and 5%, the island says so as it does for the laptop, a red
+  ring round the device's icon with "Low battery". Once per level, each device on its own, and again after it has
+  charged more than 5 points above that level. It shows during Do Not Disturb, like the laptop's. Off by default.
+- **Devices page (#49).** Settings → Island → Pages → Devices: a card for each connected Bluetooth device, with its
+  icon, its name and "Connected" (or "Low battery"), its battery and level, green, or red when low. Up to three, a
+  row each from the top of the page; from four, two side by side. The tab shows only while a device is connected.
+  It uses the levels your devices already report: nothing is checked over and over. Off by default.
+- **A shortcut for every page.** Settings → Island → Shortcuts gives any page a shortcut of its own (none at first)
+  and lists Super+V on the row of the page it opens. A shortcut already used by GNOME, by your own custom
+  shortcuts or by Isle is refused, saying by what. A × beside a shortcut takes it off, Super+V too; pressing
+  Super+V in the shortcut sheet of the Shelf's or the Calendar's row gives it back. In the island opened from the
+  keyboard, Ctrl+Tab and Ctrl+Shift+Tab change page and Ctrl+1 to 9 pick a tab.
 
 ### Changed
 
-- Auto-hide draws the closed island up into the top edge and back down, instead of fading it.
-- Lighter while it moves, nothing changed to see. With the Glass look, opening and closing the island take about
-  a tenth to a fifth less work, and the auto-hide slide about a third less: the blur behind the glass is no longer
-  made again every frame as the island moves, only the shape cut from it. An alert that grew under a pointer that
-  isn't moving no longer wakes GNOME Shell four times a second while it waits for it to move. Opening a page for
-  the first time after login does less work too. At rest, the island still does nothing at all.
-- The clear end of the Glass slider is clear glass with a thick edge, no longer a flat dark smoke: what is behind
-  the island keeps its shapes and colours, lightly blurred; the edge bends what is behind it, with a thin rainbow,
-  and catches the light, brightest at the top left. White text reads better than before (about 9:1 over a white
-  page). Along the slider it settles smoothly into the dark end, which is as it was.
+- **Super+V opens the Calendar page by default** (it opened the clipboard history). To keep the clipboard
+  history on Super+V: Settings → Island → Shortcuts, click the Shelf's row and press Super+V. A choice you made
+  before is kept.
+- **New glass.** The clear end of the Glass slider (Settings → Island → Appearance) is clear glass with a thick
+  edge, no longer a flat dark smoke: what is behind the island keeps its shapes and colours, lightly blurred and a
+  little darkened; near the edge the glass bends what is behind it, with a thin rainbow, and the edge catches the
+  light, brightest at the top left. White text stays clear on it: about 15:1 over a dark wallpaper and 9:1 over a
+  white page. Along the slider it settles smoothly into the dark end, which is exactly as it was.
+- Auto-hide slides the closed island up into the top edge and back down, instead of fading it.
+- The Shelf's file window looks the same whatever GTK theme is installed: a theme in `~/.config/gtk-4.0` could
+  draw a coloured square frame around the island while a file was dragged in, and turn each file's × into a wide
+  square.
 
 ### Fixed
 
-- Super+V opens the island's Calendar page, as GNOME's own shortcut does, and the clipboard history once given
-  to the Shelf (Settings → Island → Shortcuts: press Super+V on the Shelf's row; before, it opened the
-  history). It took the place
-  of "GNOME's calendar and notifications", which did nothing (GNOME skips the clock Isle hides), and those
-  who had picked it get the Calendar page. With the Shelf page left out, Super+V opens the Calendar instead
-  of nothing. It stays GNOME's own shortcut (Super+M too): Isle adds none of its own. (#50)
-- The closed island coming back from auto-hide is centred again, and shows all of itself: what it showed was
-  left where it was before it hid, off-centre once the island's width had changed meanwhile (the time, a
-  song), and a fade cut short could leave it half there. (#40)
-- The Shelf's bar keeps its height when Super+V opens it with the search field: the tabs and filters grew
-  taller with the field and the cards shorter. Its controls are now each centred at their own height, the
-  field as tall as the tabs, and the filters as tall as the tabs too.
-- Opening the Shelf's Files tab no longer makes its files pop in again (in from small, a touch too large, then
-  their size): only files just dropped on it do. Nor do they change or move as it opens: the names are drawn
-  once, broken before the extension ("MuriSugi12." over "txt"); the × is the same size, colour and shape,
-  whatever the icon theme; each file shows its own icon from the first frame; and the files no longer move a
-  pixel to the right a moment after opening.
-- The Shelf's files and drop zone look the same whatever GTK theme is installed: a theme in
-  `~/.config/gtk-4.0` drew a coloured square frame around the island while a file was dragged in, and turned
-  each file's × into a wide square.
-- opencode 2: its models are listed again and requests answer (#44). Thanks to @AlphaBeast97.
-- With the top bar moved to the bottom of the screen by another extension, the closed
-  island on the main display no longer shows as a square black block the bar's height at the top. It hangs
-  from the screen's top edge with rounded corners, as on a display without the bar, and the bar keeps its
-  clock. Isle leaves that bar's colour and height alone too, so it matches the extension's bars on the other
-  displays. Thanks to @jvspier.
+- **Super+V did nothing** when set to "GNOME's calendar and notifications": GNOME skips its own calendar menu while
+  Isle hides the clock. That choice is gone; Super+V always opens Isle (the Calendar page, or the clipboard history
+  if you prefer), those who had picked it get the Calendar page, and with the page it opens turned off it opens the
+  other one instead of nothing. It stays GNOME's own shortcut (Super+M too): Isle adds none of its own. (#50)
+- The closed island coming back from auto-hide is centred again and shows all of itself: what it showed was left
+  where it was before it hid, off-centre once its width had changed meanwhile (the time, a song), and a fade cut
+  short could leave it half there. (#40)
+- **opencode 2** works: its models are listed and requests answer (#44), and Isle deletes its own conversations
+  without starting opencode's background service on a port you may be using. Thanks to @AlphaBeast97.
+- The Shelf's Files tab no longer flickers as it opens: the files no longer pop in again (only a file just dropped
+  does), their names, × and icons no longer change or move a pixel a moment after opening, and the names break
+  before the extension ("MuriSugi12." over "txt").
+- The Shelf's file window can no longer freeze while a shelved file sits on a network mount that went away.
+- The Shelf's bar keeps its height when Super+V opens it with the search field: the tabs and filters grew taller
+  with the field and the cards shorter.
+- With the top bar moved to the bottom of the screen by another extension, the closed island on the main display no
+  longer shows as a square black block at the top. It hangs from the screen's top edge with rounded corners, as on
+  a display without the bar, and Isle leaves that bar's colour and height alone, so it matches the extension's bars
+  on the other displays. Thanks to @jvspier.
+
+### Performance
+
+More features, and no heavier: lighter while the island moves, and still nothing at all at rest. Measured against
+1.6.0 in the same GNOME 50 session, medians of three runs:
+
+| | 1.6.0 | 1.7.0 |
+|---|---|---|
+| At rest: redraws, Isle's CPU and wakeups, isled's CPU and D-Bus traffic | none | none |
+| An alert waiting under a pointer that isn't moving | about 4 wakeups/s | none |
+| Opening the island: CPU, slowest frame's work | 245 ms, 14.2 ms | 222 ms, 9.3 ms |
+| Closing the island: CPU | 190 ms | 164 ms |
+| Switching pages: CPU | 100 ms | 96 ms |
+| 50 openings and closings: actors left behind | 0 | 0 |
+| isled memory | 10.1 MB | 10.3 MB |
+
+- With the Glass look, opening and closing take 11 to 18% less work than before this release's changes, and the
+  auto-hide slide about a third less: the blur behind the glass is no longer made again every frame as the island
+  moves, only the shape cut from it.
+- Every animation runs at 60 fps. The new auto-hide slide is longer than 1.6.0's fade, so it costs a little more
+  (26 ms against 18 ms of CPU per slide), still well under a frame's work at a time.
+- The glass edge and its rainbow are worked out in the same pass as the blur: the new glass costs no more than the
+  old one.
 
 ## [1.6.0] - 2026-11-03
 
@@ -1711,7 +1736,8 @@ The first release.
   dark, vivid ones bright.
 - Text is at least 12 px throughout.
 
-[Unreleased]: https://github.com/zickrian/isle/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/zickrian/isle/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/zickrian/isle/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/zickrian/isle/compare/v1.5.3...v1.6.0
 [1.5.3]: https://github.com/zickrian/isle/compare/v1.5.2...v1.5.3
 [1.5.2]: https://github.com/zickrian/isle/compare/v1.5.1...v1.5.2
