@@ -12,6 +12,14 @@ window.isle-shelf {
   font-feature-settings: "tnum";
 }
 
+/* No theme's drop-target frame (a coloured inset line, square at the window's edges): the island
+ * beneath lights for a drop itself (dropLight.js). */
+window.isle-shelf:drop(active),
+window.isle-shelf :drop(active) {
+  box-shadow: none;
+  outline: none;
+}
+
 /* Takes drops all over. Outline, fill and light are the island's beneath (files.js, dropLight.js):
  * GTK draws 1 px dashes as dots. The border keeps its room, and is never quite clear (0 or 1 of 255): with
  * nothing at all to draw GTK draws no frame, and the last one stayed up (a removed tile), or, on a first
@@ -71,20 +79,23 @@ window.isle-shelf {
 
 .tile .copied.shown { opacity: 1; }
 
-/* Always there, so a file can always be taken off the shelf. */
+/* Always there, so a file can always be taken off the shelf. A disc whatever the theme: `all: unset`
+ * drops a theme's button size, border, padding, shadow and focus ring, which made it a wide square. */
 .tile .remove {
+  all: unset;
   min-width: 18px;
   min-height: 18px;
   padding: 0;
   border-radius: 9px;
-  background: #3a3a3c;
+  background-color: #3a3a3c;
   color: #ffffff;
-  border: none;
-  box-shadow: none;
   transition: background-color 120ms;
 }
 
-.tile .remove:hover { background: #5a5a5e; }
+.tile .remove > image { color: #ffffff; -gtk-icon-filter: none; }
+
+.tile .remove:hover { background-color: #5a5a5e; }
+.tile .remove:active { background-color: #6a6a6e; }
 
 scrollbar { opacity: 0.4; }
 

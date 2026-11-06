@@ -80,13 +80,18 @@ fn start_service(app: &gtk::Application) -> Result<(), glib::Error> {
     Ok(())
 }
 
-/// Applies the shelf's stylesheet to the whole display.
+/// Applies the shelf's stylesheet to the whole display, above the user's own `gtk.css`.
+///
+/// The window must look like the island beneath it whatever the GTK theme: a theme installed in
+/// `~/.config/gtk-4.0/gtk.css` loads at USER priority, above APPLICATION, and its rules (a coloured
+/// frame on any drop target, its own button size and corners) drew over the island. This provider
+/// only reaches this process's one window.
 fn load_css() {
     let provider = gtk::CssProvider::new();
     provider.load_from_string(include_str!("style.css"));
     gtk::style_context_add_provider_for_display(
         &gdk::Display::default().expect("GTK has no default display"),
         &provider,
-        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        gtk::STYLE_PROVIDER_PRIORITY_USER + 1,
     );
 }
