@@ -69,10 +69,15 @@ export function isWayland() {
     return Meta.is_wayland_compositor?.() ?? true;
 }
 
+/** The stage's theme context, looked up once: the stage is the shell's for its whole life, and finding the context
+ * costs ten times reading its scale, which the island does several times a frame as it moves. */
+let stageTheme = null;
+const themeContext = () => (stageTheme ??= St.ThemeContext.get_for_stage(global.stage));
+
 /** Stage pixels per CSS pixel: 2 on a 200% display GNOME 46 to 49 lay out in physical pixels, else 1.
  * St scales what CSS sizes, never what code sets: that takes `px`. */
 export function uiScale() {
-    return St.ThemeContext.get_for_stage(global.stage).scale_factor;
+    return themeContext().scale_factor;
 }
 
 /** `n` CSS pixels in stage pixels, for a size, place or distance set from code (never an icon's `icon_size`). */
@@ -83,7 +88,7 @@ export function px(n) {
 /** Calls `apply(scale)` now (unless `now` is false) and whenever `uiScale` changes, while `actor` lives:
  * before the next frame, once St restyled for the new scale, so what is measured then is right. */
 export function onUiScale(actor, apply, {now = true} = {}) {
-    const context = St.ThemeContext.get_for_stage(global.stage);
+    const context = themeContext();
     if (now)
         apply(context.scale_factor);
     const laters = global.compositor.get_laters();

@@ -40,6 +40,11 @@ All notable changes to Isle are listed here. The format follows
 ### Changed
 
 - Auto-hide draws the closed island up into the top edge and back down, instead of fading it.
+- Lighter while it moves, nothing changed to see. With the Glass look, opening and closing the island take about
+  a tenth to a fifth less work, and the auto-hide slide about a third less: the blur behind the glass is no longer
+  made again every frame as the island moves, only the shape cut from it. An alert that grew under a pointer that
+  isn't moving no longer wakes GNOME Shell four times a second while it waits for it to move. Opening a page for
+  the first time after login does less work too. At rest, the island still does nothing at all.
 - The clear end of the Glass slider is clear glass with a thick edge, no longer a flat dark smoke: what is behind
   the island keeps its shapes and colours, lightly blurred; the edge bends what is behind it, with a thin rainbow,
   and catches the light, brightest at the top left. White text reads better than before (about 9:1 over a white

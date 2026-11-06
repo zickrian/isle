@@ -1396,11 +1396,22 @@ export class Controller {
         // A pill floats this far below the top, whatever it shows; the notch starts at it.
         const gap = this._pillGapOn(this._onBar);
         this._island.pillGap = gap;
+        // The open island's padding, kept as it will be while it is closed too: the warm-up then lays its pages out
+        // styled as they show. Set only as it opened, it restyled every page then, each paying for it as it first
+        // showed. A new one later (another display, another shape) has them laid out ahead again.
+        const expandedInset = gap === null ? 0 : gap + PILL_HEADER_TOP * scale;
+        const expandedStyle = gap === null ? null : `padding-top: ${expandedInset / scale}px;`;
+        if (this._expanded.style !== expandedStyle) {
+            this._expanded.style = expandedStyle;
+            if (this._warmedAt !== undefined) {
+                this._expanded.pages.forEach(page => page.markCold());
+                this._scheduleWarm();
+            }
+        }
         let size, view;
         switch (presentation) {
         case 'expanded': {
-            const inset = gap === null ? 0 : gap + PILL_HEADER_TOP * scale;
-            const header = gap === null ? (this._onBar ? top : HEADER_WITHOUT_BAR * scale) : inset + HEADER_WITHOUT_BAR * scale;
+            const header = gap === null ? (this._onBar ? top : HEADER_WITHOUT_BAR * scale) : expandedInset + HEADER_WITHOUT_BAR * scale;
             size = {
                 width: this._expanded.preferredWidth,
                 height: header + (this._expanded.pageHeight + BOTTOM_PADDING) * scale,
@@ -1408,7 +1419,6 @@ export class Controller {
                 shoulder: gap === null ? EXPANDED_SHOULDER * scale : 0,
             };
             view = this._expanded;
-            view.style = gap === null ? null : `padding-top: ${inset / scale}px;`;
             break;
         }
         case 'voice': {
@@ -1794,21 +1804,28 @@ export class Controller {
         });
     }
 
-    /** Stops waiting for the pointer to move on the island it brought back. */
+    /** Stops waiting for the pointer to move on the island (see `_hoverOnIslandMove`, `_hoverOnMove`). */
     _stopRevealWait() {
         if (this._revealMotion)
             this._island.disconnect(this._revealMotion);
         this._revealMotion = 0;
     }
 
-    // Counts the pointer on the island as a hover once it moves from `[x, y]`.
-    _hoverOnMove([x, y]) {
-        this._later('hover', MOVE_CHECK_MS, () => {
-            const [nowX, nowY] = global.get_pointer();
-            if (Math.hypot(nowX - x, nowY - y) > px(REST_DISTANCE_PX))
-                this._onHoverChanged(true);
-            else
-                this._hoverOnMove([x, y]);
+    // Counts the pointer on the island as a hover once it moves from `[x, y]`, looked at every MOVE_CHECK_MS from
+    // `since`. Only once it moves on the island: one resting there (an alert grown under it while they are away)
+    // wakes nothing, where a look each time found it still where it was.
+    _hoverOnMove([x, y], since = GLib.get_monotonic_time()) {
+        this._revealMotion = this._island.connect('motion-event', () => {
+            this._stopRevealWait();
+            const waited = (GLib.get_monotonic_time() - since) / 1000;
+            this._later('hover', Math.ceil(MOVE_CHECK_MS - waited % MOVE_CHECK_MS), () => {
+                const [nowX, nowY] = global.get_pointer();
+                if (Math.hypot(nowX - x, nowY - y) > px(REST_DISTANCE_PX))
+                    this._onHoverChanged(true);
+                else
+                    this._hoverOnMove([x, y], since);
+            });
+            return Clutter.EVENT_PROPAGATE;
         });
     }
 

@@ -17,7 +17,7 @@ import {uiScale} from './compat.js';
 import {effectPoint, shaderEffect} from './shader.js';
 
 // The texture is `width` × `height`; the shape in it reaches down to `bottom`.
-const SHAPE = ['width', 'height', 'bottom', 'left', 'right', 'radius', 'shoulder', 'crown', 'reach'];
+const SHAPE = ['width', 'height', 'bottom', 'left', 'right', 'radius', 'shoulder', 'crown', 'reach', 'drop'];
 // How the blur is toned, in the same pass: its lightness mapped into a band (bright backdrops held `deep`er), its
 // colour scaled, a sheen and a glow inside the body's edge, `reach` deep (see theme.js).
 const TONE = ['saturation', 'lo', 'span', 'gamma', 'deep', 'sheen', 'glow'];
@@ -54,6 +54,8 @@ vec2 isleNormal(vec2 p) {
 // each edge softened over a pixel, as Cairo draws the island's own outline (island.js `_outline`); toned within.
 const CODE = `
 vec2 p = ${effectPoint('vec2(width, height)')};
+// The shape starts \`drop\` below the top (above, drawn up by auto-hide); what it cuts from stays where it is.
+p.y -= drop;
 float body = 0.0;
 if (p.x >= left - 0.5 && p.x <= right + 0.5) {
     body = clamp(min(min(p.x - left, right - p.x), bottom - p.y) + 0.5, 0.0, 1.0);
@@ -146,7 +148,7 @@ function syncRound(actor) {
     const mask = actor._roundMask;
     const [width, height] = actor.get_size();
     const radius = Math.min(mask._radius, width / 2, height / 2);
-    mask.setUniforms(zip(SHAPE, [width, height, height, 0, width, radius, 0, radius, 1]));
+    mask.setUniforms(zip(SHAPE, [width, height, height, 0, width, radius, 0, radius, 1, 0]));
 }
 
 // What a copy of a window follows of it: a clone draws its source without the source's own fade and motion.
@@ -211,6 +213,7 @@ class GlassBackdrop extends St.Widget {
         this._bar = null;
         this._windows = new Map();
         this._watched = new Set();
+        this._places = null;
         this._later = 0;
         // Going with the island (Isle off, the shell shutting down): its signals and copies go with it; only a
         // pending look is taken back, as the shell may already be gone.
@@ -221,6 +224,7 @@ class GlassBackdrop extends St.Widget {
             this._later = 0;
             this._watched.clear();
             this._windows.clear();
+            this._places = null;
         });
     }
 
@@ -274,6 +278,7 @@ class GlassBackdrop extends St.Widget {
             object.disconnectObject(this);
         this._watched.forEach(actor => actor.disconnectObject(this));
         this._watched.clear();
+        this._places = null;
         this._windows.forEach(clone => clone.destroy());
         this._windows.clear();
         this._wallpaper?.destroy();
@@ -287,6 +292,7 @@ class GlassBackdrop extends St.Widget {
 
     /** Looks again at the windows once before the next frame, however many changed. */
     _queueSync() {
+        this._places = null;
         if (!this._on || this._later)
             return;
         this._later = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
@@ -296,10 +302,11 @@ class GlassBackdrop extends St.Widget {
         });
     }
 
-    /** Copies the windows that reach under the island, in their stacking order, and follows each window. */
-    _syncWindows() {
-        if (!this._on)
-            return;
+    /** The windows that may be copied, in their stacking order, with where each is: read again only after one changed
+     * (see `_queueSync`), not on every frame of the island moving. */
+    _windowPlaces() {
+        if (this._places)
+            return this._places;
         const actors = global.get_window_actors();
         // Every window is followed (a move can bring one under the island); only those under it are copied.
         for (const actor of actors) {
@@ -318,10 +325,19 @@ class GlassBackdrop extends St.Widget {
                     this._queueSync();
                 }, this);
         }
+        this._places = actors.filter(actor => actor.visible && !actor.meta_window?.is_override_redirect())
+            .map(actor => ({actor, x: actor.x, y: actor.y, width: actor.width, height: actor.height}));
+        return this._places;
+    }
+
+    /** Copies the windows that reach under the island, in their stacking order, and follows each window. */
+    _syncWindows() {
+        if (!this._on)
+            return;
+        const places = this._windowPlaces();
         const rect = this._frameRect();
-        const under = rect ? actors.filter(actor => actor.visible && !actor.meta_window?.is_override_redirect() &&
-            actor.x < rect.x + rect.width && actor.x + actor.width > rect.x &&
-            actor.y < rect.y + rect.height && actor.y + actor.height > rect.y) : [];
+        const under = rect ? places.filter(({x, y, width, height}) => x < rect.x + rect.width && x + width > rect.x &&
+            y < rect.y + rect.height && y + height > rect.y).map(({actor}) => actor) : [];
         for (const [actor, clone] of this._windows) {
             if (!under.includes(actor)) {
                 clone.destroy();
@@ -388,9 +404,10 @@ class GlassBackdrop extends St.Widget {
 
     /**
      * Over `width` × `height` at `stageX`, `stageY`: the body `left` to `right` and down to `bottom`, its bottom corners
-     * `radius` round and its top ones `crown` (a pill, a bubble), shoulders `shoulder` wide, its glow `reach` deep, `open` 0..1.
+     * `radius` round and its top ones `crown` (a pill, a bubble), shoulders `shoulder` wide, its glow `reach` deep, `open` 0..1;
+     * all of it `drop` below the top (above for less than 0), over the same blurred frame.
      */
-    place({stageX, stageY, width, height, bottom = height, left, right, radius, shoulder = 0, crown = 0, reach, open}) {
+    place({stageX, stageY, width, height, bottom = height, left, right, radius, shoulder = 0, crown = 0, reach, open, drop = 0}) {
         if (!this._on)
             return;
         const old = this._rect;
@@ -400,7 +417,7 @@ class GlassBackdrop extends St.Widget {
         this._frame.set_position(-pad, -pad);
         this._frame.set_size(width + 2 * pad, height + 2 * pad);
         this._mask.setUniforms(zip(SHAPE, [width, height, bottom, left, right, Math.min(radius, (right - left) / 2, bottom),
-            shoulder, Math.min(crown, (right - left) / 2, bottom), reach]));
+            shoulder, Math.min(crown, (right - left) / 2, bottom), reach, drop]));
         const tone = this._tone;
         this._mask.setUniforms(zip(TONE, [tone.small + (tone.large - tone.small) * open, tone.lo, tone.span, tone.gamma,
             tone.deep ?? 0, tone.sheen, tone.glow]));

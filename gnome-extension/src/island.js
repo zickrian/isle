@@ -581,7 +581,8 @@ export const Island = GObject.registerClass({
         if (lift === this._lift)
             return;
         this._lift = lift;
-        for (const layer of [this._backdrop, this._shape, this._glow, this._viewsLayer])
+        // The glass is not moved: its shape is drawn up inside it (see `_placeBackdrop`).
+        for (const layer of [this._shape, this._glow, this._viewsLayer])
             layer.translation_y = lift;
         if (lift === 0) {
             this.remove_clip();
@@ -926,12 +927,24 @@ export const Island = GObject.registerClass({
             return;
         const {height, margin, width, room} = this._backdropShape;
         const {top, radius, crown, gap} = this._box(height);
-        const fraction = this._islandFraction;
-        // A pill's glass starts where it does, below its gap.
-        this._backdrop.y = gap;
+        // While the island moves, its glass stays put on the screen, room wide and centred on the display as the
+        // island is: what it blurs is then the same from frame to frame, blurred once, and only the shape cut from it
+        // changes. Following the island, it was blurred again every frame. At rest, it lies at the island's own place.
+        const shift = this._springs.every(spring => spring.settled) ? 0
+            : Math.round(this._monitor.x + (this._monitor.width - room.width) / 2) - this._islandX;
+        const fraction = this._islandFraction - shift;
+        // A pill's glass starts where it does, below its gap. Drawn up by auto-hide, the glass stays where it rests,
+        // from the island's top, and only its shape goes up: as with moving, what it blurs is then blurred once.
+        const glassTop = this._lift ? 0 : gap;
+        this._backdrop.set_position(shift, glassTop);
+        // Moved aside, it is still cut where the island starts.
+        if (shift)
+            this._backdrop.set_clip(-shift, 0, room.width + shift, Math.max(0, room.height - glassTop));
+        else if (this._backdrop.has_clip)
+            this._backdrop.remove_clip();
         this._backdrop.place({
-            stageX: this._islandX, stageY: this._monitor.y + this._lift + gap,
-            width: room.width, height: Math.max(0, room.height - gap), bottom: Math.max(0, height - gap),
+            stageX: this._islandX + shift, stageY: this._monitor.y + glassTop, drop: gap - glassTop + this._lift,
+            width: room.width, height: Math.max(0, room.height - glassTop), bottom: Math.max(0, height - gap),
             left: margin + fraction, right: margin + width + fraction,
             radius, crown,
             shoulder: top > 0 || gap > 0 ? 0 : Math.min(margin, Math.max(0, height / 2)),
