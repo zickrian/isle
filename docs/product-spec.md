@@ -205,7 +205,9 @@ with the wheel or touchpad and never show a scrollbar.
 
 - Where it is: on the main display, in its top bar; or (Settings) on the display of the window in use,
   moving there once closed. A display without the top bar has the island hang from its top edge, with
-  a header of its own when open, and GNOME's clock comes back to the main top bar meanwhile.
+  a header of its own when open, and GNOME's clock comes back to the main top bar meanwhile. So does the
+  main display when another extension moves the bar off its top (to the bottom of the screen, say);
+  Isle then leaves the bar's colour and height as that extension has them.
 - Auto-hide (Settings → Appearance, off by default): **Always**, after the pointer has been off the
   closed island for the chosen wait (3 s by default); **With the top bar**, at once as another
   extension hides the bar (Hide Top Bar, Just Perfection) and back with it; **Beside windows**, after

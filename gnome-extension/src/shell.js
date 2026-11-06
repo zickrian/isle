@@ -72,6 +72,9 @@ export class TopBar extends Signals.EventEmitter {
                     this.emit('height-changed');
             }),
         ];
+        // Another extension may move the bar off the top (to the bottom of the screen, say): the island then
+        // hangs from the main display's top edge, as on any other display, and the bar is left as that one has it.
+        this._atTop = this._isAtTop();
         this._applyStyle();
         this._styleChanged = Main.panel.connect('notify::style', () => this._onPanelStyle());
         this._windowWatch = [];
@@ -84,6 +87,8 @@ export class TopBar extends Signals.EventEmitter {
             this._dragGesture.required_button = PRIMARY_BUTTON;
 
         this._heightChanged = Main.panel.connect('notify::height', () => this.emit('height-changed'));
+        const panelBox = Main.layoutManager.panelBox;
+        this._barMoved = ['notify::x', 'notify::y'].map(signal => panelBox.connect(signal, () => this._onBarMoved()));
 
         // The calendar shortcut opens the island instead, and the hidden clock's menu is closed again
         // should anything else open it; unless Super+V is left to GNOME (Settings).
@@ -94,6 +99,28 @@ export class TopBar extends Signals.EventEmitter {
             if (open && !this._clockShown && this._superVIsIsle)
                 menu.close();
         });
+    }
+
+    /** Whether the bar runs along the top of `monitor`: the main display's, unless another extension moved it. */
+    isOn(monitor) {
+        return Boolean(monitor) && monitor === Main.layoutManager.primaryMonitor && this._isAtTop();
+    }
+
+    /** Where GNOME puts it, or above, slid out of sight (Hide Top Bar): in the main display's upper half. */
+    _isAtTop() {
+        const monitor = Main.layoutManager.primaryMonitor;
+        const {x, y} = Main.layoutManager.panelBox;
+        return !monitor || (y < monitor.y + monitor.height / 2 && x >= monitor.x && x < monitor.x + monitor.width);
+    }
+
+    /** Tells the island once the bar comes to the top or leaves it, not as it slides. */
+    _onBarMoved() {
+        const atTop = this._isAtTop();
+        if (atTop === this._atTop)
+            return;
+        this._atTop = atTop;
+        this._applyStyle();
+        this.emit('moved');
     }
 
     /** In stage pixels; it changes with the compact and notch styles. */
@@ -217,19 +244,27 @@ export class TopBar extends Signals.EventEmitter {
             this._dateMenu.menu.close();
     }
 
-    /** Colour and style classes from the settings; remembers `blendsIn` to spot a change. */
+    /** Colour and style classes from the settings; remembers `blendsIn` to spot a change. Off the top, none:
+     * the bar there is another extension's to style, and Isle's colour and height would set it apart from
+     * that extension's bars on the other displays. */
     _applyStyle() {
         this._blended = this.blendsIn;
         this._syncColor();
         const inBar = this._settings.get_boolean('island-in-top-bar');
         this._gap = inBar && this._settings.get_boolean('notch-gap') ? GAP_PX : 0;
+        const styled = this._atTop;
         // The bar's height changes with these; `height-changed` re-lays out the island.
         setStyleClasses(Main.panel, {
-            [BAR_CLASS]: true,
-            [COMPACT_BAR_CLASS]: this._settings.get_boolean('compact-top-bar'),
-            [NOTCH_BAR_CLASS]: inBar,
-            [GLASS_BAR_CLASS]: this.opacity < SHADOW_BELOW,
+            [BAR_CLASS]: styled,
+            [COMPACT_BAR_CLASS]: styled && this._settings.get_boolean('compact-top-bar'),
+            [NOTCH_BAR_CLASS]: styled && inBar,
+            [GLASS_BAR_CLASS]: styled && this.opacity < SHADOW_BELOW,
         });
+    }
+
+    /** The bar's opacity in % as Isle colours it; null off the top, where Isle leaves it the theme's. */
+    get _color() {
+        return this._atTop ? this._shownOpacity : null;
     }
 
     // Another extension that sets the bar's style too would undo Isle's rule each time Isle set it, in a
@@ -260,7 +295,7 @@ export class TopBar extends Signals.EventEmitter {
 
     /** The bar's style with Isle's colour at `opacity`, the rest of it left alone: the current one itself when
      * Isle's colour is already in effect there. */
-    _wantedStyle(opacity = this._shownOpacity) {
+    _wantedStyle(opacity = this._color) {
         const rule = this._barRule(opacity);
         if (rule)
             this._own.add(normalized(rule));
@@ -268,7 +303,7 @@ export class TopBar extends Signals.EventEmitter {
     }
 
     /** Sets Isle's colour, leaving the rest of the style alone; writes nothing when it is in effect already. */
-    _syncColor(opacity = this._shownOpacity) {
+    _syncColor(opacity = this._color) {
         const wanted = this._wantedStyle(opacity);
         if (wanted === Main.panel.get_style())
             return;
@@ -289,6 +324,7 @@ export class TopBar extends Signals.EventEmitter {
         Main.panel.disconnect(this._heightChanged);
         Main.panel.disconnect(this._styleChanged);
         this._unwatchWindows();
+        this._barMoved.forEach(id => Main.layoutManager.panelBox.disconnect(id));
         if (this._dragButtonWas === 0 && this._dragGesture.required_button === PRIMARY_BUTTON)
             this._dragGesture.required_button = 0;
         this._dateMenu.menu.disconnect(this._menuChanged);
