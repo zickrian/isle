@@ -8,19 +8,23 @@
 // colour kept × saturation (`small` on a closed island or an alert, `large` open), a sheen and a glow added.
 const LOOKS = {
     black: {fill: [0, 0, 0, 1], solid: [0, 0, 0], edge: null, blur: null},
-    // Clear, calm glass: a thin cool smoke over a backdrop held in a narrow, even band of light, its brightest a fifth
-    // deeper (a white page ends near GNOME's menu grey, text reads), its colour soft; a faint rim lit from above, a sheen.
-    glass: {fill: [0.06, 0.068, 0.09, 0.45], solid: [0.085, 0.09, 0.11],
-        edge: {color: [1, 1, 1], top: 0.13, bottom: 0.05},
-        blur: {radius: 40, brightness: 1, small: 0.35, large: 1.6, lo: 0.12, span: 0.345, gamma: 0.6, deep: 0.21,
-            sheen: 0.11, glow: 0.05}},
+    // Clear glass, thick at its edge: what is behind it lightly blurred, its shapes and colours still there, a little
+    // darkened; a light backdrop held deeper from a fifth of the way up (a white page ends a dark grey, white text reads
+    // at about 9:1); the edge bending what is behind it, its colours parting into a thin rainbow, and catching the
+    // light, brightest up and left, again down and right.
+    glass: {fill: [0.03, 0.04, 0.05, 0.22], solid: [0.12, 0.13, 0.15],
+        edge: {color: [1, 1, 1], top: 0.16, bottom: 0.1},
+        blur: {radius: 14, brightness: 1, small: 0.95, large: 1.15, lo: 0.03, span: 0.64, gamma: 1, deep: 0.52,
+            knee: 0.22, sheen: 0.03, glow: 0.05, lens: 26, band: 24, spread: 0.7, rim: 0.5, rimWidth: 1.1}},
 };
 
 // Glass at its darkest (Settings' tint at 100): dark smoked glass, as GNOME's blurred menus look: what is behind
-// blurred, its light dimmed to about two fifths and its colour kept, under a thin dark smoke; a faint rim.
+// blurred, its light dimmed to about two fifths and its colour kept, under a thin dark smoke; a faint rim. Every tone
+// the clear glass sets is set here too, so at 100 it is this glass exactly, whatever the clear one is.
 const DARK_GLASS = {fill: [0.02, 0.025, 0.03, 0.3], solid: [0.06, 0.07, 0.07],
     edge: {top: 0.07, bottom: 0.04},
-    blur: {small: 0.7, large: 0.85, lo: 0, span: 0.48, gamma: 1, deep: 0.25, sheen: 0, glow: 0}};
+    blur: {radius: 40, small: 0.7, large: 0.85, lo: 0, span: 0.48, gamma: 1, deep: 0.25, knee: 0.55, sheen: 0, glow: 0,
+        lens: 0, band: 20, spread: 0, rim: 0, rimWidth: 1.1}};
 
 let current = 'black';
 /** Glass with Settings' tint applied (see `setTheme`). */

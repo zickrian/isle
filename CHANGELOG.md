@@ -40,6 +40,10 @@ All notable changes to Isle are listed here. The format follows
 ### Changed
 
 - Auto-hide draws the closed island up into the top edge and back down, instead of fading it.
+- The clear end of the Glass slider is clear glass with a thick edge, no longer a flat dark smoke: what is behind
+  the island keeps its shapes and colours, lightly blurred; the edge bends what is behind it, with a thin rainbow,
+  and catches the light, brightest at the top left. White text reads better than before (about 9:1 over a white
+  page). Along the slider it settles smoothly into the dark end, which is as it was.
 
 ### Fixed
 

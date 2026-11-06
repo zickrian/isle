@@ -84,14 +84,17 @@ that shows what is behind it, blurred"); Black is the default:
 
 - **Black**: a black notch hanging from the top edge of the screen with
   concave shoulders.
-- **Glass**: what is behind it (windows and wallpaper) blurred (GNOME Shell's
-  blur, radius 40) and toned in the same pass: its lightness held in a
-  narrow, even band, so a white page and a dark wallpaper beside it end close
-  together, and its brightest held up to a fifth deeper still, so text reads
-  at 4.5:1 or more over a white page; its colour let through softly (less on the closed island and
-  alerts, so small pills stay clean; more once open); under a thin cool smoke
-  of rgba(15, 17, 23) at 45%, with a sheen, a soft glow inside the edge and a
-  1 px white rim lit from 7% at the top to 24% at the bottom.
+- **Glass**: clear glass, thick at its edge. What is behind it (windows and
+  wallpaper) is lightly blurred (GNOME Shell's blur, radius 14) and toned in the
+  same pass, its shapes and colours still there, a little darkened: a light
+  backdrop held deeper from a fifth of the way up, so white text reads at about
+  9:1 over a white page (15:1 over a dark wallpaper); under a thin smoke of
+  rgba(8, 10, 13) at 22%. Within 24 px of the edge the glass bends what is
+  behind it inwards, up to 26 px at the rim, its red and blue a little apart (a
+  thin rainbow), and the edge catches the light: a bright line about a pixel
+  wide with a soft glow inside it, brightest where the edge faces up and left,
+  again (less) down and right. All in the one pass, so it costs no more than
+  the blur; nothing is redrawn while it is still.
 
 A Glass slider beside it (Settings → Appearance) runs from that clear glass to
 dark smoked glass, as GNOME Shell's own blurred menus: what is behind dimmed to

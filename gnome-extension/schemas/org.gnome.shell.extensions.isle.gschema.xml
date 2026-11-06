@@ -17,7 +17,7 @@
       </choices>
       <default>'black'</default>
       <summary>The island's look</summary>
-      <description>black: Isle's own black island. glass: clear dark glass over what is behind it, blurred, with a lit rim.</description>
+      <description>black: Isle's own black island. glass: clear glass over what is behind it, blurred, its edge catching the light.</description>
     </key>
     <key name="open-size" type="s">
       <choices>
