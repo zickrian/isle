@@ -87,6 +87,15 @@ export function hasOwnIcon(name) {
     return ownName(name) !== null;
 }
 
+/** A Bluetooth device's icon by its kind (BlueZ's "audio-headphones"): one Isle has no icon of its own for (a
+ * printer, a watch) gets Bluetooth's, in Isle's style. */
+export function deviceIcon(name) {
+    return hasOwnIcon(name) ? name : 'isle-bluetooth-symbolic';
+}
+
+/** At or under this percentage a battery is low: its ring turns red. */
+export const LOW_BATTERY = 20;
+
 /** `gicon` in Isle's own style when Isle draws it (GNOME's OSD and device icons), else as it is. */
 export function ownIcon(gicon) {
     const names = gicon instanceof Gio.ThemedIcon ? gicon.get_names() : [];
@@ -321,6 +330,31 @@ export function restsAt(actor, property, value) {
 /** Sets an icon button's icon. */
 export function setButtonIcon(button, iconName) {
     button.child.gicon = icon(iconName);
+}
+
+/** Any wheel or touchpad direction moves `scroll`'s row sideways while it overflows; for its 'scroll-event'. */
+export function scrollSideways(scroll, event) {
+    const adjustment = scroll.hadjustment;
+    if (adjustment.upper <= adjustment.page_size)
+        return Clutter.EVENT_PROPAGATE;
+    let delta = 0;
+    switch (event.get_scroll_direction()) {
+    case Clutter.ScrollDirection.UP:
+    case Clutter.ScrollDirection.LEFT:
+        delta = -1;
+        break;
+    case Clutter.ScrollDirection.DOWN:
+    case Clutter.ScrollDirection.RIGHT:
+        delta = 1;
+        break;
+    case Clutter.ScrollDirection.SMOOTH: {
+        const [dx, dy] = event.get_scroll_delta();
+        delta = Math.abs(dx) > Math.abs(dy) ? dx : dy;
+        break;
+    }
+    }
+    adjustment.value += delta * adjustment.step_increment * 1.5;
+    return Clutter.EVENT_STOP;
 }
 
 /** A circular progress ring, optionally with a child centred inside; `progress` can be eased. */

@@ -373,7 +373,7 @@ Whether a newer Isle is out: GitHub's latest release, looked up at most once a d
 | Member | Signature | |
 |---|---|---|
 | `State` | `s` | `{battery: {percent (a whole number), plugged, charging} or null, network: {connected, connection, name}, bluetooth: [{path, name, icon, battery}], camera_in_use}` |
-| `Event(s json)` | signal | One of `{kind: "power", plugged, percent}`, `{kind: "battery_low", percent}`, `{kind: "battery_full"}`, `{kind: "network", connected, connection, name}`, `{kind: "bluetooth", connected, device}`. |
+| `Event(s json)` | signal | One of `{kind: "power", plugged, percent}`, `{kind: "battery_low", percent}`, `{kind: "battery_full"}`, `{kind: "network", connected, connection, name}`, `{kind: "bluetooth", connected, device}`, `{kind: "bluetooth_low", device}` (a connected device's battery went under 20, 10 or 5%, `device.battery` its level now: once per level on the way down, again once it has charged more than 5 points above it). |
 
 ## io.github.zickrian.isle.ShelfWindow1
 

@@ -9,7 +9,7 @@ import * as Format from './format.js';
 import * as Playback from './playback.js';
 import {notificationIcon, plainBody} from './notifications.js';
 import * as Theme from './theme.js';
-import {hasOwnIcon} from './widgets.js';
+import {LOW_BATTERY, deviceIcon} from './widgets.js';
 
 const OSD_DURATION = 1500;
 const STATUS_DURATION = 2600;
@@ -28,7 +28,7 @@ const CRITICAL_DURATION = 20000;
 
 /** A battery on its side; the ring around it shows the level. */
 function batteryIcon(percent) {
-    return percent <= 20 ? 'isle-battery-low-symbolic' : 'isle-battery-symbolic';
+    return percent <= LOW_BATTERY ? 'isle-battery-low-symbolic' : 'isle-battery-symbolic';
 }
 
 /** "42%", rounded. */
@@ -118,7 +118,7 @@ export function system(event) {
             title: event.plugged ? 'Charging' : 'On battery',
             subtitle: event.plugged ? 'Charger connected' : 'Charger disconnected',
             value: percentText(event.percent),
-            tone: event.plugged ? 'good' : event.percent <= 20 ? 'bad' : 'neutral',
+            tone: event.plugged ? 'good' : event.percent <= LOW_BATTERY ? 'bad' : 'neutral',
             duration: STATUS_DURATION,
         };
     case 'battery_low':
@@ -163,14 +163,27 @@ export function system(event) {
         const battery = event.connected ? device.battery ?? null : null;
         return {
             key: `bluetooth:${device.path}`,
-            // A kind Isle has no icon of its own for (a printer, a watch): Bluetooth's, in Isle's style.
-            icon: hasOwnIcon(device.icon) ? device.icon : 'isle-bluetooth-symbolic',
+            icon: deviceIcon(device.icon),
             ring: battery !== null ? battery / 100 : null,
             title: device.name,
             subtitle: event.connected ? 'Connected' : 'Disconnected',
             value: battery !== null ? percentText(battery) : null,
-            tone: !event.connected ? 'neutral' : battery !== null && battery < 20 ? 'bad' : 'good',
+            tone: !event.connected ? 'neutral' : battery !== null && battery <= LOW_BATTERY ? 'bad' : 'good',
             duration: STATUS_DURATION,
+        };
+    }
+    // As the laptop's low battery, its level in a red ring round the device.
+    case 'bluetooth_low': {
+        const {device} = event;
+        return {
+            key: `bluetooth:${device.path}`,
+            icon: deviceIcon(device.icon),
+            ring: device.battery / 100,
+            title: device.name,
+            subtitle: 'Low battery',
+            value: percentText(device.battery),
+            tone: 'bad',
+            duration: REMINDER_DURATION,
         };
     }
     default:

@@ -34,6 +34,7 @@ const TABS = {
     shelf: {icon: 'isle-shelf', label: 'Shelf'},
     calendar: {icon: 'isle-calendar', label: 'Calendar'},
     apps: {icon: 'isle-apps', label: 'Apps'},
+    devices: {icon: 'isle-headphones', label: 'Devices'},
     usage: {icon: 'isle-gauge', label: 'Usage'},
 };
 /** How bright a tab's icon is: open, under the pointer, otherwise. */

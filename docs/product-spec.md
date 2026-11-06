@@ -283,8 +283,9 @@ dots, the music bars, the assistant's sparkle, `[timer ring] Tue 20 Oct 12:26` a
 first tab's pill, the gear's icon and the pages' contents share the same 20 px edges; every tab is 26 px
 tall, 3 px from the band's top and bottom, the open one's name on the clock's line. When the tabs and
 the status together need more than 600, the island grows to fit them, by the same amount on both
-sides so it stays centred. The Call tab, its phone in green, only shows during a call. Scrolling or
-swiping over the header changes the page (see §3).
+sides so it stays centred. The Call tab, its phone in green, only shows during a call, and the
+Devices tab only while a Bluetooth device is connected. Scrolling or swiping over the header changes
+the page (see §3).
 
 Pages sit 20 px in from the island's sides and from its bottom (cards' 12 px corners concentric with
 the island's 32); on each page rows and columns line up on shared edges, and buttons and switches
@@ -634,6 +635,20 @@ spans. `isled` keeps 30 days in `~/.local/share/isle/app-usage.json`, and
 only GNOME Shell may report, read or clear them. Settings → App Usage
 clears them.
 
+**Devices**: the connected Bluetooth devices' batteries. Off until its
+switch in Settings → Pages is on; then its tab (headphones) shows only while
+a device is connected, and goes with the last one (the island moves to the
+next page if it was open). A card per device in a row, in the order they
+connected, 112 px wide and as tall as the page, 8 px apart; a few sit in the
+middle, more scroll sideways with the wheel or touchpad, with no scrollbar.
+On each, the device's icon (Isle's own for headphones, a speaker, a mouse, a
+keyboard, a controller…; Bluetooth's for a kind it has none for) in a 56 px
+ring of its battery, white, red at 20% or less; under it the level ("72%",
+tabular figures, red when low) and the name, cut with "…" when long. A
+device that reports no battery shows only its icon and name, no ring. The
+cards change only as `isled`'s state does (BlueZ says when a level moves):
+nothing is asked, polled or timed for the page, open or not.
+
 ## 6. Alerts
 
 One at a time. *Instant* alerts replace whatever is showing; the rest queue
@@ -653,6 +668,7 @@ banner does. Right-clicking an alert puts it away without opening it.
 | Low battery (20, 10, 5%) | red ring | Low Battery / Plug in your charger soon | 10% | 8 s |
 | Fully charged | green ring | Fully Charged | 100% | 2.6 s |
 | Earbuds connected | ring + device icon | AirBuds Pro / Connected | 70% | 2.6 s |
+| A Bluetooth device's battery low (20, 10, 5%; off by default) | red ring + device icon | AirBuds Pro / Low battery | 10% | 8 s |
 | Connection lost | Wi-Fi offline icon | Offline / The network connection was lost | – | 2.6 s; taken back once online again |
 | Volume, brightness (instant) | icon | Volume / device | level bar + %, gliding to each new level; pressing on at 0% or 100% stretches the island like a rubber band | 1.5 s |
 | Caps Lock (instant) | ⇪ | Caps Lock on / off | – | 1.5 s |
@@ -692,10 +708,20 @@ Disturb is on (Isle alerts of nothing then).
 
 When a window is fullscreen the island hides, alerts wait (see above) and
 GNOME's own volume pop-up is used; on every display, only when each display
-has one. Charging, network, Bluetooth and Caps
-Lock alerts each have their own switch, and wait out Do Not Disturb, except
-a low battery. On a display other than the island's, GNOME's own volume
-pop-up shows there; with the island on every display, its own shows on each.
+has one. Charging, network, Bluetooth, a
+Bluetooth device's battery and Caps Lock alerts each have their own switch,
+and wait out Do Not Disturb, except a low battery, the laptop's or a
+device's. On a display other than the island's, GNOME's own volume pop-up
+shows there; with the island on every display, its own shows on each.
+
+**Low batteries.** The laptop's battery warns at 20, 10 and 5%, once per
+level until it is plugged in. A Bluetooth device's warns at the same levels,
+each device on its own, once per level on the way down; a level warns again
+once the device has charged back more than 5 points above it, so a reading
+that wavers round a level (20, 21, 20%) warns once. Several levels passed at
+once warn for the lowest. A device's first reading after it connects is no
+way down; one that goes and comes back starts afresh. `isled` decides, from
+the levels BlueZ already sends: nothing more is watched or asked.
 
 **Events.** The reminder before an event comes from the same calendars as
 the Calendar page (GNOME Shell's, which reads Evolution Data Server), opened

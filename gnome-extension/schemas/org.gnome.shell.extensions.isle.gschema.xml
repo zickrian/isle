@@ -152,6 +152,11 @@
       <default>true</default>
       <summary>Show Bluetooth alerts</summary>
     </key>
+    <key name="alert-bluetooth-battery" type="b">
+      <default>false</default>
+      <summary>Alert when a Bluetooth device's battery is low</summary>
+      <description>At 20, 10 and 5 percent, once per level on the way down, for each connected device that reports its battery; again once it has charged more than 5 points above that level. Like the laptop's low battery, it shows during Do Not Disturb. Off until you turn it on.</description>
+    </key>
     <key name="alert-caps-lock" type="b">
       <default>true</default>
       <summary>Show Caps Lock alerts</summary>
@@ -185,6 +190,11 @@
       <default>false</default>
       <summary>The Apps page, timing the application in front</summary>
       <description>Shows the Apps page and times the application in front, whether or not there is keyboard or pointer input, keeping 30 days on this computer. Time pauses after five idle minutes, unless a video or another program holds the session awake. Off until you turn it on; off, nothing is timed and the page has no tab.</description>
+    </key>
+    <key name="devices-page" type="b">
+      <default>false</default>
+      <summary>The Devices page</summary>
+      <description>Shows the Devices page: each connected Bluetooth device with its battery. Its tab shows only while a device is connected. Off until you turn it on.</description>
     </key>
     <key name="app-usage-clear" type="b">
       <default>false</default>

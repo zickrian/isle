@@ -40,6 +40,7 @@ import {isShelfCopy, saveToDownloads, showInFiles} from './downloads.js';
 import {AppsPage} from './pages/apps.js';
 import {CallPage} from './pages/call.js';
 import {CalendarPage} from './pages/calendar.js';
+import {DevicesPage} from './pages/devices.js';
 import {MediaPage} from './pages/media.js';
 import {NotificationsPage} from './pages/notifications.js';
 import {ShelfPage} from './pages/shelf.js';
@@ -85,7 +86,10 @@ const PAGE_MEMORY_MS = 5 * 60 * 1000;
 /** An alert's width is checked again this soon after it shows. */
 const ALERT_FIT_DELAY_MS = 60;
 /** Which switch in Settings each kind of system event answers to. */
-const SYSTEM_ALERTS = {power: 'power', battery_low: 'power', battery_full: 'power', network: 'network', bluetooth: 'bluetooth'};
+const SYSTEM_ALERTS = {power: 'power', battery_low: 'power', battery_full: 'power', network: 'network', bluetooth: 'bluetooth',
+    bluetooth_low: 'bluetooth-battery'};
+/** The system events that come through Do Not Disturb: a low battery, the laptop's or a device's. */
+const URGENT_SYSTEM_ALERTS = ['battery_low', 'bluetooth_low'];
 /** The open island's header on a display without the top bar. */
 const HEADER_WITHOUT_BAR = 32;
 /** A window's animation (minimizing, say) is over by then, so whether it covers the display is checked again. */
@@ -405,6 +409,7 @@ export class Controller {
             () => new ShelfPage(this._daemon, this._clipboard, this._settings, size),
             () => new CalendarPage(this._daemon, this._settings, size),
             () => new AppsPage(this._daemon, this._appUsage, size),
+            () => new DevicesPage(this._daemon, size),
             () => new UsagePage(this._daemon, size),
         ];
     }
@@ -546,7 +551,7 @@ export class Controller {
             this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => this._syncUsage()));
         for (const key of ['event-alerts', 'event-alert-minutes'])
             this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => this._syncEventAlerts()));
-        for (const key of ['hidden-pages', 'world-clocks', 'app-usage'])
+        for (const key of ['hidden-pages', 'world-clocks', 'app-usage', 'devices-page'])
             this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => this._syncPages()));
         this._settingsChanged.push(this._settings.connect('changed::app-usage-clear', () => this._syncAppUsage()));
         for (const key of ['island-theme', 'glass-tint'])
@@ -704,7 +709,8 @@ export class Controller {
             this._post(Alerts.pomodoroFinished(finished, next, daemon.state.pomodoro, daemon));
         });
         daemon.connect('system-event', (_daemon, event) =>
-            this._postSystemAlert(Alerts.system(event), SYSTEM_ALERTS[event.kind] ?? 'power', event.kind === 'battery_low'));
+            this._postSystemAlert(Alerts.system(event), SYSTEM_ALERTS[event.kind] ?? 'power',
+                URGENT_SYSTEM_ALERTS.includes(event.kind)));
 
         // Sharing or recording the screen, what others write and what was copied stay out of sight.
         this._privacy.connect('changed', () => this._syncSharing());
@@ -1100,6 +1106,9 @@ export class Controller {
             // Apps has its own switch, which times the app in front too: no tab while nothing is timed.
             if (page.name === 'apps')
                 page.hidden = !this._settings.get_boolean('app-usage');
+            // Devices is off until turned on, as an app is installed: its own switch, not `hidden-pages`.
+            else if (page.name === 'devices')
+                page.hidden = !this._settings.get_boolean('devices-page');
             else if (page.name !== 'call' && page.name !== 'usage')
                 page.hidden = hidden.includes(page.name);
         }

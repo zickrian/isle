@@ -15,7 +15,7 @@ import St from 'gi://St';
 import {thumbSize} from '../clipRules.js';
 import {VERTICAL, onUiScale, uiScale} from '../compat.js';
 import * as Format from '../format.js';
-import {icon, iconButton, label, wrapLines} from '../widgets.js';
+import {icon, iconButton, label, scrollSideways, wrapLines} from '../widgets.js';
 import {SHELF_CAPACITY} from './files.js';
 
 /** isled keeps 20 recent items and up to 10 pinned ones. */
@@ -346,27 +346,7 @@ export const ClipsView = GObject.registerClass({
 
     /** Any wheel direction moves the strip sideways, once it overflows. */
     _onScroll(event) {
-        const adjustment = this._scroll.hadjustment;
-        if (adjustment.upper <= adjustment.page_size)
-            return Clutter.EVENT_PROPAGATE;
-        let delta = 0;
-        switch (event.get_scroll_direction()) {
-        case Clutter.ScrollDirection.UP:
-        case Clutter.ScrollDirection.LEFT:
-            delta = -1;
-            break;
-        case Clutter.ScrollDirection.DOWN:
-        case Clutter.ScrollDirection.RIGHT:
-            delta = 1;
-            break;
-        case Clutter.ScrollDirection.SMOOTH: {
-            const [dx, dy] = event.get_scroll_delta();
-            delta = Math.abs(dx) > Math.abs(dy) ? dx : dy;
-            break;
-        }
-        }
-        adjustment.value += delta * adjustment.step_increment * 1.5;
-        return Clutter.EVENT_STOP;
+        return scrollSideways(this._scroll, event);
     }
 
     // Cards

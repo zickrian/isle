@@ -1131,6 +1131,23 @@
 .isle-apps-fill { height: 4px; border-radius: 2px; background-color: rgba(255, 255, 255, 0.8); }
 .isle-apps-time { font-size: 12px; color: rgba(255, 255, 255, 0.6); min-width: 44px; text-align: right; }
 
+/* ── Devices ──────────────────────────────────────────── */
+
+/* A card per connected device, as tall as the page: its icon in its battery's ring, the level, the name. */
+.isle-devices-scroll { -st-hfade-offset: 18px; }
+.isle-devices { spacing: 8px; }
+.isle-device {
+  width: 112px;
+  padding: 12px 8px;
+  border-radius: 12px;
+  background-color: #1c1c1e;
+}
+.isle-device-icon { color: #ffffff; }
+.isle-device-percent { padding-top: 8px; font-size: 15px; font-weight: 600; font-feature-settings: "tnum"; }
+.isle-device-percent.low { color: #ff453a; }
+.isle-device-name { padding-top: 4px; font-size: 12px; color: rgba(255, 255, 255, 0.55); }
+.isle-device-name.alone { padding-top: 8px; }
+
 /* Focused (from the keyboard), a button lights up: no ring around it. */
 .isle-pill:focus, .isle-pill-small:focus, .isle-notification-row:focus, .isle-output-button:focus,
 .isle-cal-today:focus, .isle-cal-month-title:focus, .isle-segment:focus, .isle-usage-dot:focus,
@@ -1224,6 +1241,7 @@
 #isleIsland.isle-translucent .isle-apps-heading { color: rgba(255, 255, 255, 0.73); }
 #isleIsland.isle-translucent .isle-apps-total { color: rgba(255, 255, 255, 0.64); }
 #isleIsland.isle-translucent .isle-apps-time { color: rgba(255, 255, 255, 0.73); }
+#isleIsland.isle-translucent .isle-device-name { color: rgba(255, 255, 255, 0.7); }
 #isleIsland.isle-translucent .isle-segment:focus { color: #ffffff; }
 
 /* Icon buttons: no fill until the pointer is on them (first: the buttons below have their own). */
@@ -1276,6 +1294,7 @@
 #isleIsland.isle-translucent .isle-cal-event,
 #isleIsland.isle-translucent .isle-cal-world-row,
 #isleIsland.isle-translucent .isle-clip,
+#isleIsland.isle-translucent .isle-device,
 #isleIsland.isle-translucent .isle-output-button.active {
   background-color: rgba(255, 255, 255, 0.08);
 }
@@ -1391,7 +1410,8 @@
 #isleIsland.isle-translucent .isle-call-muted,
 #isleIsland.isle-translucent .isle-compact-warning,
 #isleIsland.isle-translucent .isle-cal-month-name,
-#isleIsland.isle-translucent .isle-usage-percent.critical { color: #ff968d; }
+#isleIsland.isle-translucent .isle-usage-percent.critical,
+#isleIsland.isle-translucent .isle-device-percent.low { color: #ff968d; }
 #isleIsland.isle-translucent .isle-call-icon,
 #isleIsland.isle-translucent .isle-call-duration,
 #isleIsland.isle-translucent .isle-tab-call StIcon,
@@ -1473,6 +1493,7 @@
 #isleIsland.isle-glass-dark .isle-cal-event,
 #isleIsland.isle-glass-dark .isle-cal-world-row,
 #isleIsland.isle-glass-dark .isle-clip,
+#isleIsland.isle-glass-dark .isle-device,
 #isleIsland.isle-glass-dark .isle-output-button.active { background-color: rgba(255, 255, 255, 0.1); }
 #isleIsland.isle-glass-dark .isle-notification-row:hover,
 #isleIsland.isle-glass-dark .isle-clip:hover { background-color: rgba(255, 255, 255, 0.15); }

@@ -426,6 +426,8 @@ export default class IslePreferences extends ExtensionPreferences {
         alerts.add(switchRow(settings, 'alert-power', 'Charging and battery', 'Plugged in, unplugged, full and low'));
         alerts.add(switchRow(settings, 'alert-network', 'Network', 'When the connection drops'));
         alerts.add(switchRow(settings, 'alert-bluetooth', 'Bluetooth', 'Devices connecting, with their battery'));
+        alerts.add(switchRow(settings, 'alert-bluetooth-battery', 'Bluetooth battery',
+            'A device’s battery low, at 20, 10 and 5%'));
         alerts.add(switchRow(settings, 'alert-caps-lock', 'Caps Lock', 'When it turns on or off'));
         alerts.add(switchRow(settings, 'event-alerts', 'Calendar events',
             'Before each event with a time, with Join for a Meet, Zoom or Teams link'));
@@ -935,10 +937,14 @@ function pagesGroup(settings, window) {
         group.add(row);
         return [name, row];
     });
-    // The Apps and Usage pages' own switches, here too, so every tab is in one place.
+    // The Apps, Devices and Usage pages' own switches, here too, so every tab is in one place.
     const apps = switchRow(settings, 'app-usage', 'Apps', 'Time spent in each app, kept on this computer for 30 days');
     apps.add_prefix(new Gtk.Image({icon_name: 'view-app-grid-symbolic'}));
     group.add(apps);
+    const devices = switchRow(settings, 'devices-page', 'Devices',
+        'Connected Bluetooth devices and their battery; its tab shows while one is connected');
+    devices.add_prefix(new Gtk.Image({icon_name: 'bluetooth-active-symbolic'}));
+    group.add(devices);
     const usage = switchRow(settings, 'usage-enabled', 'AI Usage', 'Your AI plans’ limits, and warnings as one nears its end');
     usage.add_prefix(new Gtk.Image({icon_name: 'power-profile-performance-symbolic'}));
     if (!usageProviders().length) {

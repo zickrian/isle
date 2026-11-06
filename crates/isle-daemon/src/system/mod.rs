@@ -91,6 +91,10 @@ pub enum SystemEvent {
         connected: bool,
         device: BluetoothDevice,
     },
+    /// A connected device's battery went under one of the low levels, `device.battery` its level now.
+    BluetoothLow {
+        device: BluetoothDevice,
+    },
 }
 
 /// isled's `System1` D-Bus object.
@@ -251,5 +255,17 @@ mod tests {
         let json: serde_json::Value = serde_json::to_value(&event).unwrap();
         assert_eq!(json["kind"], "network");
         assert_eq!(json["connection"], "wifi");
+
+        let event = SystemEvent::BluetoothLow {
+            device: BluetoothDevice {
+                path: "/org/bluez/hci0/dev_00".into(),
+                name: "Earbuds".into(),
+                icon: "audio-headphones".into(),
+                battery: Some(10),
+            },
+        };
+        let json: serde_json::Value = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["kind"], "bluetooth_low");
+        assert_eq!(json["device"]["battery"], 10);
     }
 }

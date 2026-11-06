@@ -13,6 +13,13 @@ All notable changes to Isle are listed here. The format follows
   island there, to hold the alert or open as usual, and it goes back to the display in use once closed.
   With a window fullscreen on one display, alerts keep showing on the others (and over it too, with Over
   full-screen apps on). Auto-hide hides the island on each display as it would on that display alone.
+- **Low battery on Bluetooth devices (#49).** Settings → Alerts → Bluetooth battery: when earbuds, a mouse, a
+  keyboard or a controller gets down to 20%, 10% and 5%, the island says so as it does for the laptop, a red ring
+  round the device's icon with "Low battery". Once per level, each device on its own, and again after it has
+  charged. It shows during Do Not Disturb, like the laptop's. Off by default.
+- **Devices page (#49).** Turn it on in Settings → Island → Pages: each connected Bluetooth device as a card
+  with its icon in a ring of its battery, the level and its name. Its tab shows only while a device is
+  connected. It uses the levels your devices already report: nothing is checked over and over. Off by default.
 
 ### Fixed
 
