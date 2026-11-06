@@ -381,6 +381,7 @@ export default class IslePreferences extends ExtensionPreferences {
         look.add(choiceRow(settings, 'island-monitor', 'Display', 'With more than one display, where the island is', [
             ['primary', 'Main display'],
             ['active', 'Display in use'],
+            ['all', 'All displays'],
         ]));
         look.add(choiceRow(settings, 'open-on', 'Open', 'How the closed island opens', [
             ['hover', 'On hover'],

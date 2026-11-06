@@ -204,10 +204,21 @@ with the wheel or touchpad and never show a scrollbar.
 ## 4. Closed island
 
 - Where it is: on the main display, in its top bar; or (Settings) on the display of the window in use,
-  moving there once closed. A display without the top bar has the island hang from its top edge, with
-  a header of its own when open, and GNOME's clock comes back to the main top bar meanwhile. So does the
-  main display when another extension moves the bar off its top (to the bottom of the screen, say);
-  Isle then leaves the bar's colour and height as that extension has them.
+  moving there once closed; or (Settings) on every display. A display without the top bar has the island
+  hang from its top edge, with a header of its own when open, and GNOME's clock comes back to the main top
+  bar meanwhile (not on every display: the main one always has an island). So does the main display when
+  another extension moves the bar off its top (to the bottom of the screen, say); Isle then leaves the
+  bar's colour and height as that extension has them.
+- On every display, the island itself is on the display of the window in use, as above, and each other
+  display shows a copy of it: the closed island, and every alert at the same time and in the same shape.
+  Only the island opens. The pointer coming onto a copy (or a press on it) moves the island into the
+  copy's place, where it holds an alert or opens as usual; a copy that grew under a still pointer counts
+  once the pointer moves, as the island does. Once the pointer leaves and the island is closed, it goes
+  back to the display in use. A fullscreen window hides the copy on its display; the island leaves that
+  display for one without, so alerts still show on the others. With Over full-screen apps on, the island
+  and the copies stay instead, hidden but for alerts, as below. Auto-hide hides each copy as it would the
+  island on that display, each with its own wait; pointing at a hidden copy's band brings the island
+  there.
 - Auto-hide (Settings → Appearance, off by default): **Always**, after the pointer has been off the
   closed island for the chosen wait (3 s by default); **With the top bar**, at once as another
   extension hides the bar (Hide Top Bar, Just Perfection) and back with it; **Beside windows**, after
@@ -680,10 +691,11 @@ hour or a day ahead, a calendar GNOME doesn't show, and any while Do Not
 Disturb is on (Isle alerts of nothing then).
 
 When a window is fullscreen the island hides, alerts wait (see above) and
-GNOME's own volume pop-up is used. Charging, network, Bluetooth and Caps
+GNOME's own volume pop-up is used; on every display, only when each display
+has one. Charging, network, Bluetooth and Caps
 Lock alerts each have their own switch, and wait out Do Not Disturb, except
 a low battery. On a display other than the island's, GNOME's own volume
-pop-up shows there.
+pop-up shows there; with the island on every display, its own shows on each.
 
 **Events.** The reminder before an event comes from the same calendars as
 the Calendar page (GNOME Shell's, which reads Evolution Data Server), opened

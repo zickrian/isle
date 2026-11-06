@@ -114,10 +114,11 @@
       <choices>
         <choice value="primary"/>
         <choice value="active"/>
+        <choice value="all"/>
       </choices>
       <default>'primary'</default>
       <summary>Display the island is on</summary>
-      <description>"primary": the main display, in its top bar. "active": the display of the window in use; on a display without a top bar it hangs from the top edge.</description>
+      <description>"primary": the main display, in its top bar. "active": the display of the window in use; on a display without a top bar it hangs from the top edge. "all": every display, the island itself on the one in use; the others show the closed island and its alerts, and pointing at one brings the island there.</description>
     </key>
     <key name="notch-depth" type="i">
       <range min="24" max="40"/>
