@@ -906,8 +906,16 @@ pub fn forget(id: &str) {
             .build()?;
         runtime.block_on(async {
             let mut command = Command::from(command(&program));
+            command.args(["session", "delete"]);
+            // As every run: opencode 2 otherwise starts a background service, on a port the user's own may hold.
+            if check_version(&program)
+                .await
+                .is_ok_and(|version| version[0] >= 2)
+            {
+                command.arg("--standalone");
+            }
             command
-                .args(["session", "delete", &id])
+                .arg(&id)
                 .current_dir(isle_home())
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
