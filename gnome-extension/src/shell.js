@@ -401,8 +401,11 @@ function setStyleClasses(actor, classes) {
         actor.set_style_class_name(wanted.join(' ') || null);
 }
 
-// Routes GNOME's volume and brightness OSDs to `handler`; if it returns false, GNOME shows its own.
-// GNOME 46–48: `show(monitorIndex, icon, label, level, maxLevel)`; 49: `show(icon, label, levels)`, plus `showAll()`.
+// Routes GNOME's volume and brightness OSDs to `handler` (icon, label, level, maxLevel, and for one about some displays
+// only, their levels by display index). It returns true when it showed it, false for GNOME to show its own, or the
+// indexes of the displays it showed it for: GNOME shows it on the others.
+// GNOME 46–48: `show(monitorIndex, icon, label, level, maxLevel)` (-1: all); 49: `show(icon, label, levels)` for some
+// displays (brightness), `showAll()` for all.
 export class OsdHook {
     /** Wraps whichever of `show` and `showAll` this GNOME has. */
     constructor(handler) {
@@ -410,30 +413,46 @@ export class OsdHook {
         this._manager = manager;
         const self = this;
         const perMonitor = typeof manager.showAll === 'function';
+        // What GNOME is left to show of a `show(icon, label, levels)` the handler took some displays of.
+        const rest = (shown, [icon, label, levels]) => {
+            if (!Array.isArray(shown))
+                return shown;
+            const others = Object.fromEntries(Object.entries(levels).filter(([index, value]) =>
+                value && !shown.includes(Number(index))));
+            return Object.keys(others).length ? [icon, label, others] : true;
+        };
         const adapters = perMonitor
             ? {
                 show: (icon, label, levels) => {
                     const {level, maxLevel} = levels?.[Main.layoutManager.primaryIndex] ??
                         Object.values(levels ?? {}).find(Boolean) ?? {};
-                    return handler(icon, label, level, maxLevel);
+                    return rest(handler(icon, label, level, maxLevel, levels ?? {}), [icon, label, levels ?? {}]);
                 },
-                showAll: (icon, label, level, maxLevel) => handler(icon, label, level, maxLevel),
+                showAll: (icon, label, level, maxLevel) => handler(icon, label, level, maxLevel, null),
             }
             : {
-                show: (_monitorIndex, icon, label, level, maxLevel) => handler(icon, label, level, maxLevel),
+                show: (monitorIndex, icon, label, level, maxLevel) => {
+                    const displays = monitorIndex >= 0 ? {[monitorIndex]: {level, maxLevel}} : null;
+                    // One display only: the handler shows it there, or GNOME does.
+                    const shown = handler(icon, label, level, maxLevel, displays);
+                    return Array.isArray(shown) ? true : shown;
+                },
             };
         this._hooks = Object.entries(adapters).map(([name, handled]) => {
             const original = manager[name];
             // Left in place under another extension's wrapper once Isle stops: then it only passes through.
             const hook = function (...args) {
                 // Isle failing must not take GNOME's own OSD with it.
+                let shown = false;
                 try {
-                    if (!self._destroyed && handled(...args))
-                        return;
+                    shown = !self._destroyed && handled(...args);
                 } catch (e) {
                     console.warn(`Isle: could not show the OSD: ${e.message}`);
                 }
-                original.apply(this, args);
+                if (shown === true)
+                    return;
+                // All of it, or what the handler left to GNOME (other displays).
+                original.apply(this, Array.isArray(shown) ? shown : args);
             };
             // Set when another extension wrapped it before us.
             const ownOriginal = Object.hasOwn(manager, name) ? original : null;

@@ -394,7 +394,7 @@ export class Controller {
         this._connectSignals();
         this._keyboard = new KeyboardWatcher();
         this._keyboard.connect('caps-lock', (_watcher, on) => this._postSystemAlert(Alerts.capsLock(on), 'caps-lock'));
-        this._osd = new OsdHook((icon, label, level, maxLevel) => this._showOsd(icon, label, level, maxLevel));
+        this._osd = new OsdHook((icon, label, level, maxLevel, displays) => this._showOsd(icon, label, level, maxLevel, displays));
         this._watchIdle();
         this._installedApps = new InstalledApps();
         this._reminders = new ReminderWatcher(this._daemon, (reminder, done) => {
@@ -2360,18 +2360,38 @@ export class Controller {
         this._render();
     }
 
-    /** Volume or brightness as an alert in place of GNOME's OSD; false lets GNOME show its own. */
-    _showOsd(icon, label, level, maxLevel) {
+    /** Volume or brightness as an alert in place of GNOME's OSD. `displays`, for an OSD about some displays only
+     * (brightness: {index: {level, maxLevel}}), or null for one about all (volume). Returns true when the island
+     * shows it all, false to let GNOME show its own, or the indexes of the displays the island showed it for, GNOME
+     * showing it on the others. */
+    _showOsd(icon, label, level, maxLevel, displays = null) {
         if (!this._settings.get_boolean('replace-osd') || !this._island.visible)
-            return false;
-        // Working on another display, the user would not see it: GNOME shows its own there. Not with a copy of
-        // the island on each display, which shows it too.
-        if (Main.layoutManager.monitors.length > 1 && !this._mirrors.length &&
-            global.display.get_current_monitor() !== this._monitor?.index)
             return false;
         // While the island is open the OSD would cover it; let GNOME show it.
         if (this._expandWanted || this._voiceOpen)
             return false;
+        const own = this._monitor?.index;
+        if (displays) {
+            // The island's own display's (the laptop's brightness, say) is the island's wherever the pointer is: its
+            // change is on that display, and GNOME's own there flickered as it showed and took back one display's
+            // after another. Another display's stays GNOME's, on that display; with a copy of the island on each,
+            // the island shows them all.
+            const mine = displays[own] ?? (this._mirrors.length ? Object.values(displays).find(Boolean) : null);
+            if (!mine)
+                return false;
+            this._postOsd(icon, label, mine.level, mine.maxLevel);
+            return this._mirrors.length ? true : [own];
+        }
+        // Working on another display, the user would not see it: GNOME shows its own there. Not with a copy of
+        // the island on each display, which shows it too.
+        if (Main.layoutManager.monitors.length > 1 && !this._mirrors.length && global.display.get_current_monitor() !== own)
+            return false;
+        this._postOsd(icon, label, level, maxLevel);
+        return true;
+    }
+
+    /** Shows an OSD as the island's alert. */
+    _postOsd(icon, label, level, maxLevel) {
         const alert = Alerts.osd(icon, label, level, maxLevel);
         // Pressing on at 0% or 100% stretches the island like a rubber band.
         const atLimit = alert.level !== null && (alert.level >= 1 || alert.level <= 0);
@@ -2380,7 +2400,6 @@ export class Controller {
         this._post(alert);
         if (atLimit && repeated)
             this._island.nudge();
-        return true;
     }
 
     /** A new song that starts playing peeks in, if Settings want that. */

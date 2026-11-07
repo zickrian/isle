@@ -6,6 +6,14 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- With more than one display, changing the brightness while the pointer was on another display showed GNOME's own
+  brightness popup on the island's display, flickering as GNOME showed and took it back display after display. The
+  brightness of the island's own display (a laptop's screen) shows in the island again, wherever the pointer is,
+  as in 1.6.0; another display's brightness shows in GNOME's popup on that display. The volume is as before: with
+  the pointer on another display, GNOME's popup shows on every display. (#51) Thanks to @Hazem-Samir.
+
 ## [1.7.0] - 2026-11-06
 
 A new glass look, a pill-shaped island, a Large size, the date beside the clock, a shortcut for every page,
