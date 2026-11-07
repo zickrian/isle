@@ -243,8 +243,9 @@ tcp`), until a phone gets through. Isle never changes the firewall itself.
   have, so your own opencode stays signed in. Nothing else is ever changed.
   Isle's own 1.x copy is deleted as the request ends, also when it was
   stopped; its 2.x database keeps the sign-ins it was given so later requests
-  stay signed in, readable by you only, and a sign-in you removed from your
-  own database is not written back to it.
+  stay signed in, readable by you only. It also keeps a list of the ids it
+  copied (no secrets, readable by you only), so a sign-in you remove from your
+  own database goes from Isle's too; one only Isle has stays.
 - Files: Isle searches by name for it, within your home folder and removable
   drives, and reads only small plain-text files you ask about. It skips
   hidden folders, never searches those that hold keys or passwords (`.ssh`,

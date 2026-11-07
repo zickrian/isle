@@ -1042,8 +1042,8 @@ fn hand_back(isle: &Path, user: &Path) {
 }
 
 /// opencode 2 keeps sign-ins in its database: copies the user's into Isle's sandbox, and a sign-in
-/// opencode renewed there back into the user's, the newer one winning. Isle-only sign-ins stay put, and
-/// one the user removed is neither deleted here nor put back.
+/// opencode renewed there back into the user's, the newer one winning. Isle-only sign-ins stay put; one
+/// the user removed is removed from the sandbox once it was copied from them, but not put back.
 fn sync_credentials(program: &Path) {
     if !user_db().exists() || !isle_db().exists() {
         return;
@@ -1051,9 +1051,20 @@ fn sync_credentials(program: &Path) {
     let Some(user_data) = dirs::data_dir() else {
         return;
     };
-    if let Err(err) = sync_credentials_at(program, &user_data, &isle_home().join("data")) {
+    let sandbox_data = isle_home().join("data");
+    let shared = isle_home().join("shared.json");
+    if let Err(err) = sync_credentials_at(program, &user_data, &sandbox_data, &shared) {
         log::debug!("could not share opencode's sign-ins: {err:#}");
     }
+}
+
+/// The ids copied from the user's opencode, so a removed one can go from the sandbox too (ids only,
+/// no secrets).
+fn read_shared(path: &Path) -> Vec<String> {
+    std::fs::read(path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default()
 }
 
 /// `sync_credentials` on given data folders, also in tests.
@@ -1061,9 +1072,33 @@ fn sync_credentials_at(
     program: &Path,
     user_data: &Path,
     sandbox_data: &Path,
+    shared_path: &Path,
 ) -> anyhow::Result<()> {
     let user = auth_export(program, user_data, false)?;
     let sandbox = auth_export(program, sandbox_data, true)?;
+    let before = read_shared(shared_path);
+    let mut shared = Vec::new();
+    // A sign-in copied from the user's opencode that they have since removed goes from the sandbox too.
+    for id in before.clone() {
+        if user
+            .iter()
+            .any(|row| row["id"].as_str() == Some(id.as_str()))
+        {
+            shared.push(id);
+            continue;
+        }
+        if let Some(row) = sandbox
+            .iter()
+            .find(|row| row["id"].as_str() == Some(id.as_str()))
+            && let (Some(integration), Some(row_id)) =
+                (row["integrationID"].as_str(), row["id"].as_str())
+            && let Err(err) = auth_logout(program, sandbox_data, true, integration, row_id)
+        {
+            // Keep it and try again next time; one unknown or busy sign-in must not block the rest.
+            log::debug!("could not remove opencode's sign-in {row_id}: {err:#}");
+            shared.push(id);
+        }
+    }
     // Hand back what opencode renewed in Isle's sandbox, over an older sign-in of the user's.
     let mut renewed = Vec::new();
     let mut replaced = Vec::new();
@@ -1108,7 +1143,18 @@ fn sync_credentials_at(
             fresh.push(row.clone());
         }
     }
-    auth_import(program, sandbox_data, true, &fresh)
+    auth_import(program, sandbox_data, true, &fresh)?;
+    for row in &user {
+        if let Some(id) = row["id"].as_str()
+            && !shared.iter().any(|kept| kept == id)
+        {
+            shared.push(id.to_owned());
+        }
+    }
+    if shared != before {
+        crate::store::write_private(shared_path, &serde_json::to_vec(&shared)?)?;
+    }
+    Ok(())
 }
 
 /// Writes `auth` over `path` all at once, readable by the user only, as opencode keeps it.
@@ -1598,6 +1644,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let user = dir.join("user");
         let sandbox = dir.join("sandbox");
+        let shared = dir.join("shared.json");
         std::fs::create_dir_all(&user).unwrap();
         std::fs::create_dir_all(&sandbox).unwrap();
         let program = fake_opencode(&dir);
@@ -1619,7 +1666,10 @@ mod tests {
                 {"id": "github-copilot", "integrationID": "github-copilot", "label": "Copilot", "active": true, "value": {"type": "key", "key": "isle"}}
             ]),
         );
-        sync_credentials_at(&program, &user, &sandbox).unwrap();
+        sync_credentials_at(&program, &user, &sandbox, &shared).unwrap();
+        let marked: Vec<String> = serde_json::from_slice(&std::fs::read(&shared).unwrap()).unwrap();
+        assert!(marked.contains(&"deepseek".to_owned()) && marked.contains(&"opencode".to_owned()));
+        assert!(!marked.contains(&"github-copilot".to_owned()));
         let imported = |dir: &Path| -> Vec<Value> {
             serde_json::from_slice(&std::fs::read(dir.join("imported.json")).unwrap()).unwrap()
         };
@@ -1639,11 +1689,15 @@ mod tests {
         assert!(!into_user.iter().any(|row| row["id"] == "github-copilot"));
         let logouts = std::fs::read_to_string(user.join("logout.log")).unwrap_or_default();
         assert!(logouts.contains("opencode opencode"));
-        // A sign-in the user removed is not put back, and the sandbox copy is left alone.
+        // A sign-in the user removed is not put back, and its shared sandbox copy goes too.
         write(&user, json!([]));
         std::fs::remove_file(user.join("imported.json")).unwrap();
-        sync_credentials_at(&program, &user, &sandbox).unwrap();
+        sync_credentials_at(&program, &user, &sandbox, &shared).unwrap();
         assert!(!user.join("imported.json").exists());
+        let logouts = std::fs::read_to_string(sandbox.join("logout.log")).unwrap_or_default();
+        assert!(logouts.contains("opencode opencode"));
+        let marked: Vec<String> = serde_json::from_slice(&std::fs::read(&shared).unwrap()).unwrap();
+        assert!(marked.is_empty());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -1654,6 +1708,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let user = dir.join("user");
         let sandbox = dir.join("sandbox");
+        let shared = dir.join("shared.json");
         std::fs::create_dir_all(&user).unwrap();
         std::fs::create_dir_all(&sandbox).unwrap();
         let program = fake_opencode(&dir);
@@ -1672,7 +1727,7 @@ mod tests {
         )
         .unwrap();
         std::fs::write(user.join("fail-import"), b"").unwrap();
-        assert!(sync_credentials_at(&program, &user, &sandbox).is_err());
+        assert!(sync_credentials_at(&program, &user, &sandbox, &shared).is_err());
         let restored: Vec<Value> =
             serde_json::from_slice(&std::fs::read(user.join("imported.json")).unwrap()).unwrap();
         assert!(
