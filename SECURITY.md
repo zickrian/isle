@@ -241,10 +241,11 @@ tcp`), until a phone gets through. Isle never changes the firewall itself.
   renews an OAuth sign-in during a request (ChatGPT's, whose old refresh
   token then stops working), Isle writes just that entry back into your
   `auth.json` or database (all at once, readable by you only), so your own
-  opencode stays signed in; nothing else in it is ever changed. Isle's own
-  1.x copy is deleted as the request ends, also when it was stopped; its 2.x
-  database keeps the sign-ins it was given (readable by you only), and a
-  sign-in you removed from your own database is not written back to it.
+  opencode stays signed in. Nothing else in either is ever changed. Isle's
+  own 1.x copy is deleted as the request ends, also when it was stopped. Its
+  2.x database keeps the sign-ins it was given so later requests stay signed
+  in; it is readable by you only, and a sign-in you removed from your own
+  database is not written back to it.
 - Files: Isle searches by name for it, within your home folder and removable
   drives, and reads only small plain-text files you ask about. It skips
   hidden folders, never searches those that hold keys or passwords (`.ssh`,
