@@ -245,7 +245,9 @@ tcp`), until a phone gets through. Isle never changes the firewall itself.
   stopped; its 2.x database keeps the sign-ins it was given so later requests
   stay signed in, readable by you only. It also keeps a list of the ids it
   copied (no secrets, readable by you only), so a sign-in you remove from your
-  own database goes from Isle's too; one only Isle has stays.
+  own database goes from Isle's too; one only Isle has stays. To avoid
+  starting opencode for every check, Isle keeps the sign-ins it exported in
+  memory for up to 30 seconds; they are not written to another file.
 - Files: Isle searches by name for it, within your home folder and removable
   drives, and reads only small plain-text files you ask about. It skips
   hidden folders, never searches those that hold keys or passwords (`.ssh`,
