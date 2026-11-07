@@ -6,12 +6,17 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-11-07
+
+With more than one display, the brightness shows in the island instead of a flickering popup. To update:
+click Update on the new-version alert (or Settings → About → Update), then log out and back in.
+
 ### Fixed
 
 - With more than one display, changing the brightness while the pointer was on another display showed GNOME's own
   brightness popup on the island's display, flickering as GNOME showed and took it back display after display. The
-  brightness of the island's own display (a laptop's screen) shows in the island again, wherever the pointer is,
-  as in 1.6.0; another display's brightness shows in GNOME's popup on that display. The volume is as before: with
+  brightness of the island's own display (a laptop's screen) shows in the island, wherever the pointer is;
+  another display's brightness shows in GNOME's popup on that display. The volume is as before: with
   the pointer on another display, GNOME's popup shows on every display. (#51) Thanks to @Hazem-Samir.
 
 ## [1.7.0] - 2026-11-06
@@ -1744,7 +1749,8 @@ The first release.
   dark, vivid ones bright.
 - Text is at least 12 px throughout.
 
-[Unreleased]: https://github.com/zickrian/isle/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/zickrian/isle/compare/v1.7.1...HEAD
+[1.7.1]: https://github.com/zickrian/isle/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/zickrian/isle/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/zickrian/isle/compare/v1.5.3...v1.6.0
 [1.5.3]: https://github.com/zickrian/isle/compare/v1.5.2...v1.5.3
