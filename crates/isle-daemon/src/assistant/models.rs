@@ -378,7 +378,7 @@ impl Shared {
 /// `provider`'s plan and models now.
 async fn read(provider: Provider) -> Found {
     // opencode answers with OpenCode's free models signed in or not.
-    let usable = provider.signed_in() || provider == Provider::Opencode;
+    let usable = provider == Provider::Opencode || provider.signed_in();
     let Some(program) = provider.program().filter(|_| usable) else {
         return Found::Gone;
     };
@@ -404,7 +404,9 @@ async fn read(provider: Provider) -> Found {
             let listed = tokio::time::timeout(OPENCODE_TIMEOUT, super::opencode::models(&program))
                 .await
                 .unwrap_or_else(|_| Err(anyhow::anyhow!("no answer in time")));
-            let plan = super::opencode::plan();
+            let plan = tokio::task::spawn_blocking(super::opencode::plan)
+                .await
+                .unwrap_or("Free models");
             // Go's own list, for a Go plan only: a model Go dropped is not offered though opencode lists it.
             let go = match (&listed, plan) {
                 (Ok(_), "OpenCode Go") => super::opencode::go_models().await,
