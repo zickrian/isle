@@ -27,6 +27,7 @@ libc.workspace = true
 log.workspace = true
 md5.workspace = true
 qrcode.workspace = true
+rusqlite.workspace = true
 serde.workspace = true
 # Keeps the keys of Claude Code's settings.json in their order when its hooks are changed.
 serde_json = { workspace = true, features = ["preserve_order"] }

@@ -42,6 +42,8 @@ log = "0.4"
 md5 = "0.8"
 # Phone sharing's QR code, as modules only: the extension draws them.
 qrcode = { version = "0.14", default-features = false }
+# opencode 2 keeps its sign-ins in SQLite; bundled, so no libsqlite3 is needed at runtime.
+rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Compares phone sharing's secret token in constant time.

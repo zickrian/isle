@@ -58,6 +58,8 @@ const NO_FILE: &str = "/nonexistent/isle-reads-nothing";
 /// permission rules (1.1.1) and OPENCODE_DISABLE_PROJECT_CONFIG (1.1.29) the sandbox needs.
 const MIN_VERSION: [u32; 3] = [1, 4, 8];
 const VERSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+/// Longest one `opencode models` run may take to make opencode 2's database.
+const BOOTSTRAP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 /// Longest `opencode session delete` may take before it is stopped.
 const FORGET_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 /// All opencode gets of isled's environment (and `LC_*`): no OPENCODE_* settings, no provider keys.
@@ -171,7 +173,7 @@ fn command(program: &Path) -> std::process::Command {
         }
     }
     command.envs(contained());
-    // Read from the user's file each time; a sign-in opencode renews goes back to it (see `HandBack`).
+    // 1.x reads sign-ins from here; 2.x keeps them in its database (see `sync_credentials`).
     command.env("OPENCODE_AUTH_CONTENT", sign_ins());
     command
 }
@@ -191,6 +193,16 @@ fn user_auth() -> PathBuf {
     user_dir("data").join("auth.json")
 }
 
+/// The user's opencode 2 database: its sign-ins live there, not in `auth.json`.
+fn user_db() -> PathBuf {
+    user_dir("data").join("opencode.db")
+}
+
+/// Isle's own opencode database: its conversations and the sign-ins shared into it.
+fn isle_db() -> PathBuf {
+    data().join("opencode.db")
+}
+
 /// The user's `auth.json`, parsed; null when missing or unreadable.
 fn read_auth(path: &Path) -> Value {
     std::fs::read(path)
@@ -199,14 +211,59 @@ fn read_auth(path: &Path) -> Value {
         .unwrap_or_default()
 }
 
+/// The user's sign-ins as opencode 2 keeps them in its database; empty when it has none or can't be read.
+fn db_sign_ins() -> Value {
+    db_sign_ins_at(&user_db())
+}
+
+/// `db_sign_ins` for a given database, also in tests.
+fn db_sign_ins_at(path: &Path) -> Value {
+    let flags = rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY;
+    let Ok(db) = rusqlite::Connection::open_with_flags(path, flags) else {
+        return Value::Null;
+    };
+    let Ok(mut statement) = db.prepare("SELECT integration_id, value FROM credential") else {
+        return Value::Null;
+    };
+    let Ok(rows) = statement.query_map(rusqlite::params![], |row| {
+        Ok((row.get::<_, Option<String>>(0)?, row.get::<_, String>(1)?))
+    }) else {
+        return Value::Null;
+    };
+    let mut sign_ins = serde_json::Map::new();
+    for (integration, value) in rows.flatten() {
+        let Some(integration) = integration else {
+            continue;
+        };
+        let entry: Value = serde_json::from_str(&value).unwrap_or_default();
+        // Only API keys and OAuth sign-ins: an "external" one is a reference, not a sign-in.
+        if matches!(entry["type"].as_str(), Some("key" | "oauth")) {
+            sign_ins.insert(integration, entry);
+        }
+    }
+    Value::Object(sign_ins)
+}
+
+/// The user's sign-ins from either opencode generation: 1.x's `auth.json`, 2.x's database.
+fn user_sign_ins() -> Value {
+    let mut sign_ins = usable_sign_ins(&read_auth(&user_auth()));
+    if let (Some(own), Some(db)) = (sign_ins.as_object_mut(), db_sign_ins().as_object()) {
+        for (integration, entry) in db {
+            own.entry(integration.clone())
+                .or_insert_with(|| entry.clone());
+        }
+    }
+    sign_ins
+}
+
 /// Whether the user signed in to a provider with opencode (`opencode auth login`).
 pub fn signed_in() -> bool {
-    usable_sign_ins(&read_auth(&user_auth()))
+    user_sign_ins()
         .as_object()
         .is_some_and(|entries| !entries.is_empty())
 }
 
-/// The user's sign-ins, as opencode reads them from OPENCODE_AUTH_CONTENT.
+/// The user's 1.x sign-ins, as opencode reads them from OPENCODE_AUTH_CONTENT.
 fn sign_ins() -> String {
     usable_sign_ins(&read_auth(&user_auth())).to_string()
 }
@@ -236,6 +293,9 @@ impl Opencode {
         let version = check_version(program).await?;
         std::fs::create_dir_all(workspace)?;
         write_config().context("could not write opencode's settings")?;
+        if version[0] >= 2 {
+            share_sign_ins(program).await;
+        }
         Ok(Self {
             program: program.to_owned(),
             model: model.to_owned(),
@@ -294,6 +354,10 @@ impl Opencode {
         let _config_file = TurnFile(config_path.clone());
         // Declared before the run, so it is dropped after it, however the turn ends.
         let _hand_back = HandBack;
+        if self.opencode2 {
+            // A sign-in renewed in the user's own opencode since the last turn.
+            sync_credentials(&user_db(), &isle_db());
+        }
         let mut command = Command::from(command(&self.program));
         command.arg("run");
         // opencode 2 otherwise starts a background service on its default port, which the user's own may hold.
@@ -388,6 +452,9 @@ pub async fn models(program: &Path) -> anyhow::Result<String> {
     let standalone = check_version(program)
         .await
         .is_ok_and(|version| version[0] >= 2);
+    if standalone {
+        share_sign_ins(program).await;
+    }
     models_listing(program, standalone).await
 }
 
@@ -419,6 +486,14 @@ async fn models_listing(program: &Path, standalone: bool) -> anyhow::Result<Stri
         bail!("opencode models failed ({status})");
     }
     Ok(listed)
+}
+
+/// opencode 2 keeps sign-ins in its database: one run makes it when missing, then the user's go in.
+async fn share_sign_ins(program: &Path) {
+    if !isle_db().exists() {
+        let _ = tokio::time::timeout(BOOTSTRAP_TIMEOUT, models_listing(program, true)).await;
+    }
+    sync_credentials(&user_db(), &isle_db());
 }
 
 /// A model as `opencode models` lists it.
@@ -516,7 +591,7 @@ pub async fn go_models() -> Option<Vec<String>> {
 
 /// The user's OpenCode plan, by their sign-ins: "OpenCode Go", "OpenCode Zen", or "Free models" without either.
 pub fn plan() -> &'static str {
-    plan_of(&usable_sign_ins(&read_auth(&user_auth())))
+    plan_of(&user_sign_ins())
 }
 
 fn plan_of(sign_ins: &Value) -> &'static str {
@@ -829,13 +904,15 @@ fn session_id(id: &str) -> bool {
             .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|c| c.is_ascii_alphanumeric()))
 }
 
-/// Hands sign-ins opencode renewed in Isle's folder back to the user's own when dropped, then deletes them.
+/// Hands sign-ins opencode renewed in Isle's folder back to the user's own when dropped: 1.x's `auth.json`
+/// (then deleted), and 2.x's `credential` rows (kept, as the sandbox's own database).
 struct HandBack;
 
 impl Drop for HandBack {
     /// Also when the turn was stopped or timed out.
     fn drop(&mut self) {
         hand_back(&data().join("auth.json"), &user_auth());
+        sync_credentials(&user_db(), &isle_db());
     }
 }
 
@@ -885,6 +962,132 @@ fn write_auth(path: &Path, auth: &Value) -> std::io::Result<()> {
     file.write_all(&serde_json::to_vec_pretty(auth).unwrap_or_default())?;
     file.sync_all()?;
     std::fs::rename(temp, path)
+}
+
+/// One row of opencode 2's `credential` table, copied between databases as it is.
+struct SignIn {
+    id: String,
+    integration: Option<String>,
+    label: String,
+    value: String,
+    connector: Option<String>,
+    method: Option<String>,
+    active: Option<i64>,
+    created: i64,
+    updated: i64,
+}
+
+impl SignIn {
+    /// Every sign-in `db` has.
+    fn read(db: &rusqlite::Connection) -> rusqlite::Result<Vec<Self>> {
+        let mut statement = db.prepare(
+            "SELECT id, integration_id, label, value, connector_id, method_id, active, \
+             time_created, time_updated FROM credential",
+        )?;
+        let rows = statement.query_map(rusqlite::params![], |row| {
+            Ok(Self {
+                id: row.get(0)?,
+                integration: row.get(1)?,
+                label: row.get(2)?,
+                value: row.get(3)?,
+                connector: row.get(4)?,
+                method: row.get(5)?,
+                active: row.get(6)?,
+                created: row.get(7)?,
+                updated: row.get(8)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    /// Writes it over the same id, unless `db` already has a newer one.
+    fn save(&self, db: &rusqlite::Connection) -> rusqlite::Result<()> {
+        db.execute(
+            "INSERT INTO credential (id, integration_id, label, value, connector_id, method_id, active, \
+             time_created, time_updated) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
+             ON CONFLICT(id) DO UPDATE SET integration_id = excluded.integration_id, \
+             label = excluded.label, value = excluded.value, connector_id = excluded.connector_id, \
+             method_id = excluded.method_id, active = excluded.active, \
+             time_created = excluded.time_created, time_updated = excluded.time_updated \
+             WHERE excluded.time_updated > credential.time_updated",
+            rusqlite::params![
+                self.id,
+                self.integration,
+                self.label,
+                self.value,
+                self.connector,
+                self.method,
+                self.active,
+                self.created,
+                self.updated
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Writes it over the same id only when `db` still has it, so a sign-in deleted meanwhile stays gone.
+    fn update(&self, db: &rusqlite::Connection) -> rusqlite::Result<()> {
+        db.execute(
+            "UPDATE credential SET integration_id = ?2, label = ?3, value = ?4, connector_id = ?5, \
+             method_id = ?6, active = ?7, time_created = ?8, time_updated = ?9 \
+             WHERE id = ?1 AND time_updated < ?9",
+            rusqlite::params![
+                self.id,
+                self.integration,
+                self.label,
+                self.value,
+                self.connector,
+                self.method,
+                self.active,
+                self.created,
+                self.updated
+            ],
+        )?;
+        Ok(())
+    }
+}
+
+/// opencode 2 keeps sign-ins in its database, not `auth.json`: copies the user's into Isle's sandbox, and a
+/// sign-in opencode renewed there back into the user's, the newer row winning. Isle-only sign-ins stay put,
+/// and one the user removed is neither deleted here nor put back.
+fn sync_credentials(user: &Path, sandbox: &Path) {
+    if !user.exists() || !sandbox.exists() {
+        return;
+    }
+    if let Err(err) = sync_credentials_at(user, sandbox) {
+        log::debug!("could not share opencode's sign-ins: {err:#}");
+    }
+}
+
+/// `sync_credentials` on given databases, also in tests.
+fn sync_credentials_at(user: &Path, sandbox: &Path) -> anyhow::Result<()> {
+    use rusqlite::{Connection, OpenFlags};
+    let user_db = Connection::open_with_flags(user, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+    let sandbox_db = Connection::open_with_flags(sandbox, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+    // The sandbox database holds the user's sign-ins: only they may read it.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(sandbox, std::fs::Permissions::from_mode(0o600))?;
+    }
+    for db in [&user_db, &sandbox_db] {
+        // The user's own opencode may be writing: wait it out, as a turn does.
+        db.busy_timeout(std::time::Duration::from_secs(2))?;
+    }
+    let theirs = SignIn::read(&user_db)?;
+    let ours = SignIn::read(&sandbox_db)?;
+    // Theirs first, so a sign-in new to the sandbox is there before the next run.
+    for sign_in in &theirs {
+        sign_in.save(&sandbox_db)?;
+    }
+    // Then only what the sandbox renewed, and only if the user still has it: a sign-in only the sandbox
+    // has, or one the user removed meanwhile, stays out of their database.
+    for sign_in in &ours {
+        if theirs.iter().any(|theirs| theirs.id == sign_in.id) {
+            sign_in.update(&user_db)?;
+        }
+    }
+    Ok(())
 }
 
 /// Deletes Isle's opencode conversation `id` now (an id as opencode makes them).
@@ -986,8 +1189,12 @@ pub fn prune(today: NaiveDate) {
 /// `prune` on a given folder; the caller holds `RUNNING`. Every conversation is in one database, written on
 /// each turn: last written before today, all of them are old, and its data and state folders go whole.
 fn prune_in(home: &Path, user_auth: &Path, today: NaiveDate) {
-    // A renewed sign-in an isled stopped mid-turn left behind.
+    // A renewed sign-in an isled stopped mid-turn left behind: 1.x's file, and 2.x's database rows.
     hand_back(&home.join("data/opencode/auth.json"), user_auth);
+    sync_credentials(
+        &user_auth.with_file_name("opencode.db"),
+        &home.join("data/opencode/opencode.db"),
+    );
     let old = |path: &Path| {
         std::fs::metadata(path)
             .and_then(|meta| meta.modified())
@@ -1323,6 +1530,84 @@ mod tests {
             plan_of(&json!({"opencode": {"type": "api"}, "opencode-go": {"type": "api"}})),
             "OpenCode Go"
         );
+    }
+
+    #[test]
+    fn shares_opencode_2s_sign_ins_with_the_sandbox() {
+        let dir = std::env::temp_dir().join(format!("isle-opencode-db-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let user = dir.join("user.db");
+        let sandbox = dir.join("sandbox.db");
+        let open = |path: &Path| {
+            let db = rusqlite::Connection::open(path).unwrap();
+            db.execute_batch(
+                "CREATE TABLE credential (
+                    id text PRIMARY KEY,
+                    integration_id text,
+                    label text NOT NULL,
+                    value text NOT NULL,
+                    connector_id text,
+                    method_id text,
+                    active integer,
+                    time_created integer NOT NULL,
+                    time_updated integer NOT NULL
+                );",
+            )
+            .unwrap();
+            db
+        };
+        let key = |name: &str| json!({"type": "key", "key": name}).to_string();
+        let insert = |db: &rusqlite::Connection, id: &str, value: &str, updated: i64| {
+            db.execute(
+                "INSERT INTO credential VALUES (?1, ?1, ?1, ?2, NULL, NULL, 1, ?3, ?3)",
+                rusqlite::params![id, value, updated],
+            )
+            .unwrap()
+        };
+        let user_db = open(&user);
+        insert(&user_db, "deepseek", &key("user"), 10);
+        insert(&user_db, "opencode", &key("old"), 10);
+        // An "external" credential is a reference, not a sign-in.
+        insert(&user_db, "corp", r#"{"type":"external"}"#, 10);
+        let sandbox_db = open(&sandbox);
+        insert(&sandbox_db, "opencode", &key("renewed"), 20);
+        insert(&sandbox_db, "github-copilot", &key("isle"), 30);
+        drop((user_db, sandbox_db));
+
+        sync_credentials_at(&user, &sandbox).unwrap();
+
+        let read = |path: &Path, id: &str| -> Option<String> {
+            let db = rusqlite::Connection::open(path).unwrap();
+            db.query_row(
+                "SELECT value FROM credential WHERE id = ?1",
+                rusqlite::params![id],
+                |row| row.get(0),
+            )
+            .ok()
+        };
+        // The user's sign-ins reach the sandbox; the sandbox's renewed one goes back.
+        assert_eq!(read(&sandbox, "deepseek"), Some(key("user")));
+        assert_eq!(read(&sandbox, "opencode"), Some(key("renewed")));
+        assert_eq!(read(&user, "opencode"), Some(key("renewed")));
+        // A sign-in only the sandbox has stays out of the user's database.
+        assert_eq!(read(&sandbox, "github-copilot"), Some(key("isle")));
+        assert_eq!(read(&user, "github-copilot"), None);
+        // The plan comes from the user's sign-ins, not the reference.
+        let plan = db_sign_ins_at(&user);
+        assert_eq!(plan["deepseek"]["type"], "key");
+        assert_eq!(plan["opencode"]["type"], "key");
+        assert!(plan["corp"].is_null());
+        assert_eq!(plan_of(&plan), "OpenCode Zen");
+        // A sign-in the user removed is not put back by the sandbox's copy.
+        let user_db = rusqlite::Connection::open(&user).unwrap();
+        user_db
+            .execute("DELETE FROM credential WHERE id = 'deepseek'", [])
+            .unwrap();
+        drop(user_db);
+        sync_credentials_at(&user, &sandbox).unwrap();
+        assert_eq!(read(&user, "deepseek"), None);
+        assert_eq!(read(&sandbox, "deepseek"), Some(key("user")));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     /// The real opencode, asked to change this computer: nothing may change. ISLE_OPENCODE_PROBE_MODEL picks
