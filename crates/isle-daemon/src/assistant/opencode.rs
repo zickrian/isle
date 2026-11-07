@@ -60,8 +60,18 @@ const MIN_VERSION: [u32; 3] = [1, 4, 8];
 const VERSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 /// Longest `opencode models` may take to make opencode 2's database.
 const BOOTSTRAP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+/// Longest one `opencode auth ...` may take before it is stopped.
+const AUTH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+/// How long the user's own sign-ins are reused before asking opencode again.
+const USER_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
 /// Longest `opencode session delete` may take before it is stopped.
 const FORGET_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+/// One credential sync at a time: a model listing and a turn must not interleave.
+static SYNCING: Mutex<()> = Mutex::new(());
+/// The user's last `auth export`, with the data folder it came from.
+static USER_SIGN_INS: Mutex<Option<(PathBuf, std::time::Instant, Vec<Value>)>> = Mutex::new(None);
+/// The sandbox's sign-ins as last synced, so a pre-turn or pre-listing sync need not start opencode.
+static SANDBOX_SIGN_INS: Mutex<Option<(PathBuf, Vec<Value>)>> = Mutex::new(None);
 /// All opencode gets of isled's environment (and `LC_*`): no OPENCODE_* settings, no provider keys.
 const KEPT_ENV: &[&str] = &[
     "PATH",
@@ -224,7 +234,7 @@ fn user_sign_ins() -> Value {
     if user_db().exists()
         && let Some(program) = super::brain::Provider::Opencode.program()
         && let Some(data) = dirs::data_dir()
-        && let Ok(rows) = auth_export(&program, &data, false)
+        && let Ok(rows) = user_auth_rows(&program, &data)
         && let Some(own) = sign_ins.as_object_mut()
     {
         for row in &rows {
@@ -279,18 +289,46 @@ fn auth_command(program: &Path, data_home: &Path, sandbox: bool) -> std::process
     command
 }
 
+/// Waits for an auth command, killing it after `timeout`.
+fn wait_auth(
+    child: &mut std::process::Child,
+    timeout: std::time::Duration,
+) -> anyhow::Result<std::process::ExitStatus> {
+    let start = std::time::Instant::now();
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(status);
+        }
+        if start.elapsed() >= timeout {
+            child.kill().ok();
+            let _ = child.wait();
+            bail!("opencode auth took too long");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
 /// opencode 2's sign-ins as `opencode auth export` gives them, keys and OAuth only.
 fn auth_export(program: &Path, data_home: &Path, sandbox: bool) -> anyhow::Result<Vec<Value>> {
     let mut command = auth_command(program, data_home, sandbox);
-    command.args(["auth", "export", "--standalone"]);
-    let output = command
-        .output()
-        .context("could not ask opencode for its sign-ins")?;
-    if !output.status.success() {
+    command
+        .args(["auth", "export", "--standalone"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    let mut child = command
+        .spawn()
+        .context("could not start opencode auth export")?;
+    let status = wait_auth(&mut child, AUTH_TIMEOUT)?;
+    let mut stdout = Vec::new();
+    if let Some(mut out) = child.stdout.take() {
+        std::io::Read::read_to_end(&mut out, &mut stdout)?;
+    }
+    if !status.success() {
         bail!("opencode auth export failed");
     }
     let rows: Vec<Value> =
-        serde_json::from_slice(&output.stdout).context("opencode auth export gave no list")?;
+        serde_json::from_slice(&stdout).context("opencode auth export gave no list")?;
     Ok(sign_ins_from(rows))
 }
 
@@ -318,9 +356,13 @@ fn auth_import(
         .take()
         .context("no stdin for opencode auth import")?;
     let json = serde_json::to_vec(rows)?;
-    std::io::Write::write_all(&mut stdin, &json)?;
+    if let Err(err) = std::io::Write::write_all(&mut stdin, &json) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(err.into());
+    }
     drop(stdin);
-    if !child.wait()?.success() {
+    if !wait_auth(&mut child, AUTH_TIMEOUT)?.success() {
         bail!("opencode auth import failed");
     }
     Ok(())
@@ -340,14 +382,67 @@ fn auth_logout(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    if !command
-        .status()
-        .context("could not start opencode auth logout")?
-        .success()
-    {
+    let mut child = command
+        .spawn()
+        .context("could not start opencode auth logout")?;
+    if !wait_auth(&mut child, AUTH_TIMEOUT)?.success() {
         bail!("opencode auth logout failed");
     }
     Ok(())
+}
+
+/// The user's sign-ins, reusing the last export for a few seconds: their own opencode changes them
+/// rarely, and every export starts a whole opencode.
+fn user_auth_rows(program: &Path, data_home: &Path) -> anyhow::Result<Vec<Value>> {
+    let mut cached = USER_SIGN_INS.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some((path, at, rows)) = cached.as_ref()
+        && path.as_path() == data_home
+        && at.elapsed() < USER_CACHE_TTL
+    {
+        return Ok(rows.clone());
+    }
+    let rows = auth_export(program, data_home, false)?;
+    *cached = Some((
+        data_home.to_owned(),
+        std::time::Instant::now(),
+        rows.clone(),
+    ));
+    Ok(rows)
+}
+
+/// Forgets the cached user export: after Isle writes a renewed sign-in back to the user's database.
+fn forget_user_auth_rows() {
+    *USER_SIGN_INS.lock().unwrap_or_else(PoisonError::into_inner) = None;
+}
+
+/// The sandbox's sign-ins, from the last sync unless `fresh` asks opencode again.
+fn sandbox_auth_rows(program: &Path, data_home: &Path, fresh: bool) -> anyhow::Result<Vec<Value>> {
+    let mut cached = SANDBOX_SIGN_INS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    if !fresh
+        && let Some((path, rows)) = cached.as_ref()
+        && path.as_path() == data_home
+    {
+        return Ok(rows.clone());
+    }
+    let rows = auth_export(program, data_home, true)?;
+    *cached = Some((data_home.to_owned(), rows.clone()));
+    Ok(rows)
+}
+
+/// Replaces the cached sandbox state after imports or removals.
+fn cache_sandbox_rows(data_home: &Path, rows: &[Value]) {
+    *SANDBOX_SIGN_INS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner) = Some((data_home.to_owned(), rows.to_vec()));
+}
+
+/// Forgets the cached sandbox state: its database is gone, or a sync did not finish.
+fn forget_sandbox_rows() {
+    *SANDBOX_SIGN_INS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner) = None;
 }
 
 /// Only API keys and OAuth sign-ins: an "external" or "well-known" one would bring its server's config,
@@ -380,9 +475,6 @@ impl Opencode {
         let version = check_version(program).await?;
         std::fs::create_dir_all(workspace)?;
         write_config().context("could not write opencode's settings")?;
-        if version[0] >= 2 {
-            share_sign_ins(program).await;
-        }
         Ok(Self {
             program: program.to_owned(),
             model: model.to_owned(),
@@ -442,8 +534,8 @@ impl Opencode {
         // Declared before the run, so it is dropped after it, however the turn ends.
         let _hand_back = HandBack(self.opencode2);
         if self.opencode2 {
-            // A sign-in renewed in the user's own opencode since the last turn.
-            sync_credentials(&self.program);
+            // The sandbox database, with the user's sign-ins from since the last turn.
+            share_sign_ins(&self.program).await;
         }
         let mut command = Command::from(command(&self.program));
         command.arg("run");
@@ -581,9 +673,10 @@ async fn share_sign_ins(program: &Path) {
         return;
     }
     if !isle_db().exists() {
+        forget_sandbox_rows();
         let _ = tokio::time::timeout(BOOTSTRAP_TIMEOUT, models_listing(program, true)).await;
     }
-    sync_credentials(program);
+    sync_credentials(program, false);
 }
 
 /// A model as `opencode models` lists it.
@@ -1004,7 +1097,8 @@ impl Drop for HandBack {
         if self.0
             && let Some(program) = super::brain::Provider::Opencode.program()
         {
-            sync_credentials(&program);
+            // The turn or listing may have renewed a sign-in: read the sandbox again.
+            sync_credentials(&program, true);
         }
     }
 }
@@ -1044,16 +1138,21 @@ fn hand_back(isle: &Path, user: &Path) {
 /// opencode 2 keeps sign-ins in its database: copies the user's into Isle's sandbox, and a sign-in
 /// opencode renewed there back into the user's, the newer one winning. Isle-only sign-ins stay put; one
 /// the user removed is removed from the sandbox once it was copied from them, but not put back.
-fn sync_credentials(program: &Path) {
+fn sync_credentials(program: &Path, fresh_sandbox: bool) {
     if !user_db().exists() || !isle_db().exists() {
         return;
     }
     let Some(user_data) = dirs::data_dir() else {
         return;
     };
+    // A model listing and a turn must not interleave exports, imports and logouts.
+    let _syncing = SYNCING.lock().unwrap_or_else(PoisonError::into_inner);
     let sandbox_data = isle_home().join("data");
     let shared = isle_home().join("shared.json");
-    if let Err(err) = sync_credentials_at(program, &user_data, &sandbox_data, &shared) {
+    if let Err(err) =
+        sync_credentials_at(program, &user_data, &sandbox_data, &shared, fresh_sandbox)
+    {
+        forget_sandbox_rows();
         log::debug!("could not share opencode's sign-ins: {err:#}");
     }
 }
@@ -1073,9 +1172,21 @@ fn sync_credentials_at(
     user_data: &Path,
     sandbox_data: &Path,
     shared_path: &Path,
+    fresh_sandbox: bool,
 ) -> anyhow::Result<()> {
-    let user = auth_export(program, user_data, false)?;
-    let sandbox = auth_export(program, sandbox_data, true)?;
+    // The exports are independent: start them together, so a cold sync pays one startup.
+    let (user, sandbox) = std::thread::scope(|scope| -> anyhow::Result<_> {
+        let user = scope.spawn(|| user_auth_rows(program, user_data));
+        let sandbox = scope.spawn(|| sandbox_auth_rows(program, sandbox_data, fresh_sandbox));
+        let user = user
+            .join()
+            .map_err(|_| anyhow::anyhow!("user sign-in export panicked"))??;
+        let sandbox = sandbox
+            .join()
+            .map_err(|_| anyhow::anyhow!("sandbox sign-in export panicked"))??;
+        Ok((user, sandbox))
+    })?;
+    let mut final_sandbox = sandbox.clone();
     let before = read_shared(shared_path);
     let mut shared = Vec::new();
     // A sign-in copied from the user's opencode that they have since removed goes from the sandbox too.
@@ -1092,11 +1203,14 @@ fn sync_credentials_at(
             .find(|row| row["id"].as_str() == Some(id.as_str()))
             && let (Some(integration), Some(row_id)) =
                 (row["integrationID"].as_str(), row["id"].as_str())
-            && let Err(err) = auth_logout(program, sandbox_data, true, integration, row_id)
         {
-            // Keep it and try again next time; one unknown or busy sign-in must not block the rest.
-            log::debug!("could not remove opencode's sign-in {row_id}: {err:#}");
-            shared.push(id);
+            if let Err(err) = auth_logout(program, sandbox_data, true, integration, row_id) {
+                // Keep it and try again next time; one unknown or busy sign-in must not block the rest.
+                log::debug!("could not remove opencode's sign-in {row_id}: {err:#}");
+                shared.push(id);
+            } else {
+                final_sandbox.retain(|row| row["id"].as_str() != Some(row_id));
+            }
         }
     }
     // Hand back what opencode renewed in Isle's sandbox, over an older sign-in of the user's.
@@ -1119,13 +1233,18 @@ fn sync_credentials_at(
     if let Err(err) = auth_import(program, user_data, false, &renewed) {
         // Put back what was there if the import failed, so a sign-in is never lost.
         let _ = auth_import(program, user_data, false, &replaced);
+        forget_user_auth_rows();
         return Err(err);
+    }
+    if !renewed.is_empty() {
+        forget_user_auth_rows();
     }
     // Then the user's sign-ins into the sandbox: a new one, or a newer key or sign-in than Isle has.
     let mut fresh = Vec::new();
     for row in &user {
         let Some(theirs) = sandbox.iter().find(|theirs| theirs["id"] == row["id"]) else {
             fresh.push(row.clone());
+            final_sandbox.push(row.clone());
             continue;
         };
         let changed = match row["value"]["type"].as_str() {
@@ -1140,10 +1259,13 @@ fn sync_credentials_at(
                 (row["integrationID"].as_str(), row["id"].as_str())
         {
             auth_logout(program, sandbox_data, true, integration, id)?;
+            final_sandbox.retain(|row| row["id"].as_str() != Some(id));
             fresh.push(row.clone());
+            final_sandbox.push(row.clone());
         }
     }
     auth_import(program, sandbox_data, true, &fresh)?;
+    cache_sandbox_rows(sandbox_data, &final_sandbox);
     for row in &user {
         if let Some(id) = row["id"].as_str()
             && !shared.iter().any(|kept| kept == id)
@@ -1272,6 +1394,8 @@ pub fn prune(today: NaiveDate) {
 /// `prune` on a given folder; the caller holds `RUNNING`. Every conversation is in one database, written on
 /// each turn: last written before today, all of them are old, and its data and state folders go whole.
 fn prune_in(home: &Path, user_auth: &Path, today: NaiveDate) {
+    // The database this cached may be the one about to go.
+    forget_sandbox_rows();
     // A renewed sign-in an isled stopped mid-turn left behind.
     hand_back(&home.join("data/opencode/auth.json"), user_auth);
     let old = |path: &Path| {
@@ -1623,6 +1747,17 @@ mod tests {
         assert!(kept.iter().all(|row| row["id"] != "c" && row["id"] != "d"));
     }
 
+    #[test]
+    fn stops_an_auth_command_that_hangs() {
+        let mut child = std::process::Command::new("sleep")
+            .arg("5")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        assert!(wait_auth(&mut child, std::time::Duration::from_millis(100)).is_err());
+    }
+
     /// A stand-in `opencode auth`: `creds.json` in each data folder, imports to `imported.json`, and a
     /// logout log. A `fail-import` file there makes the next import fail once.
     fn fake_opencode(dir: &Path) -> PathBuf {
@@ -1666,7 +1801,7 @@ mod tests {
                 {"id": "github-copilot", "integrationID": "github-copilot", "label": "Copilot", "active": true, "value": {"type": "key", "key": "isle"}}
             ]),
         );
-        sync_credentials_at(&program, &user, &sandbox, &shared).unwrap();
+        sync_credentials_at(&program, &user, &sandbox, &shared, true).unwrap();
         let marked: Vec<String> = serde_json::from_slice(&std::fs::read(&shared).unwrap()).unwrap();
         assert!(marked.contains(&"deepseek".to_owned()) && marked.contains(&"opencode".to_owned()));
         assert!(!marked.contains(&"github-copilot".to_owned()));
@@ -1692,7 +1827,7 @@ mod tests {
         // A sign-in the user removed is not put back, and its shared sandbox copy goes too.
         write(&user, json!([]));
         std::fs::remove_file(user.join("imported.json")).unwrap();
-        sync_credentials_at(&program, &user, &sandbox, &shared).unwrap();
+        sync_credentials_at(&program, &user, &sandbox, &shared, true).unwrap();
         assert!(!user.join("imported.json").exists());
         let logouts = std::fs::read_to_string(sandbox.join("logout.log")).unwrap_or_default();
         assert!(logouts.contains("opencode opencode"));
@@ -1727,7 +1862,7 @@ mod tests {
         )
         .unwrap();
         std::fs::write(user.join("fail-import"), b"").unwrap();
-        assert!(sync_credentials_at(&program, &user, &sandbox, &shared).is_err());
+        assert!(sync_credentials_at(&program, &user, &sandbox, &shared, true).is_err());
         let restored: Vec<Value> =
             serde_json::from_slice(&std::fs::read(user.join("imported.json")).unwrap()).unwrap();
         assert!(
