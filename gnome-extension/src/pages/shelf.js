@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 zickrian
 
-// The Shelf page: Clipboard (copy history; Super+V to search, ← → Enter to paste),
+// The Shelf page: Clipboard (copy history; Super+V to search, ← → ↑ ↓ Enter to paste),
 // Files (dropped files to drag or copy into any app) and, while sharing, Phone (a QR code to scan).
 
 import Clutter from 'gi://Clutter';
@@ -187,6 +187,9 @@ export const ShelfPage = GObject.registerClass({
         });
         text.connect('activate', () => this._clips.activateSelected());
         text.connect('key-press-event', (_text, event) => this._onSearchKey(event));
+        // The text field takes ←/→ for its cursor before its key handler; catch the arrows on the way down.
+        this._search.connect('captured-event', (_entry, event) =>
+            event.type() === Clutter.EventType.KEY_PRESS ? this._onSearchKey(event) : Clutter.EVENT_PROPAGATE);
         // The selection outline only means something while typing.
         text.connect('key-focus-in', () => (this._clips.keyboard = true));
         text.connect('key-focus-out', () => {
@@ -252,7 +255,8 @@ export const ShelfPage = GObject.registerClass({
         this._searchButton.hide();
         this._search.show();
         this.emit('request-keyboard', true);
-        this._search.grab_key_focus();
+        // Focus the inner text: that is where the key handler is.
+        this._search.clutter_text.grab_key_focus();
     }
 
     /** Puts the search button back in place of the field. */
@@ -619,20 +623,32 @@ export const ShelfPage = GObject.registerClass({
         this._clips.kind = kind;
     }
 
-    /** ← → move between cards; Esc empties the search before it can close the island. */
+    /** ← → ↑ ↓ move between cards while the search is empty; Esc empties it before it can close the island. */
     _onSearchKey(event) {
-        switch (event.get_key_symbol()) {
-        case Clutter.KEY_Left:
-            this._clips.moveSelection(-1);
-            return Clutter.EVENT_STOP;
-        case Clutter.KEY_Right:
-            this._clips.moveSelection(1);
-            return Clutter.EVENT_STOP;
-        case Clutter.KEY_Escape:
+        const key = event.get_key_symbol();
+        if (key === Clutter.KEY_Escape) {
             // First Esc clears the search; the next one closes the island.
             if (!this._search.text)
                 return Clutter.EVENT_PROPAGATE;
             this._search.text = '';
+            return Clutter.EVENT_STOP;
+        }
+        // With words in it, the arrows belong to the field: moving the cursor, selecting.
+        if (this._search.text)
+            return Clutter.EVENT_PROPAGATE;
+        switch (key) {
+        // The keypad's arrows too: Num Lock on, they are not the plain ones.
+        case Clutter.KEY_Left:
+        case Clutter.KEY_KP_Left:
+        case Clutter.KEY_Up:
+        case Clutter.KEY_KP_Up:
+            this._clips.moveSelection(-1);
+            return Clutter.EVENT_STOP;
+        case Clutter.KEY_Right:
+        case Clutter.KEY_KP_Right:
+        case Clutter.KEY_Down:
+        case Clutter.KEY_KP_Down:
+            this._clips.moveSelection(1);
             return Clutter.EVENT_STOP;
         default:
             return Clutter.EVENT_PROPAGATE;

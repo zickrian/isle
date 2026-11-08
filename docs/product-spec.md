@@ -208,7 +208,7 @@ place, dimmed, so the layout never jumps.
 Shortcuts are set in one place, Settings → Island → Shortcuts, one a page: Super+V shows on the row of the page it opens (the Shelf's clipboard or the Calendar). Given another shortcut there, that page lets go of Super+V, which then opens nothing; Super+V pressed in the sheet that asks for either row's shortcut takes it back: GNOME takes the keys before any window sees them, so Isle hands them to the sheet while it waits. One GNOME or Isle already uses is refused, saying which. A row's × takes off what it shows (its own shortcut, or else Super+V, which then opens nothing until given again); the sheet that asks for a shortcut fits what it says, no scrolling, with Esc to cancel and Backspace to remove. The Clipboard page says which shortcut opens the history.
 | Scroll, or swipe with two fingers, over the header (tabs and status) | – | Change page: down or right the next, up or left the one before; one page a swipe, one a wheel click (at most one every 0.2 s while it spins); stops at the first and last page |
 | Scroll, or swipe with two fingers, over a page | – | Lists, lyrics and the calendar's events scroll; the page never changes |
-| ← → Enter (search field) | – | Choose a clipboard card; Enter pastes it into the window in front |
+| ← → ↑ ↓ Enter (search field) | – | Choose a clipboard card while the search is empty (with words in it, the arrows move the cursor); Enter pastes it into the window in front |
 | Esc | – | Clear the search, stop typing or renaming; then close when opened with Super+V |
 
 **Default page on open**, first match wins: the page of the alert being
@@ -455,8 +455,9 @@ with a phone.
   images, files; the chosen one lit, the others dimmed), search (a round
   button that opens into a field, closing again when left empty) and
   Clear all (asks once more; pinned items are kept). Opened with Super+V, the search
-  field has the keyboard: ← → choose a card (white outline), Enter pastes it
-  into the window in front (Ctrl+Shift+V in terminals).
+  field has the keyboard: ← → ↑ ↓ choose a card while it is empty (once there are
+  words, the arrows move the cursor), Enter pastes it into the window in front
+  (Ctrl+Shift+V in terminals).
 - **Files**: at most 6 files, all in view with no scrolling; a seventh is
   refused until one is removed. Each file is a tile of one size: a 52 px
   square preview, as Files shows the file (a picture cut to a square; a
