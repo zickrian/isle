@@ -6,6 +6,13 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The one-line install stopped at the first time GitHub timed out ("curl: (22) The requested URL returned error:
+  504", then "the download failed"). It now asks again a few times when GitHub times out or is busy for a moment,
+  and still gives up at once when GitHub says to come back much later. An update from Settings runs the new
+  version's own installer, so updates get this from the next version on.
+
 ## [1.7.1] - 2026-11-07
 
 With more than one display, the brightness shows in the island instead of a flickering popup. To update:

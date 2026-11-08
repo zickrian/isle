@@ -10,6 +10,11 @@ ARCH="$(uname -m)"
 # A release just tagged may take a few minutes to get its files.
 RETRIES=6
 RETRY_WAIT=20
+# GitHub now and then times out or is busy for a moment (a 408, 429 or 5xx): curl asks again a few times.
+# The time limit keeps an answer of "come back in an hour" from holding the install up; the API's is
+# shorter, as its own limit has a way around it (web_package).
+CURL_RETRY=(--retry 4 --retry-delay 3 --retry-max-time 120)
+API_RETRY=(--retry 3 --retry-delay 3 --retry-max-time 20)
 
 # A step's heading, in bold.
 say() { printf '\033[1m==> %s\033[0m\n' "$*"; }
@@ -43,12 +48,12 @@ check() {
 web_package() {
     local tag="v${ISLE_VERSION:-}" url
     if [ -z "${ISLE_VERSION:-}" ]; then
-        tag="$(curl -fsLI -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest")" || return 1
+        tag="$(curl -fsLI "${CURL_RETRY[@]}" -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest")" || return 1
         tag="${tag##*/}"
     fi
     [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
     url="https://github.com/$REPO/releases/download/$tag/isle-${tag#v}-$ARCH-linux.tar.gz"
-    curl -fsLI -o /dev/null "$url" || return 1
+    curl -fsLI "${CURL_RETRY[@]}" -o /dev/null "$url" || return 1
     printf '%s\n' "$url"
 }
 
@@ -61,7 +66,7 @@ find_package() {
         api="https://api.github.com/repos/$REPO/releases/latest"
     fi
     for attempt in $(seq "$RETRIES"); do
-        if ! reply="$(curl -sSL -w '\n%{http_code}' "$api" 2>&1)"; then
+        if ! reply="$(curl -sSL "${API_RETRY[@]}" -w '\n%{http_code}' "$api" 2>&1)"; then
             fail "could not reach GitHub ($reply); check the internet connection and try again."
         fi
         case "${reply##*$'\n'}" in
@@ -103,8 +108,8 @@ main() {
         local url expected actual
         url="$(find_package)"
         say "Downloading $(basename "$url")"
-        curl -fsSL "$url" -o "$WORK/isle.tar.gz" || fail "the download failed; please try again."
-        curl -fsSL "$url.sha256" -o "$WORK/isle.tar.gz.sha256" || fail "the download failed; please try again."
+        curl -fsSL "${CURL_RETRY[@]}" "$url" -o "$WORK/isle.tar.gz" || fail "the download failed; please try again."
+        curl -fsSL "${CURL_RETRY[@]}" "$url.sha256" -o "$WORK/isle.tar.gz.sha256" || fail "the download failed; please try again."
         expected="$(cut -d' ' -f1 "$WORK/isle.tar.gz.sha256")"
         actual="$(sha256sum "$WORK/isle.tar.gz" | cut -d' ' -f1)"
         [ "$expected" = "$actual" ] || fail "the download is damaged (checksum mismatch); please try again."
