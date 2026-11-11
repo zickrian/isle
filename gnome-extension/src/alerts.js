@@ -376,7 +376,9 @@ export function usage(provider, window, percent, resetsAt, critical) {
     const name = provider.toLowerCase();
     return {
         key: `usage:${provider}:${window}`,
-        icon: name.includes('claude') ? 'isle-claude'
+        // Antigravity first: its Claude & GPT card carries both names.
+        icon: name.includes('antigravity') ? 'isle-agy'
+            : name.includes('claude') ? 'isle-claude'
             : name.includes('grok') ? 'isle-grok'
             : name.includes('gpt') || name.includes('codex') ? 'isle-openai' : 'isle-gauge',
         ring: Math.min(1, percent / 100),
@@ -385,6 +387,7 @@ export function usage(provider, window, percent, resetsAt, critical) {
         value: percentText(percent),
         // In the plan's own colour, as on the Usage page; red once nearly used up.
         tone: Math.round(percent) >= critical ? 'bad'
+            : name.includes('antigravity') ? 'agy'
             : name.includes('claude') ? 'claude'
             : name.includes('grok') ? 'grok'
             : name.includes('gpt') || name.includes('codex') ? 'codex' : 'neutral',
@@ -692,7 +695,7 @@ export function modelSwitched(provider, plan, picked, used) {
         'Your AI';
     return {
         key: `model-switched:${provider}`,
-        icon: {claude: 'isle-claude', codex: 'isle-openai', grok: 'isle-grok'}[provider] ?? 'isle-sparkle-symbolic',
+        icon: {claude: 'isle-claude', codex: 'isle-openai', grok: 'isle-grok', agy: 'isle-agy'}[provider] ?? 'isle-sparkle-symbolic',
         title: plan ? `${name} ${plan} doesn’t include ${picked}` : `${picked} isn’t available`,
         // A long model name ("Claude Opus 4.6 (Thinking)") wraps rather than being cut.
         titleLines: 2,

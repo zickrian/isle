@@ -62,6 +62,19 @@ Run that smoke test locally with Docker after `scripts/package.sh`:
 docker run --rm -v "$PWD:/src:ro" ubuntu:24.04 /src/scripts/ci/smoke-test.sh /src/dist/isle-<version>-x86_64-linux.tar.gz
 ```
 
+For scrolling changes, also run the native full-island regression on a host
+with GNOME Shell, bubblewrap and D-Bus installed:
+
+```sh
+bash scripts/ci/native-scroll-test.sh "$(mktemp -d)"
+```
+
+It exercises the real Island, ExpandedView and UsagePage with virtual pointer
+input and synthetic quotas in an offline, private session; it does not install
+Isle or use your accounts or settings. The command prints an evidence directory
+with captures and event traces; remove that scratch directory after inspection.
+Run it on GNOME 46 and the newest supported GNOME Shell when changing input handling.
+
 ## Trying the extension without logging out
 
 GNOME Shell can run nested inside your session:

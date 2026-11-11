@@ -19,6 +19,11 @@ pub fn share(real: &Path, linked: &Path) {
             real.display()
         );
     }
+    link(real, linked);
+}
+
+/// Makes `linked` (Isle's) a link to `real` (the user's), without copying back.
+pub fn link(real: &Path, linked: &Path) {
     // The user signed out (or never signed in): so is Isle's copy, never the other way round.
     if !real.exists() {
         if fs::symlink_metadata(linked).is_ok() {
@@ -112,6 +117,13 @@ mod tests {
         fs::write(&linked, "stale").unwrap();
         aged(&linked, 120);
         share(&real, &linked);
+        assert_eq!(fs::read_to_string(&real).unwrap(), "token 2");
+        assert_eq!(fs::read_link(&linked).unwrap(), real);
+        // Linking without sharing never hands a newer replacement back.
+        fs::remove_file(&linked).unwrap();
+        fs::write(&linked, "newer").unwrap();
+        aged(&real, 60);
+        link(&real, &linked);
         assert_eq!(fs::read_to_string(&real).unwrap(), "token 2");
         assert_eq!(fs::read_link(&linked).unwrap(), real);
         // Signed out (`codex logout`): Isle's copy goes too, and nothing comes back.

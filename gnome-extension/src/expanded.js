@@ -97,8 +97,6 @@ export const ExpandedView = GObject.registerClass({
         this._index = Math.max(0, pages.findIndex(page => page.available));
         this._active = false;
         this._width = px(EXPANDED_WIDTH);
-        /** Set once smooth scrolling is seen; its click-style copies are then dropped. */
-        this._smoothScrolling = false;
         this._lastFlip = 0;
         /** The scroll gesture over the header in progress: travel so far, and whether it turned a page. */
         this._gesture = {dx: 0, dy: 0, flipped: false, at: 0};
@@ -736,7 +734,7 @@ export const ExpandedView = GObject.registerClass({
 
     /** A scroll over the tabs or the status beside them: down or right is the next page, up or left the one before. */
     _flipFromScroll(event) {
-        // Click-style copies of smooth scrolls were dropped already (`_dropScrollCopies`).
+        // Compatibility copies were dropped already (`_dropScrollCopies`).
         this._trackGesture(event);
         const gesture = this._gesture;
         const now = GLib.get_monotonic_time() / 1000;
@@ -800,21 +798,14 @@ export const ExpandedView = GObject.registerClass({
             gesture.at = 0;
     }
 
-    /** Smooth scrolls also come as click-style copies (UP, DOWN...), not always marked as emulated: a page
-     * counting both (Usage) moved two steps a swipe. Only a list, which steps on clicks alone, gets them. */
+    /** Ignore emulated counterparts, whether smooth wheel events or click-style finger events.
+     * Lists still receive the wheel clicks St.ScrollView needs. */
     _dropScrollCopies(event) {
         if (event.type() !== Clutter.EventType.SCROLL)
             return Clutter.EVENT_PROPAGATE;
-        this._smoothScrolling ||= event.get_scroll_direction() === Clutter.ScrollDirection.SMOOTH;
-        if (this._isCopy(event) && !this._overList(event))
+        if ((event.get_flags() & Clutter.EventFlags.FLAG_POINTER_EMULATED) && !this._overList(event))
             return Clutter.EVENT_STOP;
         return Clutter.EVENT_PROPAGATE;
-    }
-
-    /** Whether `event` is the click-style copy of a smooth scroll. */
-    _isCopy(event) {
-        return event.get_scroll_direction() !== Clutter.ScrollDirection.SMOOTH &&
-            (this._smoothScrolling || Boolean(event.get_flags() & Clutter.EventFlags.POINTER_EMULATED));
     }
 
     // Whether a wheel click is over a vertical list. St.ScrollView steps only on

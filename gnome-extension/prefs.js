@@ -112,11 +112,28 @@ export default class IslePreferences extends ExtensionPreferences {
             description: found.length
                 ? 'How much of your plans\' limits is used, on a Usage page in the open island, with a warning ' +
                   'as one nears its end. Found from the apps you are signed in to; nothing else to set up.'
-                : 'Sign in to Claude Code, Codex or Grok and your plan shows up here.',
+                : 'Sign in to Claude Code, Codex, Grok or Antigravity and your plan shows up here.',
         });
         const enabled = switchRow(settings, 'usage-enabled', 'Show AI usage', 'The Usage page and its warnings');
         group.add(enabled);
-        const rows = found.map(({key, title, subtitle}) => switchRow(settings, key, title, subtitle));
+        const cleanup = [];
+        const rows = found.map(({key, title, subtitle, parent}) => {
+            const row = switchRow(settings, key, title, subtitle);
+            if (!parent) {
+                settings.bind('usage-enabled', row, 'sensitive', Gio.SettingsBindFlags.GET);
+                return row;
+            }
+            // A card under its parent's switch: off, its switch waits, and its own choice is kept for later.
+            const sync = () => (row.sensitive = settings.get_boolean('usage-enabled') && settings.get_boolean(parent));
+            sync();
+            cleanup.push(...['usage-enabled', parent].map(name => settings.connect(`changed::${name}`, sync)));
+            return row;
+        });
+        // Closed, the settings' handlers would keep the rows (and the page) alive.
+        window?.connect('close-request', () => {
+            cleanup.forEach(id => settings.disconnect(id));
+            return false;
+        });
         const warn = spinRow(settings, 'usage-warn', 'Warn at', 'Share of a limit, in %', 50, 99);
         const critical = spinRow(settings, 'usage-critical', 'Warn again at', 'Share of a limit, in %', 50, 100);
         // The second warning never comes before the first.
@@ -134,9 +151,13 @@ export default class IslePreferences extends ExtensionPreferences {
             ordered.forEach(id => settings.disconnect(id));
             return false;
         });
-        for (const row of found.length ? [...rows, warn, critical] : []) {
-            settings.bind('usage-enabled', row, 'sensitive', Gio.SettingsBindFlags.GET);
+        for (const row of rows)
             group.add(row);
+        if (found.length) {
+            for (const row of [warn, critical]) {
+                settings.bind('usage-enabled', row, 'sensitive', Gio.SettingsBindFlags.GET);
+                group.add(row);
+            }
         }
         enabled.sensitive = found.length > 0;
         page.add(group);
@@ -809,9 +830,11 @@ function agentsFound() {
     ].filter(({provider}) => agents[provider]?.found);
 }
 
-/** A switch bound to a boolean key. */
+/** A switch bound to a boolean key. Plain text, set after `use_markup`: the constructor parses `title` first. */
 function switchRow(settings, key, title, subtitle) {
-    const row = new Adw.SwitchRow({title, subtitle});
+    const row = new Adw.SwitchRow({use_markup: false});
+    row.title = title;
+    row.subtitle = subtitle;
     settings.bind(key, row, 'active', Gio.SettingsBindFlags.DEFAULT);
     return row;
 }
@@ -1064,7 +1087,7 @@ function pagesGroup(settings, window) {
     usage.add_prefix(new Gtk.Image({icon_name: 'power-profile-performance-symbolic'}));
     if (!usageProviders().length) {
         usage.sensitive = false;
-        usage.subtitle = 'Sign in to Claude Code, Codex or Grok to see your plan';
+        usage.subtitle = 'Sign in to Claude Code, Codex, Grok or Antigravity to see your plan';
     }
     group.add(usage);
     // Not a page but the ✦ beside the tabs: turning it off is how to use Isle without any AI.
@@ -1342,6 +1365,24 @@ function grokHome() {
     return GLib.getenv('GROK_HOME') || GLib.build_filenamev([GLib.get_home_dir(), '.grok']);
 }
 
+/** Where Antigravity keeps its sign-in: ~/.gemini/antigravity-cli. */
+function agyHome() {
+    return GLib.build_filenamev([GLib.get_home_dir(), '.gemini', 'antigravity-cli']);
+}
+
+/** Whether Antigravity is signed in: its token file, or the keyring's sign-in recorded in `onboarding.json`. */
+function agySignedIn() {
+    if (GLib.file_test(GLib.build_filenamev([agyHome(), 'antigravity-oauth-token']), GLib.FileTest.EXISTS) ||
+        GLib.file_test(GLib.build_filenamev([GLib.get_home_dir(), '.gemini/jetski-standalone-oauth-token']), GLib.FileTest.EXISTS))
+        return true;
+    try {
+        const [, bytes] = GLib.file_get_contents(GLib.build_filenamev([agyHome(), 'cache', 'onboarding.json']));
+        return JSON.parse(new TextDecoder().decode(bytes)).onboardingComplete === true;
+    } catch {
+        return false;
+    }
+}
+
 /** Whether AI `id` has a sign-in, checked as isled does (brain.rs `signed_in`). */
 function signedIn(id) {
     const exists = (...parts) => GLib.file_test(GLib.build_filenamev(parts), GLib.FileTest.EXISTS);
@@ -1387,9 +1428,7 @@ function signedIn(id) {
         }
     }
     case 'agy':
-        // Before agy 1.4, and since.
-        return exists(GLib.get_home_dir(), '.gemini/antigravity-cli/antigravity-oauth-token') ||
-            exists(GLib.get_home_dir(), '.gemini/jetski-standalone-oauth-token');
+        return agySignedIn();
     default:
         return false;
     }
@@ -1438,8 +1477,9 @@ function nvmBins(home) {
     return versions.map(name => GLib.build_filenamev([root, name, 'bin']));
 }
 
-/** The AI providers signed in here, as rows to switch: Claude Code's sign-in, Codex's (or its logs), and Grok's. */
-// Where isled reads them (usage.rs): Claude Code's config dir, the user's Codex home and Isle's own.
+/** The AI providers signed in here, as rows to switch: Claude Code's sign-in, Codex's (or its logs), Grok's,
+ * and Antigravity's. */
+// Where isled reads them (usage.rs): Claude Code's config dir, the user's Codex home, Grok's, and agy's own.
 function usageProviders() {
     const providers = [];
     // The plan's name is isled's (Settings → Assistant, the Usage page), as the apps name it.
@@ -1451,6 +1491,15 @@ function usageProviders() {
         providers.push({key: 'usage-codex', title: 'ChatGPT', subtitle: 'Signed in with Codex'});
     if (GLib.file_test(GLib.build_filenamev([grokHome(), 'auth.json']), GLib.FileTest.EXISTS))
         providers.push({key: 'usage-grok', title: 'Grok', subtitle: 'Signed in with Grok'});
+    if (agySignedIn() && findProgram('agy')) {
+        providers.push(
+            {key: 'usage-agy', title: 'Antigravity', subtitle: 'Signed in with Antigravity · Gemini models'},
+            {key: 'usage-agy-claude-gpt', title: 'Antigravity · Claude & GPT',
+                subtitle: '5-hour and weekly limits on a card below Antigravity', parent: 'usage-agy'},
+            {key: 'usage-agy-argon', title: 'Antigravity · Argon',
+                subtitle: 'Weekly Argon limit on a card below Antigravity', parent: 'usage-agy'},
+        );
+    }
     return providers;
 }
 

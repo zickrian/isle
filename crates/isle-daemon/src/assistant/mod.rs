@@ -43,6 +43,7 @@ use zbus::object_server::{InterfaceRef, SignalEmitter};
 use zbus::{Connection, fdo, interface};
 
 pub use self::agenda::Sources;
+pub use self::agy::{UsageError as AgyUsageError, signed_in as agy_signed_in, usage as agy_usage};
 use self::brain::{Brain, Failure};
 pub use self::brain::{Provider, install_dirs};
 use self::chat::{Chat, Item, Keep};

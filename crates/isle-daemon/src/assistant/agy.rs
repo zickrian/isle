@@ -6,14 +6,14 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::process::{ExitStatus, Stdio};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, bail};
 use chrono::{DateTime, Local, NaiveDate};
 use serde::Deserialize;
 use serde_json::Value;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout, Command};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -24,6 +24,12 @@ use super::child::{self, Events, Group};
 /// the one just before `transcriptPath`, so a "name" in its arguments cannot pass; other layouts are refused.
 const HOOKS: &str = r#"{"isle-guard": {"PreToolUse": [{"matcher": "*", "hooks": [{"timeout": 5, "command":
 "grep -qE '\"name\": *\"(search_web|read_url_content|finish|wait)\" *[}] *, *\"transcriptPath\"' && echo '{\"decision\":\"allow\"}' || echo '{\"decision\":\"deny\",\"reason\":\"Isle allows only web search and reading pages; answer with actions instead.\"}'"}]}]}}"#;
+
+fn write_hooks(workspace: &Path) -> std::io::Result<()> {
+    let agents = workspace.join(".agents");
+    std::fs::create_dir_all(&agents)?;
+    std::fs::write(agents.join("hooks.json"), HOOKS)
+}
 
 /// agy's own home: Isle's conversations stay apart from the user's own agy and are cleared each day.
 pub fn home() -> PathBuf {
@@ -48,25 +54,247 @@ const PER_CONVERSATION: &[&str] = &[
 pub const LOGIN: &str = ".gemini/antigravity-cli/antigravity-oauth-token";
 const STANDALONE_LOGIN: &str = ".gemini/jetski-standalone-oauth-token";
 
-/// Whether the user signed in to agy in `home`, as either version keeps it.
-pub fn signed_in_at(home: &Path) -> bool {
-    [LOGIN, STANDALONE_LOGIN]
-        .iter()
-        .any(|login| home.join(login).exists())
-}
+/// Written in the user's home once agy's sign-in and onboarding finish, including when its token is kept
+/// in the keyring.
+pub const ONBOARDING: &str = ".gemini/antigravity-cli/cache/onboarding.json";
+
+/// The default Cloud Code project id cached by agy.
+const DEFAULT_PROJECT: &str = ".gemini/antigravity-cli/cache/default_project_id.txt";
+
+/// `--print /usage` takes at most 15 seconds.
+const USAGE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// `agy --version` takes at most this long; it is asked once per installed binary.
+const VERSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// Links Isle's agy home to the user's agy sign-in, so signing in once (in `user`'s home) is enough
-/// (see sign_in.rs).
+/// (see sign_in.rs). Onboarding and the project id are shared too: agy refuses to start without them.
 fn link_login(user: &Path, isle: &Path) {
     for login in [LOGIN, STANDALONE_LOGIN] {
         super::sign_in::share(&user.join(login), &isle.join(login));
     }
+    super::sign_in::link(&user.join(ONBOARDING), &isle.join(ONBOARDING));
+    super::sign_in::link(&user.join(DEFAULT_PROJECT), &isle.join(DEFAULT_PROJECT));
+}
+
+/// Whether the user signed in to agy: its token file, or `onboarding.json` once signed in with the keyring.
+pub fn signed_in() -> bool {
+    dirs::home_dir().is_some_and(|home| signed_in_at(&home))
+}
+
+/// Whether agy has a token or completed keyring onboarding in `home`.
+pub fn signed_in_at(home: &Path) -> bool {
+    if [LOGIN, STANDALONE_LOGIN]
+        .iter()
+        .any(|login| home.join(login).exists())
+    {
+        return true;
+    }
+    std::fs::read_to_string(home.join(ONBOARDING))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .is_some_and(|json| json["onboardingComplete"] == true)
+}
+
+/// Whether `agy --version` ("1.4.12") is 1.1.11 or newer, where `--print /usage` reads the quota
+/// instead of starting a turn.
+pub fn supports_usage(version: &str) -> bool {
+    let token = version
+        .split_whitespace()
+        .map(|word| word.trim_start_matches(['v', 'V']))
+        .find(|word| word.bytes().next().is_some_and(|b| b.is_ascii_digit()))
+        .unwrap_or_default();
+    let mut parts = token.split('.');
+    let (Some(major), Some(minor), Some(patch)) = (
+        parts.next().and_then(|s| s.parse::<u32>().ok()),
+        parts.next().and_then(|s| s.parse::<u32>().ok()),
+        parts.next().and_then(|s| s.parse::<u32>().ok()),
+    ) else {
+        return false;
+    };
+    parts.next().is_none() && (major, minor, patch) >= (1, 1, 11)
+}
+
+/// Why reading agy's usage failed, which picks the note and the next try (see usage.rs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UsageError {
+    /// Older than 1.1.11, where `/usage` started a model turn instead of reading the quota.
+    NeedsUpdate,
+    SignIn,
+    Offline,
+    Busy,
+}
+
+/// Whether an agy binary supports `/usage`, and the program and modification time it was asked about.
+type VersionCheck = (PathBuf, Option<std::time::SystemTime>, bool);
+
+/// The last answer to "is this agy new enough for `/usage`": `agy` is asked again only when it changes.
+static VERSION_OK: std::sync::LazyLock<Mutex<Option<VersionCheck>>> =
+    std::sync::LazyLock::new(|| Mutex::new(None));
+
+/// The usage `agy --print /usage` reports for this sign-in: its JSON, read in Isle's home for agy.
+pub async fn usage(program: &Path) -> Result<Value, UsageError> {
+    version_supports_usage(program).await?;
+    let user = dirs::home_dir();
+    let home = home();
+    if let Some(user) = &user {
+        link_login(user, &home);
+    }
+    std::fs::create_dir_all(&home).map_err(|_| UsageError::Busy)?;
+    write_hooks(&home).map_err(|_| UsageError::Busy)?;
+    let mut command = Command::new(program);
+    command
+        .args([
+            "--print",
+            "/usage",
+            "--output-format",
+            "json",
+            "--log-file",
+            "/dev/null",
+        ])
+        .current_dir(&home)
+        .env("HOME", &home)
+        .env("AGY_CLI_DISABLE_AUTO_UPDATE", "1")
+        .env_remove("XDG_CONFIG_HOME")
+        .env_remove("XDG_DATA_HOME")
+        .env_remove("XDG_STATE_HOME")
+        .env_remove("XDG_CACHE_HOME")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let child = child::spawn(&mut command).map_err(|_| UsageError::Busy)?;
+    // Dropped by the timeout, the group takes agy and anything it started with it.
+    let read = tokio::time::timeout(USAGE_TIMEOUT, read_usage(child)).await;
+    // It may have renewed its sign-in meanwhile: the user's own agy gets it (see sign_in.rs).
+    if let Some(user) = &user {
+        link_login(user, &home);
+    }
+    match read {
+        Err(_) | Ok(Err(_)) => Err(UsageError::Busy),
+        Ok(Ok((stdout, stderr, status))) => parse_usage(&stdout, &stderr, status.success()),
+    }
+}
+
+/// Whether this agy reads `/usage` instead of starting a turn, from `agy --version` once per binary.
+async fn version_supports_usage(program: &Path) -> Result<(), UsageError> {
+    let modified = std::fs::metadata(program)
+        .and_then(|meta| meta.modified())
+        .ok();
+    {
+        let asked = VERSION_OK.lock().unwrap();
+        if let Some((path, when, ok)) = asked.as_ref()
+            && path.as_path() == program
+            && *when == modified
+        {
+            return if *ok {
+                Ok(())
+            } else {
+                Err(UsageError::NeedsUpdate)
+            };
+        }
+    }
+    // A version that could not be read says nothing about the binary: it is asked again next time.
+    let version = version_of(program).await.ok_or(UsageError::Busy)?;
+    let ok = supports_usage(&version);
+    *VERSION_OK.lock().unwrap() = Some((program.to_path_buf(), modified, ok));
+    if ok {
+        Ok(())
+    } else {
+        Err(UsageError::NeedsUpdate)
+    }
+}
+
+/// What `agy --version` says ("1.4.12"), if it can be read in time.
+async fn version_of(program: &Path) -> Option<String> {
+    let home = home();
+    std::fs::create_dir_all(&home).ok()?;
+    let mut command = Command::new(program);
+    command
+        .arg("--version")
+        .current_dir(&home)
+        .env("HOME", &home)
+        .env("AGY_CLI_DISABLE_AUTO_UPDATE", "1")
+        .env_remove("XDG_CONFIG_HOME")
+        .env_remove("XDG_DATA_HOME")
+        .env_remove("XDG_STATE_HOME")
+        .env_remove("XDG_CACHE_HOME")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    let mut child = child::spawn(&mut command).ok()?;
+    tokio::time::timeout(VERSION_TIMEOUT, async {
+        let mut version = String::new();
+        child
+            .stdout
+            .take()?
+            .read_to_string(&mut version)
+            .await
+            .ok()?;
+        let status = child.wait().await.ok()?;
+        status.success().then_some(version)
+    })
+    .await
+    .ok()?
+}
+
+/// All of agy's output and how it ended. Reads both pipes at once: it would block on a full one otherwise.
+async fn read_usage(mut child: Group) -> std::io::Result<(String, String, ExitStatus)> {
+    let mut out = child.stdout.take().expect("piped stdout");
+    let mut err = child.stderr.take().expect("piped stderr");
+    let (stdout, stderr) = tokio::join!(drain(&mut out), drain(&mut err));
+    let (stdout, stderr) = (stdout?, stderr?);
+    let status = child.wait().await?;
+    Ok((stdout, stderr, status))
+}
+
+/// Everything a pipe of agy's output says.
+async fn drain<P: AsyncRead + Unpin>(pipe: &mut P) -> std::io::Result<String> {
+    let mut text = String::new();
+    pipe.read_to_string(&mut text).await?;
+    Ok(text)
+}
+
+/// What agy says when its sign-in is gone or was refused.
+const SIGN_IN_WORDS: &[&str] = &[
+    "not logged in",
+    "authentication",
+    "sign in",
+    "login",
+    "unauthenticated",
+];
+
+/// What agy says when the quota service could not be reached.
+const OFFLINE_WORDS: &[&str] = &[
+    "network",
+    "dial tcp",
+    "connection refused",
+    "no such host",
+    "context deadline exceeded",
+    "timed out",
+];
+
+/// agy's usage JSON, or why there is none: its sign-in, the network, or anything else it said.
+fn parse_usage(stdout: &str, stderr: &str, success: bool) -> Result<Value, UsageError> {
+    let json = match serde_json::from_str::<Value>(stdout).ok() {
+        Some(json) if success && json["status"] == "SUCCESS" => return Ok(json),
+        json => json,
+    };
+    let error = json.as_ref().and_then(|json| json["error"].as_str());
+    let said = [stdout, stderr, error.unwrap_or_default()]
+        .join("\n")
+        .to_lowercase();
+    if SIGN_IN_WORDS.iter().any(|words| said.contains(*words)) {
+        return Err(UsageError::SignIn);
+    }
+    if OFFLINE_WORDS.iter().any(|words| said.contains(*words)) {
+        return Err(UsageError::Offline);
+    }
+    Err(UsageError::Busy)
 }
 
 /// What `agy models` lists for this account (`id<TAB>name` lines): run in Isle's home for agy, as every
 /// agy here, and asking nothing of the AI.
 pub async fn models(program: &Path) -> anyhow::Result<String> {
-    use tokio::io::AsyncReadExt;
     let user = dirs::home_dir();
     if let Some(user) = &user {
         link_login(user, &home());
@@ -208,9 +436,7 @@ impl Agy {
         if let Some(user) = dirs::home_dir() {
             link_login(&user, &home());
         }
-        let agents = workspace.join(".agents");
-        std::fs::create_dir_all(&agents)?;
-        std::fs::write(agents.join("hooks.json"), HOOKS).context("could not write agy's hooks")?;
+        write_hooks(workspace).context("could not write agy's hooks")?;
         let mut command = Command::new(program);
         command
             .args(["--print=", "--input-format", "stream-json"])
@@ -371,6 +597,178 @@ mod tests {
     }
     use super::*;
 
+    fn isolated_usage_test(name: &str) -> Option<PathBuf> {
+        const ROOT: &str = "ISLE_AGY_TEST_ROOT";
+        if let Some(root) = std::env::var_os(ROOT) {
+            return Some(root.into());
+        }
+        let root = std::env::temp_dir().join(format!("isle-agy-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("user")).unwrap();
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .arg("--exact")
+            .arg(format!("assistant::agy::tests::{name}"))
+            .env(ROOT, &root)
+            .env("HOME", root.join("user"))
+            .env("XDG_DATA_HOME", root.join("data"))
+            .env("XDG_CONFIG_HOME", root.join("config"))
+            .env("XDG_STATE_HOME", root.join("state"))
+            .env("XDG_CACHE_HOME", root.join("cache"))
+            .status()
+            .unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(status.success(), "isolated test failed: {name}");
+        None
+    }
+
+    #[test]
+    fn checks_which_agy_versions_support_usage() {
+        // Before 1.1.11, `--print /usage` started a model turn.
+        assert!(!supports_usage("1.1.10"));
+        assert!(!supports_usage("1.1.11-rc.1"));
+        assert!(supports_usage("1.1.11"));
+        assert!(supports_usage("1.4.12"));
+        assert!(supports_usage("agy 1.4.12"));
+        assert!(supports_usage("v1.4.12"));
+        assert!(!supports_usage(""));
+        assert!(!supports_usage("1.1"));
+        assert!(!supports_usage("1.2.0.1"));
+    }
+
+    #[test]
+    fn recognises_keyring_onboarding_as_signed_in() {
+        let home = std::env::temp_dir().join(format!("isle-onboarding-{}", std::process::id()));
+        std::fs::create_dir_all(&home).unwrap();
+        assert!(!signed_in_at(&home));
+        // What agy writes once its keyring sign-in and onboarding finish.
+        let onboarding = home.join(ONBOARDING);
+        std::fs::create_dir_all(onboarding.parent().unwrap()).unwrap();
+        std::fs::write(&onboarding, r#"{"onboardingComplete": true}"#).unwrap();
+        assert!(signed_in_at(&home));
+        // Onboarding that did not finish, or a file that is not JSON, is no sign-in.
+        std::fs::write(&onboarding, r#"{"onboardingComplete": false}"#).unwrap();
+        assert!(!signed_in_at(&home));
+        std::fs::write(&onboarding, "{not json").unwrap();
+        assert!(!signed_in_at(&home));
+        // The token file older agy writes, without any onboarding.
+        std::fs::remove_file(&onboarding).unwrap();
+        std::fs::write(home.join(LOGIN), "token").unwrap();
+        assert!(signed_in_at(&home));
+        std::fs::remove_dir_all(home).unwrap();
+    }
+
+    /// An agy older than 1.1.11 would start a model turn on `/usage`: it is never asked for it.
+    #[tokio::test]
+    async fn refuses_usage_from_an_old_agy() {
+        let Some(root) = isolated_usage_test("refuses_usage_from_an_old_agy") else {
+            return;
+        };
+        let marker = root.join("ran");
+        let fake = root.join("agy");
+        std::fs::write(
+            &fake,
+            format!(
+                "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 1.1.10; exit 0; fi\ntouch '{}'\n",
+                marker.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        assert_eq!(usage(&fake).await, Err(UsageError::NeedsUpdate));
+        assert!(!marker.exists(), "an old agy was asked for /usage");
+    }
+
+    #[tokio::test]
+    async fn retries_failed_version_and_guards_usage() {
+        let Some(root) = isolated_usage_test("retries_failed_version_and_guards_usage") else {
+            return;
+        };
+        let fake = root.join("agy");
+        std::fs::write(
+            &fake,
+            r#"#!/bin/sh
+if [ "$1" = --version ]; then
+    [ "$PWD" = "$HOME" ] && [ "$AGY_CLI_DISABLE_AUTO_UPDATE" = 1 ] || exit 2
+    [ -z "${XDG_CONFIG_HOME+x}${XDG_DATA_HOME+x}${XDG_STATE_HOME+x}${XDG_CACHE_HOME+x}" ] || exit 3
+    if [ ! -e "$HOME/version-attempt" ]; then
+        touch "$HOME/version-attempt"
+        exit 1
+    fi
+    echo 'agy 1.4.12'
+    exit 0
+fi
+[ "$PWD" = "$HOME" ] && grep -q isle-guard .agents/hooks.json || exit 4
+echo 'Using keyring for authentication; network metrics disabled' >&2
+echo '{"status":"SUCCESS","command":{"name":"usage"}}'
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        assert_eq!(usage(&fake).await, Err(UsageError::Busy));
+        assert_eq!(
+            usage(&fake).await,
+            Ok(serde_json::json!({"status": "SUCCESS", "command": {"name": "usage"}}))
+        );
+    }
+
+    #[test]
+    fn tells_why_reading_usage_failed() {
+        let reported = serde_json::json!({"status": "SUCCESS", "command": {"name": "usage"}});
+        assert_eq!(
+            parse_usage(&reported.to_string(), "", true),
+            Ok(reported.clone())
+        );
+        assert_eq!(
+            parse_usage(
+                &reported.to_string(),
+                "Using keyring for authentication",
+                true
+            ),
+            Ok(reported.clone())
+        );
+        assert_eq!(
+            parse_usage(&reported.to_string(), "network metrics disabled", true),
+            Ok(reported.clone())
+        );
+        assert_eq!(
+            parse_usage(&reported.to_string(), "", false),
+            Err(UsageError::Busy)
+        );
+        assert_eq!(
+            parse_usage(r#"{"status":"ERROR","command":{"name":"usage"}}"#, "", true),
+            Err(UsageError::Busy)
+        );
+        // Signed out, as agy says on stderr or in its JSON error.
+        assert_eq!(
+            parse_usage("", "Error: authentication required.", false),
+            Err(UsageError::SignIn)
+        );
+        assert_eq!(
+            parse_usage(r#"{"status":"ERROR","error":"not logged in"}"#, "", false),
+            Err(UsageError::SignIn)
+        );
+        // The quota service could not be reached.
+        assert_eq!(
+            parse_usage("", "dial tcp: no such host", false),
+            Err(UsageError::Offline)
+        );
+        assert_eq!(
+            parse_usage("", "Error: context deadline exceeded", false),
+            Err(UsageError::Offline)
+        );
+        // Anything else, including output that is no usage JSON at all.
+        assert_eq!(
+            parse_usage("", "Error: something else", false),
+            Err(UsageError::Busy)
+        );
+        assert_eq!(parse_usage("", "", true), Err(UsageError::Busy));
+        assert_eq!(
+            parse_usage(r#"{"status":"ERROR","error":"internal"}"#, "", true),
+            Err(UsageError::Busy)
+        );
+    }
+
     #[test]
     fn prunes_whole_conversations_last_used_before_today() {
         let store = std::env::temp_dir().join(format!("isle-prune-{}", std::process::id()));
@@ -471,6 +869,25 @@ mod tests {
             user.join(LOGIN)
         );
         assert_eq!(std::fs::read_to_string(user.join(LOGIN)).unwrap(), "token");
+        for (path, original) in [(ONBOARDING, "onboarding"), (DEFAULT_PROJECT, "project")] {
+            let real = user.join(path);
+            let linked = isle.join(path);
+            std::fs::create_dir_all(real.parent().unwrap()).unwrap();
+            std::fs::write(&real, original).unwrap();
+            std::fs::File::options()
+                .write(true)
+                .open(&real)
+                .unwrap()
+                .set_modified(old)
+                .unwrap();
+            link_login(&user, &isle);
+            assert_eq!(std::fs::read_link(&linked).unwrap(), real);
+            std::fs::remove_file(&linked).unwrap();
+            std::fs::write(&linked, "replacement").unwrap();
+            link_login(&user, &isle);
+            assert_eq!(std::fs::read_to_string(&real).unwrap(), original);
+            assert_eq!(std::fs::read_link(&linked).unwrap(), real);
+        }
         std::fs::remove_dir_all(root).unwrap();
     }
 

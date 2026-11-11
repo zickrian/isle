@@ -6,8 +6,25 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Antigravity's limits show in AI usage: Gemini's 5-hour window and the week, read with `agy`'s own
+  `/usage` (agy 1.1.11 or newer) in Isle's own folder, with the sign-in `agy` already has (its token
+  file, or the keyring). With usage, Antigravity and the voice assistant on, it is read when the Usage
+  page opens or `Usage1.Refresh()` is called, with a 30-minute cooldown after success or sign-in
+  failure and different error backoffs; retries require another refresh. Its alert and cards carry
+  Antigravity's official full-colour logo.
+  **Settings → AI Usage → Antigravity** adds **Antigravity · Claude & GPT** (5 hours and the week) and
+  **Antigravity · Argon** (the week) cards, off until turned on.
+
 ### Fixed
 
+- AI usage scrolling keeps working when wheel and touchpad events are mixed; compatibility events
+  no longer skip or block cards, and touchpad gestures end correctly on GNOME 46.
+- AI usage restores cached limits after provider off/on without bypassing request cooldowns.
+  Antigravity's Gemini, Claude & GPT and Argon cards also survive turning the voice assistant off/on.
+- Antigravity counts as signed in when `agy` keeps its token in the keyring and has finished its
+  onboarding.
 - The one-line install stopped at the first time GitHub timed out ("curl: (22) The requested URL returned error:
   504", then "the download failed"). It now asks again a few times when GitHub times out or is busy for a moment,
   and still gives up at once when GitHub says to come back much later. An update from Settings runs the new
