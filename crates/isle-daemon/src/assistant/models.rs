@@ -749,8 +749,6 @@ fn opencode_catalog(
     theirs.sort_by(|a, b| {
         a.provider
             .cmp(&b.provider)
-            // Copilot's router is useful beside, not after, its named models.
-            .then_with(|| (b.id == "github-copilot/auto").cmp(&(a.id == "github-copilot/auto")))
             .then(version(&b.id).total_cmp(&version(&a.id)))
     });
     for m in theirs {
@@ -1116,26 +1114,6 @@ mod tests {
                 "OpenAI · gpt-6-sol",
                 "OpenAI · gpt-5.4",
                 "OpenAI · gpt-5.4-mini"
-            ]
-        );
-    }
-
-    #[test]
-    fn copilot_auto_comes_before_its_named_models() {
-        let listed = "github-copilot/gpt-6.1-sol\n\
-                       github-copilot/auto\n\
-                       github-copilot/claude-opus-5.5\n";
-        let catalog = opencode_catalog(listed, &[], "Free models", None);
-
-        assert_eq!(
-            ids_and_names(&catalog),
-            [
-                ("github-copilot/auto", "GitHub Copilot · auto"),
-                ("github-copilot/gpt-6.1-sol", "GitHub Copilot · gpt-6.1-sol"),
-                (
-                    "github-copilot/claude-opus-5.5",
-                    "GitHub Copilot · claude-opus-5.5"
-                ),
             ]
         );
     }
