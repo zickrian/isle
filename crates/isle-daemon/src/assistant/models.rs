@@ -718,18 +718,7 @@ fn opencode_catalog(
     plan: &str,
     go: Option<&[String]>,
 ) -> Catalog {
-    let mut listed = super::opencode::listed_models(listed);
-    // OpenCode 2's standalone listing omits Copilot's router even though the shared listing exposes it.
-    if listed.iter().any(|m| m.provider == "github-copilot")
-        && !listed.iter().any(|m| m.id == "github-copilot/auto")
-    {
-        listed.push(super::opencode::Listed {
-            id: "github-copilot/auto".into(),
-            provider: "github-copilot".into(),
-            name: "auto".into(),
-            free: false,
-        });
-    }
+    let listed = super::opencode::listed_models(listed);
     // Free: OpenCode's own free models. A plan's (ChatGPT's) lists at no cost too, but is not free.
     let label = |model: &super::opencode::Listed| {
         if model.free && model.provider == "opencode" {
@@ -1134,6 +1123,7 @@ mod tests {
     #[test]
     fn copilot_auto_comes_before_its_named_models() {
         let listed = "github-copilot/gpt-6.1-sol\n\
+                       github-copilot/auto\n\
                        github-copilot/claude-opus-5.5\n";
         let catalog = opencode_catalog(listed, &[], "Free models", None);
 
