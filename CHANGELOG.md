@@ -10,8 +10,8 @@ All notable changes to Isle are listed here. The format follows
 
 - Antigravity's limits show in AI usage: Gemini's 5-hour window and the week, read with `agy`'s own
   `/usage` (agy 1.1.11 or newer) in Isle's own folder, with the sign-in `agy` already has (its token
-  file, or the keyring). With usage, Antigravity and the voice assistant on, it is read on an explicit
-  Usage page refresh or `Usage1.Refresh()`, with a 30-minute cooldown after success or sign-in
+  file, or the keyring). With usage, Antigravity and the voice assistant on, it is read when the Usage
+  page opens or `Usage1.Refresh()` is called, with a 30-minute cooldown after success or sign-in
   failure and different error backoffs; retries require another refresh. Its alert and cards carry
   Antigravity's official full-colour logo.
   **Settings → AI Usage → Antigravity** adds **Antigravity · Claude & GPT** (5 hours and the week) and

@@ -54,7 +54,6 @@ const PER_CONVERSATION: &[&str] = &[
 pub const LOGIN: &str = ".gemini/antigravity-cli/antigravity-oauth-token";
 const STANDALONE_LOGIN: &str = ".gemini/jetski-standalone-oauth-token";
 
-
 /// Written in the user's home once agy's sign-in and onboarding finish, including when its token is kept
 /// in the keyring.
 pub const ONBOARDING: &str = ".gemini/antigravity-cli/cache/onboarding.json";
@@ -85,7 +84,10 @@ pub fn signed_in() -> bool {
 
 /// Whether agy has a token or completed keyring onboarding in `home`.
 pub fn signed_in_at(home: &Path) -> bool {
-    if [LOGIN, STANDALONE_LOGIN].iter().any(|login| home.join(login).exists()) {
+    if [LOGIN, STANDALONE_LOGIN]
+        .iter()
+        .any(|login| home.join(login).exists())
+    {
         return true;
     }
     std::fs::read_to_string(home.join(ONBOARDING))

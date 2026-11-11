@@ -1373,7 +1373,7 @@ function agyHome() {
 /** Whether Antigravity is signed in: its token file, or the keyring's sign-in recorded in `onboarding.json`. */
 function agySignedIn() {
     if (GLib.file_test(GLib.build_filenamev([agyHome(), 'antigravity-oauth-token']), GLib.FileTest.EXISTS) ||
-        exists(GLib.get_home_dir(), '.gemini/jetski-standalone-oauth-token'))
+        GLib.file_test(GLib.build_filenamev([GLib.get_home_dir(), '.gemini/jetski-standalone-oauth-token']), GLib.FileTest.EXISTS))
         return true;
     try {
         const [, bytes] = GLib.file_get_contents(GLib.build_filenamev([agyHome(), 'cache', 'onboarding.json']));
