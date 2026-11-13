@@ -19,13 +19,6 @@ use tokio::sync::mpsc::UnboundedSender;
 use super::answer::{Answer, SCHEMA};
 use super::child::{self, Events, Group};
 
-/// Fast answers for a voice assistant; the user's own Codex settings are not used.
-const EFFORT: &str = "low";
-
-/// How hard it thinks: `EFFORT`, unless the eval tries another (ISLE_CODEX_EFFORT).
-fn effort() -> String {
-    std::env::var("ISLE_CODEX_EFFORT").unwrap_or_else(|_| EFFORT.to_owned())
-}
 const STDERR_LINES: usize = 20;
 /// `model/list` comes in pages; a plan has a handful of models, so a few pages are plenty.
 const MODEL_PAGES: usize = 5;
@@ -294,7 +287,7 @@ impl Codex {
         self.open().await?;
         let thread = self.conversation.clone().unwrap_or_default();
         let params = json!({"threadId": thread, "input": [{"type": "text", "text": prompt}],
-            "outputSchema": self.schema, "effort": effort()});
+            "outputSchema": self.schema, "effort": super::brain::EFFORT});
         let started = self.send("turn/start", params).await?;
         let mut turn = None;
         let mut answer = None;

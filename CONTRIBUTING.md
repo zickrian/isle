@@ -29,6 +29,7 @@ Security problems go privately to the maintainer; see
 ```sh
 cargo build                     # isle-core and isled
 cargo build -p isle-shelf       # needs libgtk-4-dev
+cargo build -p isle-whisper     # needs cmake, g++, libclang-dev; libvulkan-dev and glslc for the GPU
 ./install.sh                    # build and install for your user
 ```
 
@@ -45,8 +46,9 @@ cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 npm ci && npx eslint                                  # the extension (eslint.config.mjs)
-node --test tests/extension/*.test.js                 # its parts that need no GNOME Shell
+node --experimental-default-type=module --test tests/extension/*.test.js   # its parts that need no GNOME Shell
 gjs -m tests/extension/format.gjs.js                  # and those that need GLib
+gjs -m tests/extension/downloads.gjs.js
 glib-compile-schemas --strict --dry-run gnome-extension/schemas
 shellcheck get.sh install.sh uninstall.sh scripts/*.sh scripts/isle-charge-limit scripts/ci/*.sh packaging/aur/update.sh
 cargo deny check                                      # advisories and licences (deny.toml)
@@ -99,7 +101,8 @@ journalctl -f /usr/bin/gnome-shell | grep -i isle    # the extension
   tested it.
 - When `main` moves on, rebase on it rather than merging it in.
 - For visual changes, include screenshots, and try them on GNOME 46 and the
-  newest GNOME Shell (nested, or in a virtual machine).
+  newest GNOME Shell (nested, or in a virtual machine). Pictures in the
+  README are webp, cropped to the island in its glass look, in `docs/images/`.
 - Your commits keep your name. What ships is credited in the changelog
   ("Thanks to @you") and you are listed under
   [Contributors](README.md#contributors) in the README.
@@ -113,13 +116,16 @@ journalctl -f /usr/bin/gnome-shell | grep -i isle    # the extension
    `gnome-extension/metadata.json` (`version-name`).
 2. Commit, then tag and push: `git tag -a v1.2.3 -m "Isle 1.2.3"` and
    `git push origin main v1.2.3`.
-3. The Release workflow builds `isle-1.2.3-x86_64-linux.tar.gz` with the
-   programs ready-built, and from it `isle_1.2.3_amd64.deb` and
-   `isle-1.2.3-1.x86_64.rpm`, each with a build provenance attestation. It
+3. The Release workflow checks that `Cargo.toml`, `metadata.json` and the
+   changelog are at the tag's version, then builds
+   `isle-1.2.3-x86_64-linux.tar.gz` with the programs ready-built, and from
+   it `isle_1.2.3_amd64.deb` and `isle-1.2.3-1.x86_64.rpm`, each with a
+   build provenance attestation. It
    attaches them and their checksums to the tag's GitHub release, which
    `get.sh` installs from, with the changelog's section as the notes.
 4. Point the AUR package at the release: `packaging/aur/update.sh 1.2.3`,
-   then commit and push `PKGBUILD` and `.SRCINFO` to the AUR's `isle-bin`.
+   commit `packaging/aur/` here, then push `PKGBUILD` and `.SRCINFO` to the
+   AUR's `isle-bin`.
 
 `scripts/package.sh` builds the tarball locally, in `dist/`, and
 `scripts/package-system.sh dist/isle-….tar.gz` the .deb and .rpm from it

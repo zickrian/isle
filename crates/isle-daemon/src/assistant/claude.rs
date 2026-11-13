@@ -59,7 +59,9 @@ impl Claude {
             // None of the user's settings, hooks, CLAUDE.md or MCP servers: only its sign-in, and how they
             // sign in (an API key helper, Bedrock or Vertex in their settings' `env`).
             .args(["--setting-sources", "", "--strict-mcp-config"])
-            .args(["--system-prompt", instructions, "--json-schema", SCHEMA]);
+            .args(["--system-prompt", instructions, "--json-schema", SCHEMA])
+            // The user's own effort setting is not read (no setting sources): Isle's, for every model.
+            .args(["--effort", super::brain::EFFORT]);
         // A file only the user can read: on the command line, any user could read an API key in it.
         let sign_in = crate::store::data_dir().join("claude-sign-in.json");
         match sign_in_settings() {

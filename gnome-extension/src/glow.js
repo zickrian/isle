@@ -127,52 +127,71 @@ vec4 rimFlow(float x, float shift, float alpha, vec2 streak, bool streaked) {
 float rimSpan(float a0, float a1, float b0, float b1) {
     return max(0.0, min(a1, b1) - max(a0, b0));
 }
-float rimBand(float sd, float beside, float width) {
-    float t = frame.z;
+// A band 'width' wide centred on the edge (its outer half only 'beside' the band above), as much of it as lies in
+// a pixel 't' across.
+float rimBand(float sd, float beside, float width, float t) {
     return (rimSpan(sd - 0.5 * t, sd + 0.5 * t, -0.5 * width, 0.0) +
         beside * rimSpan(sd - 0.5 * t, sd + 0.5 * t, 0.0, 0.5 * width)) / t;
 }
-vec4 rimTexel(vec2 q, vec4 faint, vec4 haze, vec4 crisp) {
-    float top = body.z, bottom = body.w, t = frame.z;
+// The faint strokes, each narrower (corner.w of them), as one smooth fall from the edge: no step between them.
+float rimFade(float sd, float beside, float width) {
+    float d = abs(sd) / max(0.5 * width, 0.001);
+    return (sd <= 0.0 ? 1.0 : beside) * corner.w * (1.0 - smoothstep(0.0, 1.0, d));
+}
+// The soft light at a texel: smooth, so drawn coarse (see GLOW_SCALE). The edge and the crisp line are the pixel's.
+vec4 rimTexel(vec2 q, vec4 faint, vec4 haze) {
     float sd = -outlineBody(q).x, beside = outlineBeside(q).x;
+    float outer = clamp(0.5 + beside / frame.z, 0.0, 1.0);
+    return faint * rimFade(sd, outer, strokes.x) +
+        haze * clamp((q.y - body.w + strokes.z) / max(strokes.z, 0.001), 0.0, 1.0);
+}
+// Rising from the bottom, cut to the shape and below the top bar, at the pixel p ('t' across).
+float rimShape(vec2 p, float sd, float beside, float t) {
+    float top = body.z, bottom = body.w;
     float clip = clamp(0.5 + max(-sd, beside) / t, 0.0, 1.0);
-    float outer = clamp(0.5 + beside / t, 0.0, 1.0);
-    float cap = clamp(0.5 + (q.y - top) / t, 0.0, 1.0);
-    vec4 sum = vec4(0.0);
-    for (int i = 0; i < 6; i++) {
-        if (float(i) >= corner.w)
-            break;
-        sum += faint * rimBand(sd, outer, strokes.x * (1.0 - float(i) / corner.w)) * cap;
-    }
-    sum += haze * clamp((q.y - bottom + strokes.z) / max(strokes.z, 0.001), 0.0, 1.0) * clip;
-    sum += crisp * rimBand(sd, outer, strokes.y) * cap;
-    float k = clamp((q.y - top) / max(bottom - top, 0.001), 0.0, 1.0);
+    float cap = clamp(0.5 + (p.y - top) / t, 0.0, 1.0);
+    float k = clamp((p.y - top) / max(bottom - top, 0.001), 0.0, 1.0);
     float rising = k < ${RISE_KNEE} ? ${RISE_AT_KNEE} * k / ${RISE_KNEE} : mix(${RISE_AT_KNEE}, 1.0, (k - ${RISE_KNEE}) / (1.0 - ${RISE_KNEE}));
-    return min(sum, vec4(1.0)) * rising * clip;
+    return rising * clip * cap;
 }
 `;
 
-// Each pixel blends its four nearest texels, as a drawing that size scaled up would; the flows are per column.
+// The soft light blends the four nearest texels, as a drawing that size scaled up would (the flows are per column);
+// the crisp line, the shape's edge and the light's top are worked out for the pixel itself, as sharp as the island's
+// own edge. A touch of noise keeps the soft light's shades from banding.
 // `point` is GLSL for where the pixel is on the actor (see shader.js `effectPoint`).
 export const rimCode = point => `
 vec2 p = ${point};
-float t = frame.z;
+float t = frame.z, px = frame.w;
 vec4 light = vec4(0.0);
 if (p.x > max(0.0, body.x - corner.y - 2.0 * t) && p.x < min(grid.x * t, body.y + corner.y + 2.0 * t) &&
     p.y > 0.0 && p.y < min(grid.y * t, body.w + 2.0 * t)) {
-    vec2 at = p / t - 0.5;
-    vec2 cell = floor(at);
-    vec2 f = at - cell;
-    vec2 lo = (clamp(cell, vec2(0.0), grid - 1.0) + 0.5) * t;
-    vec2 hi = (clamp(cell + 1.0, vec2(0.0), grid - 1.0) + 0.5) * t;
-    vec4 faint0 = rimFlow(lo.x, shift.x, alpha.x, vec2(0.0), false);
-    vec4 haze0 = rimFlow(lo.x, shift.y, alpha.y, streaks.xy, true);
-    vec4 crisp0 = rimFlow(lo.x, shift.z, alpha.z, streaks.zw, true);
-    vec4 faint1 = rimFlow(hi.x, shift.x, alpha.x, vec2(0.0), false);
-    vec4 haze1 = rimFlow(hi.x, shift.y, alpha.y, streaks.xy, true);
-    vec4 crisp1 = rimFlow(hi.x, shift.z, alpha.z, streaks.zw, true);
-    light = mix(mix(rimTexel(lo, faint0, haze0, crisp0), rimTexel(vec2(hi.x, lo.y), faint1, haze1, crisp1), f.x),
-        mix(rimTexel(vec2(lo.x, hi.y), faint0, haze0, crisp0), rimTexel(hi, faint1, haze1, crisp1), f.x), f.y);
+    float sd = -outlineBody(p).x, beside = outlineBeside(p).x;
+    // Most of the island is unlit: in the shape but away from its edge and above the haze. Only the rest is worked
+    // out (a texel's reach beyond, for the blend), the crisp line only by the edge.
+    bool inShape = max(-sd, beside) > -px;
+    bool lit = sd > -(0.5 * strokes.x + 2.0 * t) || p.y > body.w - strokes.z - 2.0 * t;
+    if (inShape && lit) {
+        vec2 at = p / t - 0.5;
+        vec2 cell = floor(at);
+        vec2 f = at - cell;
+        vec2 lo = (clamp(cell, vec2(0.0), grid - 1.0) + 0.5) * t;
+        vec2 hi = (clamp(cell + 1.0, vec2(0.0), grid - 1.0) + 0.5) * t;
+        vec4 faint0 = rimFlow(lo.x, shift.x, alpha.x, vec2(0.0), false);
+        vec4 haze0 = rimFlow(lo.x, shift.y, alpha.y, streaks.xy, true);
+        vec4 faint1 = rimFlow(hi.x, shift.x, alpha.x, vec2(0.0), false);
+        vec4 haze1 = rimFlow(hi.x, shift.y, alpha.y, streaks.xy, true);
+        vec4 soft = mix(mix(rimTexel(lo, faint0, haze0), rimTexel(vec2(hi.x, lo.y), faint1, haze1), f.x),
+            mix(rimTexel(vec2(lo.x, hi.y), faint0, haze0), rimTexel(hi, faint1, haze1), f.x), f.y);
+        vec4 crisp = vec4(0.0);
+        if (abs(sd) < 0.5 * strokes.y + px) {
+            float outer = clamp(0.5 + beside / px, 0.0, 1.0);
+            crisp = rimFlow(p.x, shift.z, alpha.z, streaks.zw, true) * rimBand(sd, outer, strokes.y, px);
+        }
+        light = min(soft + crisp, vec4(1.0)) * rimShape(p, sd, beside, px);
+        float noise = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+        light = light.a > 0.0 ? clamp(light + (noise - 0.5) / 255.0, vec4(0.0), vec4(1.0)) : light;
+    }
 }
 cogl_color_out = light * cogl_color_in.a;
 `;

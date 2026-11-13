@@ -5,6 +5,7 @@
 // only there, blurred by GNOME Shell's blur and cut to the island's shape by a shader.
 
 import Clutter from 'gi://Clutter';
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Graphene from 'gi://Graphene';
 import Meta from 'gi://Meta';
@@ -118,6 +119,63 @@ cogl_color_out *= max(body, flare);
 const ShapeMask = shaderEffect('ShapeMask', Object.fromEntries([...SHAPE, ...TONE, ...LENS].map(name => [name, 1])), CODE,
     FUNCTIONS);
 
+/** Least time between two blurs of what changed under a resting island: what is behind it (a video, a page
+ * scrolling) is blurred at most this often, never the island's own motion, which is the shape (see `BackdropMask`). */
+const BACKDROP_FRAME_MS = 33;
+/** For this long after its shape last changed, the island counts as moving: everything is blurred at once. */
+const SETTLE_MS = 250;
+
+/** The island's shape mask, which also keeps the blur it drew: while the island rests, a change under it is blurred
+ * again at most every `BACKDROP_FRAME_MS`, the last one always; in between, the blur it has is shown again (no copy
+ * drawn, no blur). Its shape and tone, and everything while it moves, are drawn every frame as before. */
+const BackdropMask = GObject.registerClass(
+class BackdropMask extends ShapeMask {
+    _init() {
+        super._init();
+        this._shapedAt = 0;
+        this._blurredAt = 0;
+        this._catchUp = 0;
+    }
+
+    /** The shape (or tone) changed now: the island is moving, or just was. */
+    shaped() {
+        this._shapedAt = GLib.get_monotonic_time();
+    }
+
+    vfunc_paint(node, paintContext, flags) {
+        const now = GLib.get_monotonic_time();
+        const dirty = flags & Clutter.EffectPaintFlags.ACTOR_DIRTY;
+        const resting = now - this._shapedAt > SETTLE_MS * 1000;
+        const wait = BACKDROP_FRAME_MS * 1000 - (now - this._blurredAt);
+        if (dirty && resting && wait > 0 && this._blurredAt) {
+            // Shown as it was; blurred again when its time comes (the actor stays dirty until then).
+            this._queueCatchUp(Math.ceil(wait / 1000));
+            super.vfunc_paint(node, paintContext, flags & ~Clutter.EffectPaintFlags.ACTOR_DIRTY);
+            return;
+        }
+        if (dirty)
+            this._blurredAt = now;
+        super.vfunc_paint(node, paintContext, flags);
+    }
+
+    _queueCatchUp(ms) {
+        if (this._catchUp)
+            return;
+        this._catchUp = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Math.max(1, ms), () => {
+            this._catchUp = 0;
+            this.get_actor()?.queue_redraw();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    /** Its pending catch-up stopped: the backdrop it is on goes or rests (an effect has no `destroy` of its own). */
+    stopCatchUp() {
+        if (this._catchUp)
+            GLib.source_remove(this._catchUp);
+        this._catchUp = 0;
+    }
+});
+
 /** `names` paired with `values`, as `setUniforms` takes them. */
 const zip = (names, values) => Object.fromEntries(names.map((name, i) => [name, values[i]]));
 
@@ -158,6 +216,34 @@ const MIRRORED = ['opacity', 'scale-x', 'scale-y', 'pivot-point', 'translation-x
  * blur behind it reads the screen, and drawn a second time here its real one flickers, #23). */
 function surfaceOf(actor) {
     return actor.get_children().find(child => child.constructor.$gtype?.name?.startsWith('MetaSurface')) ?? actor;
+}
+
+/** A window's moves, resizes and fades: any can uncover a window under it (see `GlassBackdrop._prune`). Each is set
+ * before the frame it shows in, where its new allocation is only known as that frame is laid out. */
+const UNCOVERING = ['x', 'y', 'width', 'height', ...MIRRORED.filter(name => name !== 'pivot-point')]
+    .map(name => `notify::${name}`);
+
+/** Whether `a` and `b` ({x, y, width, height}) share any pixel. */
+function overlaps(a, b) {
+    return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+/** The surfaces in `actor` for which GNOME keeps `is-obscured`: whether each lies wholly under windows that are opaque
+ * there, worked out before every frame and whatever copies it. None where GNOME has no such property. */
+function surfacesIn(actor) {
+    const found = GObject.Object.find_property.call(actor.constructor, 'is-obscured') ? [actor] : [];
+    for (const child of actor.get_children())
+        found.push(...surfacesIn(child));
+    return found;
+}
+
+/** Whether `surface` (see `surfacesIn`) is wholly under windows that are opaque there. */
+function isObscured(surface) {
+    // A property of a class GNOME doesn't describe, so read through a GValue.
+    const value = new GObject.Value();
+    value.init(GObject.TYPE_BOOLEAN);
+    surface.get_property('is-obscured', value);
+    return value.get_boolean();
 }
 
 /** A copy that tells Clutter it draws only within `paintArea` (its own pixels), so a change in its source redraws
@@ -207,21 +293,29 @@ class GlassBackdrop extends St.Widget {
         this._frame.add_child(this._layers);
         this._blur = new Shell.BlurEffect({mode: Shell.BlurMode.ACTOR});
         this._frame.add_effect(this._blur);
-        this._mask = new ShapeMask();
+        this._mask = new BackdropMask();
         this.add_effect(this._mask);
         this._wallpaper = null;
         this._bar = null;
         this._windows = new Map();
         this._watched = new Set();
         this._places = null;
+        /** Override-redirect windows (an X11 menu) where they are: not copied (see `_prune`). */
+        this._overrides = [];
         this._later = 0;
+        /** Whether a copy is hidden, under other windows (see `_prune`), and the look that hides those. */
+        this._pruned = false;
+        this._pruneLater = 0;
         // Going with the island (Isle off, the shell shutting down): its signals and copies go with it; only a
         // pending look is taken back, as the shell may already be gone.
         this.connect('destroy', () => {
             this._on = false;
+            this._mask.stopCatchUp();
             if (this._later)
                 global.compositor?.get_laters().remove(this._later);
-            this._later = 0;
+            if (this._pruneLater)
+                global.compositor?.get_laters().remove(this._pruneLater);
+            this._later = this._pruneLater = 0;
             this._watched.clear();
             this._windows.clear();
             this._places = null;
@@ -273,7 +367,11 @@ class GlassBackdrop extends St.Widget {
         this._on = false;
         if (this._later)
             global.compositor.get_laters().remove(this._later);
-        this._later = 0;
+        if (this._pruneLater)
+            global.compositor.get_laters().remove(this._pruneLater);
+        this._later = this._pruneLater = 0;
+        this._pruned = false;
+        this._mask.stopCatchUp();
         for (const object of [global.window_group, global.display, Main.layoutManager.panelBox, Main.panel, Main.overview])
             object.disconnectObject(this);
         this._watched.forEach(actor => actor.disconnectObject(this));
@@ -324,10 +422,74 @@ class GlassBackdrop extends St.Widget {
                     this._watched.delete(actor);
                     this._queueSync();
                 }, this);
+            // At once, not before the next frame: the frame it moves in may already show what it uncovers.
+            for (const signal of UNCOVERING)
+                actor.connectObject(signal, () => this._unprune(), this);
         }
-        this._places = actors.filter(actor => actor.visible && !actor.meta_window?.is_override_redirect())
-            .map(actor => ({actor, x: actor.x, y: actor.y, width: actor.width, height: actor.height}));
+        const place = actor => ({actor, x: actor.x, y: actor.y, width: actor.width, height: actor.height});
+        const shown = actors.filter(actor => actor.visible);
+        this._places = shown.filter(actor => !actor.meta_window?.is_override_redirect()).map(place);
+        this._overrides = shown.filter(actor => actor.meta_window?.is_override_redirect()).map(place);
         return this._places;
+    }
+
+    /** Hides the copies of windows wholly under others, as GNOME found them at the last frame (`is-obscured`), so
+     * what changes in them blurs nothing again, and GNOME may let them rest: a window covered on screen is asked to
+     * draw no frames, but one that is copied is drawn here, so it would draw on (a video behind a maximised window,
+     * 60 frames a second). What covers them is copied above them, so the glass looks the same. Not while an
+     * override-redirect window (not copied) reaches under the island. */
+    _prune() {
+        const rect = this._frameRect();
+        if (!this._on || !rect || this._overrides.some(place => overlaps(place, rect)))
+            return;
+        for (const clone of this._windows.values()) {
+            if (clone.visible && this._covered(clone)) {
+                clone.hide();
+                this._pruned = true;
+            }
+        }
+    }
+
+    /** Whether all of `clone`'s window is under other windows; follows each of its surfaces, to show it again the
+     * moment that changes. */
+    _covered(clone) {
+        const surfaces = surfacesIn(clone.source);
+        clone._surfaces ??= new Set();
+        for (const surface of surfaces) {
+            if (clone._surfaces.has(surface))
+                continue;
+            clone._surfaces.add(surface);
+            surface.connectObject('notify::is-obscured', () => {
+                if (isObscured(surface))
+                    this._queuePrune();
+                else
+                    this._unprune();
+            }, 'destroy', () => clone._surfaces?.delete(surface), clone);
+        }
+        return surfaces.length > 0 && surfaces.every(isObscured);
+    }
+
+    /** Hides what is under other windows once this frame is drawn: GNOME then knows what it covers. */
+    _queuePrune() {
+        if (!this._on || this._pruneLater)
+            return;
+        this._pruneLater = global.compositor.get_laters().add(Meta.LaterType.IDLE, () => {
+            this._pruneLater = 0;
+            this._prune();
+            return false;
+        });
+    }
+
+    /** Shows every copy hidden by `_prune` again, then looks again after the frame: something moved, and may
+     * have uncovered one. */
+    _unprune() {
+        // A window moved, faded, came or went: blurred every frame while that goes on (see `BackdropMask`).
+        this._mask.shaped();
+        if (this._pruned) {
+            this._pruned = false;
+            this._windows.forEach(clone => clone.show());
+        }
+        this._queuePrune();
     }
 
     /** Copies the windows that reach under the island, in their stacking order, and follows each window. */
@@ -336,8 +498,9 @@ class GlassBackdrop extends St.Widget {
             return;
         const places = this._windowPlaces();
         const rect = this._frameRect();
-        const under = rect ? places.filter(({x, y, width, height}) => x < rect.x + rect.width && x + width > rect.x &&
-            y < rect.y + rect.height && y + height > rect.y).map(({actor}) => actor) : [];
+        const under = rect ? places.filter(place => overlaps(place, rect)).map(({actor}) => actor) : [];
+        // Whatever changed may have uncovered one: all shown, and those still covered hidden after the frame.
+        this._unprune();
         for (const [actor, clone] of this._windows) {
             if (!under.includes(actor)) {
                 clone.destroy();
@@ -354,6 +517,9 @@ class GlassBackdrop extends St.Widget {
             }
             if (!clone) {
                 clone = new AreaClone(source, {mirror: actor});
+                // A surface that comes or goes (a video's) may not be covered: looked at again.
+                if (source !== actor)
+                    source.connectObject('child-added', () => this._queueSync(), 'child-removed', () => this._queueSync(), clone);
                 this._windows.set(actor, clone);
                 this._layers.add_child(clone);
             }
@@ -416,6 +582,7 @@ class GlassBackdrop extends St.Widget {
         this.set_size(width, height);
         this._frame.set_position(-pad, -pad);
         this._frame.set_size(width + 2 * pad, height + 2 * pad);
+        this._mask.shaped();
         this._mask.setUniforms(zip(SHAPE, [width, height, bottom, left, right, Math.min(radius, (right - left) / 2, bottom),
             shoulder, Math.min(crown, (right - left) / 2, bottom), reach, drop]));
         const tone = this._tone;

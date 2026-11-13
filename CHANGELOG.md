@@ -6,12 +6,60 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+The voice assistant hears you again on newer PipeWire, the arrow keys choose in the clipboard, opencode 2 shows
+your own models, GNOME's calendar no longer gets stuck open, and the assistant's glow is smoother. To update:
+click Update on the new-version alert (or Settings → About → Update), then log out and back in.
+
+### Changed
+
+- **Every AI thinks at medium.** Claude Code, Codex, Grok, opencode and Antigravity all answer at medium effort,
+  the same for each and not a setting (Codex and Grok thought at low before; Claude and opencode as their own
+  settings had it). Where a model has no medium, it thinks as that model does by default. Antigravity lists each
+  effort as a model of its own: Settings now offers each of its models once, at medium, and a pick at another
+  effort moves to its medium.
+- **A smoother glow round the assistant.** The light round the island while the assistant listens or waits for
+  an answer looked rough at its edge: the round corners stepped in blocks of two pixels, the fine line of light
+  along the edge was blurred, and the light fell inwards in visible steps. The edge, the fine line and where the
+  light is cut to the island's shape are now worked out for each pixel, as sharp as the island's own edge; the
+  light falls inwards in one smooth gradient, and a touch of noise keeps its shades from banding. Its colours,
+  brightness and motion are as before. (#60) Thanks to @danielopensource.
+
 ### Fixed
 
 - The one-line install stopped at the first time GitHub timed out ("curl: (22) The requested URL returned error:
   504", then "the download failed"). It now asks again a few times when GitHub times out or is busy for a moment,
   and still gives up at once when GitHub says to come back much later. An update from Settings runs the new
   version's own installer, so updates get this from the next version on.
+- The voice assistant heard no speech on some systems (Fedora 44 among them): every recording came out as loud
+  noise, "heard no speech: loudest -4 dB, the room -5 dB" in isled's log. Since PipeWire 1.4, pw-record writes a
+  sound file unless asked for bare samples, and Isle read that file as samples. Isle now asks for bare samples
+  where pw-record can (`--raw`, PipeWire 1.4 and newer); older PipeWire, as on Ubuntu 24.04, gives them anyway.
+  (#59) Thanks to @KYawCharles for finding the cause.
+- The Clipboard opened from its shortcut (Super+V) did not let ← → choose a card: the search field took them for
+  its cursor. ← → ↑ ↓ and the keypad's arrows now choose a card, also among those a search shows, and Enter
+  pastes it. (#56, #57) Thanks to @AlphaBeast97.
+- With opencode 2, the model list showed only opencode's free models: opencode 2 keeps sign-ins in its own
+  database, which Isle's separate opencode never saw. Isle now shares your API key and OAuth sign-ins with it
+  through opencode's own `auth export` and `auth import`, removes from it one you removed, and hands back a
+  sign-in opencode renewed during a request; see SECURITY.md. With opencode 1.x nothing changes. (#52, #54)
+  Thanks to @AlphaBeast97.
+- Settings → Assistant → Model listed opencode models that no longer existed and missed new ones: Isle's
+  opencode 1.x kept a copy of opencode's model catalog it never fetched again. A copy a day old is now
+  refreshed (from your own opencode's when that is newer, else fetched as opencode does).
+- Signed in to OpenAI in opencode with a ChatGPT account, Settings offered OpenAI models that account cannot use
+  ("The 'gpt-5.5' model is not supported when using Codex with a ChatGPT account"). It now offers only those
+  Codex lists for the account, when Codex is signed in too. Any model an AI refuses is left out of the list for
+  a week, then offered again.
+- With opencode 2, the model list missed free models whose id does not end in "-free" (Big Pickle) and named the
+  rest by their ids. It now takes opencode's own names and prices.
+- GNOME's own calendar could open while Isle hid the clock, and then never close: with a top bar menu open,
+  ← → (Ctrl+Alt+arrows too) or the pointer moving along the bar went on to the hidden clock's menu. On GNOME 51
+  the calendar then stayed on screen until Isle was turned off and on. The hidden clock's menu is now left out of
+  the bar's menus, so they pass it by, and anything else opening it has it closed before it shows; with Isle off,
+  or the island on another display, the clock and its calendar work as GNOME has them. (#61) Thanks to @Eisiem.
+- Logging out with Isle on left a warning in GNOME Shell's log ("Object Gjs_src_island_Island … has been already
+  disposed"): windows closing as the shell shut down still asked about the island it had just taken. Isle no
+  longer follows them once the island is gone.
 
 ## [1.7.1] - 2026-11-07
 

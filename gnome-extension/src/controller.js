@@ -326,6 +326,11 @@ export class Controller {
             for (const name of [...this._timeouts.keys()])
                 this._cancel(name);
             this._destroying = true;
+            // The display outlives it, its windows still going (Xwayland's as it ends, others as they are freed,
+            // when no JS may run): not followed. What else it watched may be gone already: see `_syncScanout`.
+            if (this._focusChanged)
+                global.display.disconnect(this._focusChanged);
+            this._focusChanged = 0;
         });
         this._updateGeometry();
         this._render();
@@ -918,10 +923,11 @@ export class Controller {
     /** GNOME sends a window covering the whole display straight to the screen, hiding the island (or a copy of
      * it) that still takes the pointer. Painting stays on while both show, as for GNOME's own menus and OSDs. */
     _syncScanout() {
-        // Until auto-hide has drawn it into the edge, it still shows (see Island.drawn).
-        const shownOn = [...this._island.visible && this._island.drawn ? [this._monitor] : [],
+        // Until auto-hide has drawn it into the edge, it still shows (see Island.drawn). Not read once the island
+        // is gone: GNOME Shell shutting down takes it, and windows still go after.
+        const shownOn = () => [...this._island.visible && this._island.drawn ? [this._monitor] : [],
             ...this._mirrors.filter(mirror => mirror.island.visible && mirror.island.drawn).map(mirror => mirror.monitor)];
-        const inhibit = !this._destroying && shownOn.some(monitor => this._windowCoversDisplay(monitor));
+        const inhibit = !this._destroying && shownOn().some(monitor => this._windowCoversDisplay(monitor));
         if (inhibit === Boolean(this._scanoutInhibited))
             return;
         this._scanoutInhibited = inhibit;
@@ -3199,7 +3205,9 @@ export class Controller {
         Alerts.stopWatching();
         global.display.get_selection().disconnect(this._primaryChanged);
         Main.layoutManager.uiGroup.disconnect(this._panelAdded);
-        global.display.disconnect(this._focusChanged);
+        if (this._focusChanged)
+            global.display.disconnect(this._focusChanged);
+        this._focusChanged = 0;
         global.display.disconnect(this._focusMonitorChanged);
         global.display.disconnect(this._fullscreenChanged);
         stopPending();
@@ -3288,6 +3296,7 @@ export class Controller {
             Main.layoutManager.uiGroup.disconnect(this._panelAdded);
         for (const id of [this._focusChanged, this._focusMonitorChanged, this._fullscreenChanged].filter(Boolean))
             global.display.disconnect(id);
+        this._focusChanged = 0;
         if (this._voiceBound)
             Main.wm.removeKeybinding('voice-shortcut');
         this._unbindPageShortcuts();

@@ -22,8 +22,6 @@ use tokio::sync::mpsc::UnboundedSender;
 use super::answer::{Answer, SCHEMA};
 use super::child::{self, Events};
 
-/// Fast answers for a voice assistant; the user's own Grok settings are not used.
-const EFFORT: &str = "low";
 const STDERR_LINES: usize = 20;
 /// Longest a first request waits for `grok models` to name the plan's default.
 const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
@@ -47,11 +45,6 @@ enabled = false
 [workflows]
 enabled = false
 ";
-
-/// How hard it thinks: `EFFORT`, unless the eval tries another (ISLE_GROK_EFFORT).
-fn effort() -> String {
-    std::env::var("ISLE_GROK_EFFORT").unwrap_or_else(|_| EFFORT.to_owned())
-}
 
 /// What each turn's `grok` run needs, and the conversation it resumes.
 pub struct Grok {
@@ -185,7 +178,12 @@ impl Grok {
             // Headless runs can't ask: the web tools are allowed by name, nothing else is.
             .args(["--allow", "WebFetch", "--allow", "WebSearch"])
             .args(["--no-plan", "--no-subagents", "--no-memory"])
-            .args(["--reasoning-effort", &effort(), "--max-turns", MAX_TURNS])
+            .args([
+                "--reasoning-effort",
+                super::brain::EFFORT,
+                "--max-turns",
+                MAX_TURNS,
+            ])
             .arg("--leader-socket")
             .arg(home().join("leader.sock"))
             .arg("--cwd")

@@ -233,15 +233,21 @@ tcp`), until a phone gets through. Isle never changes the firewall itself.
   exists (`/nonexistent/isle-reads-nothing`). It gets none of your opencode config (`opencode.json`,
   so no MCP servers, plugins or custom providers of yours), no project files,
   and none of your environment but the locale, time zone and proxy settings.
-  Your sign-ins come from `~/.local/share/opencode/auth.json`, for each
-  request: only API keys and OAuth sign-ins; an organisation's "well-known"
-  sign-in is left out, as it would bring its server's own config, MCP servers
-  and permissions with it. When opencode renews an OAuth sign-in during a
-  request (ChatGPT's, whose old refresh token then stops working), Isle writes
-  just that entry back into your `auth.json` (all at once, readable by you
-  only), so your own opencode stays signed in; nothing else in it is ever
-  changed, and Isle's own copy is deleted as the request ends, also when it
-  was stopped.
+  Your sign-ins come from `~/.local/share/opencode/auth.json` (opencode 1.x)
+  or opencode 2's own database, through `opencode auth export` and `auth
+  import`, for each request: only API keys and OAuth sign-ins; an "external"
+  or "well-known" sign-in is left out, as it would bring its server's own
+  config, MCP servers and permissions with it. When opencode renews an OAuth
+  sign-in during a request (ChatGPT's, whose old refresh token then stops
+  working), Isle writes just that entry back over the older one you still
+  have, so your own opencode stays signed in. Nothing else is ever changed.
+  Isle's own 1.x copy is deleted as the request ends, also when it was
+  stopped; its 2.x database keeps the sign-ins it was given so later requests
+  stay signed in, readable by you only. It also keeps a list of the ids it
+  copied (no secrets, readable by you only), so a sign-in you remove from your
+  own database goes from Isle's too; one only Isle has stays. To avoid
+  starting opencode for every check, Isle keeps the sign-ins it exported in
+  memory for up to 30 seconds; they are not written to another file.
 - Files: Isle searches by name for it, within your home folder and removable
   drives, and reads only small plain-text files you ask about. It skips
   hidden folders, never searches those that hold keys or passwords (`.ssh`,

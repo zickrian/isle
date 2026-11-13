@@ -52,8 +52,12 @@ export class TopBar extends Signals.EventEmitter {
         this._own = new Set();
         this._toggle = () => this._onToggle();
         this._dateMenu = Main.panel.statusArea.dateMenu;
+        this._clockFocus = this._dateMenu.can_focus;
+        this._clockShown = false;
+        this._closeLater = 0;
         this._dateMenu.opacity = 0;
         this._dateMenu.reactive = false;
+        this._syncClockMenu();
 
         this._settingsChanged = [
             ...['top-bar-style', 'top-bar-opacity', 'island-theme'].map(key => settings.connect(`changed::${key}`, () => {
@@ -102,10 +106,34 @@ export class TopBar extends Signals.EventEmitter {
         // While Settings waits for a shortcut, Super+V goes to it (GNOME's grab keeps it from the window itself).
         this._recording = false;
         this._unwatchRecorder = watchRecorder(waiting => (this._recording = waiting));
+        // Closed before the next frame, not at once: GNOME 51 tells of the opening before it shows the menu, which
+        // a menu closed then still did, for good (#61).
         this._menuChanged = this._dateMenu.menu.connect('open-state-changed', (menu, open) => {
-            if (open && !this._clockShown)
-                menu.close();
+            if (!open || this._clockShown || this._closeLater)
+                return;
+            this._closeLater = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
+                this._closeLater = 0;
+                if (!this._clockShown) {
+                    menu.close();
+                    // Given back to the bar's menus meanwhile (GNOME laying the bar out again): taken again.
+                    this._syncClockMenu();
+                }
+                return GLib.SOURCE_REMOVE;
+            });
         });
+    }
+
+    /** The hidden clock's menu is not among the bar's: with one of those open, ← → (Ctrl+Alt+arrows too) and the
+     * pointer moving along the bar opened the next, the calendar's included (#61). Nor can the clock take the
+     * keyboard. Both given back with the clock. */
+    _syncClockMenu() {
+        const manager = Main.panel.menuManager;
+        const shown = this._clockShown;
+        this._dateMenu.can_focus = shown ? this._clockFocus : false;
+        if (shown)
+            manager.addMenu(this._dateMenu.menu);
+        else
+            manager.removeMenu(this._dateMenu.menu);
     }
 
     /** Whether the bar runs along the top of `monitor`: the main display's, unless another extension moved it. */
@@ -263,6 +291,7 @@ export class TopBar extends Signals.EventEmitter {
         this._clockShown = shown;
         this._dateMenu.opacity = shown ? 255 : 0;
         this._dateMenu.reactive = shown;
+        this._syncClockMenu();
         if (shown)
             this._dateMenu.set_width(-1);
         else
@@ -354,6 +383,11 @@ export class TopBar extends Signals.EventEmitter {
         if (this._dragButtonWas === 0 && this._dragGesture.required_button === PRIMARY_BUTTON)
             this._dragGesture.required_button = 0;
         this._dateMenu.menu.disconnect(this._menuChanged);
+        if (this._closeLater)
+            global.compositor.get_laters().remove(this._closeLater);
+        this._closeLater = 0;
+        this._clockShown = true;
+        this._syncClockMenu();
         this._restoreToggle();
         this._unwatchRecorder();
 

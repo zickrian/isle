@@ -207,10 +207,17 @@ export default class IslePreferences extends ExtensionPreferences {
                 return;
             modelKey = current.modelKey;
             const entry = catalog.of(current.id);
-            const value = settings.get_string(modelKey);
+            let value = settings.get_string(modelKey);
             // Only what the plan allows; until isled has asked, just the AI's own default.
             const def = entry?.default_name ? `Default (${entry.default_name})` : `${current.name}’s default`;
             modelChoices = [['', def], ...(entry?.models ?? []).map(({id, name}) => [id, name])];
+            // agy's efforts are models of their own, and Isle offers each at medium only: a pick from before
+            // at another effort becomes its medium, as isled already answers with.
+            const medium = current.id === 'agy' ? value.replace(/-(none|minimal|low|high|xhigh|max)$/, '-medium') : value;
+            if (medium !== value && modelChoices.some(([id]) => id === medium)) {
+                value = medium;
+                settings.set_string(modelKey, medium);
+            }
             // A pick the plan no longer allows stays (it comes back once allowed), marked as not used now.
             if (!modelChoices.some(([id]) => id === value)) {
                 const known = entry?.models?.length > 0;

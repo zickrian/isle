@@ -27,6 +27,10 @@ pub enum Provider {
 
 /// Tried in this order when the user picked "auto", signed-in ones first. agy comes last: its terms bar
 /// third-party tools, so it answers only when it is all there is, or picked.
+/// How hard every AI thinks: medium, for each the same, and not a setting. Where a model has no medium (or
+/// its CLI no such choice), it thinks as the model does by default.
+pub const EFFORT: &str = "medium";
+
 const AUTO: [Provider; 5] = [
     Provider::Claude,
     Provider::Codex,

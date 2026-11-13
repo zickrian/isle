@@ -104,6 +104,29 @@ struct Saved {
     names: BTreeMap<String, String>,
     /// Per provider, the pick last told as stood in for (see `tell`).
     switched: BTreeMap<String, String>,
+    /// Per provider, the models it refused and when (ms): left out of its list for [`REFUSED_FOR`], then
+    /// offered again (a plan may have changed meanwhile).
+    refused: BTreeMap<String, BTreeMap<String, i64>>,
+}
+
+/// How long a model the AI refused stays out of Settings' list.
+const REFUSED_FOR: i64 = 7 * 24 * 60 * 60 * 1000;
+
+/// `provider` refused `model`: left out of its list for a while (see [`Saved::refused`]); its list is looked
+/// at again by the caller.
+pub fn refused(provider: Provider, model: &str) {
+    // Unit tests refuse models too: they must not write the user's own models.json.
+    if model.is_empty() || cfg!(test) {
+        return;
+    }
+    let mut shared = shared();
+    shared
+        .saved
+        .refused
+        .entry(provider.id().to_owned())
+        .or_default()
+        .insert(model.to_owned(), now_ms());
+    shared.store.save(&shared.saved);
 }
 
 /// The catalogs and the plan looks in progress, behind one lock.
@@ -354,6 +377,14 @@ impl Shared {
                 self.saved.catalogs.remove(id);
             }
             Found::Catalog(mut catalog) => {
+                // What it refused lately is not offered (its default stays: it answers when nothing else does).
+                let now = now_ms();
+                if let Some(refused) = self.saved.refused.get_mut(id) {
+                    refused.retain(|_, at| now - *at < REFUSED_FOR);
+                    catalog
+                        .models
+                        .retain(|m| m.id == catalog.default || !refused.contains_key(&m.id));
+                }
                 // Claude's is read whenever asked: unchanged, it is not news.
                 if let Some(before) = before.as_ref().filter(|_| provider == Provider::Claude)
                     && before.signature() == catalog.signature()
@@ -378,7 +409,7 @@ impl Shared {
 /// `provider`'s plan and models now.
 async fn read(provider: Provider) -> Found {
     // opencode answers with OpenCode's free models signed in or not.
-    let usable = provider.signed_in() || provider == Provider::Opencode;
+    let usable = provider == Provider::Opencode || provider.signed_in();
     let Some(program) = provider.program().filter(|_| usable) else {
         return Found::Gone;
     };
@@ -404,14 +435,31 @@ async fn read(provider: Provider) -> Found {
             let listed = tokio::time::timeout(OPENCODE_TIMEOUT, super::opencode::models(&program))
                 .await
                 .unwrap_or_else(|_| Err(anyhow::anyhow!("no answer in time")));
-            let plan = super::opencode::plan();
+            let plan = tokio::task::spawn_blocking(super::opencode::plan)
+                .await
+                .unwrap_or("Free models");
             // Go's own list, for a Go plan only: a model Go dropped is not offered though opencode lists it.
             let go = match (&listed, plan) {
                 (Ok(_), "OpenCode Go") => super::opencode::go_models().await,
                 _ => None,
             };
+            // Signed in to OpenAI with ChatGPT, opencode can use only what Codex lists for that account.
+            let chatgpt = tokio::task::spawn_blocking(super::opencode::chatgpt_sign_in)
+                .await
+                .unwrap_or(false);
+            let codex: Option<Vec<String>> = chatgpt
+                .then(|| current().remove(Provider::Codex.id()))
+                .flatten()
+                .map(|codex| codex.models.into_iter().map(|m| m.id).collect())
+                .filter(|ids: &Vec<String>| !ids.is_empty());
             listed.map(|listed| {
-                opencode_catalog(&listed, &super::opencode::preferred(), plan, go.as_deref())
+                opencode_catalog(
+                    &listed,
+                    &super::opencode::preferred(),
+                    plan,
+                    go.as_deref(),
+                    codex.as_deref(),
+                )
             })
         }
     };
@@ -653,9 +701,29 @@ fn codex_catalog(account: &Value, pages: &[Value]) -> Catalog {
     catalog
 }
 
-/// agy's catalog from `agy models` (`id<TAB>name` lines); its plan cannot be read, and it marks no default.
+/// The efforts agy puts at the end of a model's id ("gemini-4-argon-high"), each a model of its own.
+const AGY_EFFORTS: [&str; 7] = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+/// An agy model's id without its effort, and the effort: ("gemini-4-argon", "high").
+fn agy_effort(id: &str) -> (&str, &str) {
+    AGY_EFFORTS
+        .iter()
+        .find_map(|effort| Some((id.strip_suffix(effort)?.strip_suffix('-')?, *effort)))
+        .unwrap_or((id, ""))
+}
+
+/// The medium of an agy model picked at another effort (a pick from before Isle offered medium only).
+pub fn agy_medium(id: &str) -> String {
+    match agy_effort(id) {
+        (base, effort) if !effort.is_empty() => format!("{base}-{}", super::brain::EFFORT),
+        _ => id.to_owned(),
+    }
+}
+
+/// agy's catalog from `agy models` (`id<TAB>name` lines); its plan cannot be read. Each model once, at medium
+/// (where agy has it, else as listed), named without the effort; the first, agy's own first, is the default.
 fn agy_catalog(listed: &str) -> Catalog {
-    let models = listed
+    let listed: Vec<Model> = listed
         .lines()
         .filter_map(|line| {
             let (id, name) = line.split_once('\t')?;
@@ -666,7 +734,36 @@ fn agy_catalog(listed: &str) -> Catalog {
             })
         })
         .collect();
+    let mut models: Vec<Model> = Vec::new();
+    for model in &listed {
+        let (base, effort) = agy_effort(&model.id);
+        let medium = format!("{base}-{}", super::brain::EFFORT);
+        let has_medium = listed.iter().any(|m| m.id == medium);
+        if !effort.is_empty() && has_medium && effort != super::brain::EFFORT {
+            continue;
+        }
+        // "Gemini 4 Argon (Medium)": the effort is the same for all, so it goes.
+        let name = if effort == super::brain::EFFORT {
+            model
+                .name
+                .trim_end_matches(" (Medium)")
+                .trim_end_matches(" (medium)")
+                .to_owned()
+        } else {
+            model.name.clone()
+        };
+        models.push(Model {
+            id: model.id.clone(),
+            name,
+        });
+    }
+    let (default, default_name) = models
+        .first()
+        .map(|m| (m.id.clone(), m.name.clone()))
+        .unwrap_or_default();
     Catalog {
+        default,
+        default_name,
         models,
         ..Catalog::default()
     }
@@ -715,8 +812,13 @@ fn opencode_catalog(
     preferred: &[String],
     plan: &str,
     go: Option<&[String]>,
+    chatgpt: Option<&[String]>,
 ) -> Catalog {
-    let listed = super::opencode::listed_models(listed);
+    let mut listed = super::opencode::listed_models(listed);
+    // With a ChatGPT sign-in, an OpenAI model Codex does not list for the account is refused when asked.
+    if let Some(allowed) = chatgpt {
+        listed.retain(|m| m.provider != "openai" || allowed.contains(&m.base));
+    }
     // Free: OpenCode's own free models. A plan's (ChatGPT's) lists at no cost too, but is not free.
     let label = |model: &super::opencode::Listed| {
         if model.free && model.provider == "opencode" {
@@ -1002,6 +1104,7 @@ mod tests {
                       Fetching available models...\n\
                       gpt-oss-120b-medium\t\n";
         let catalog = agy_catalog(listed);
+        // A model with no medium stays at each effort it has; the first listed is the default.
         assert_eq!(
             ids_and_names(&catalog),
             [
@@ -1011,7 +1114,67 @@ mod tests {
                 ("gpt-oss-120b-medium", "gpt-oss-120b-medium")
             ]
         );
-        assert_eq!((catalog.plan.as_str(), catalog.default.as_str()), ("", ""));
+        assert_eq!(
+            (catalog.plan.as_str(), catalog.default.as_str()),
+            ("", "gemini-3.8-flash-high")
+        );
+    }
+
+    #[test]
+    fn offers_a_chatgpt_sign_in_only_the_models_codex_lists() {
+        let listed = "openai/gpt-6.1-sol\n{\"name\": \"GPT-6.1 Sol\", \"api\": {\"id\": \"gpt-6.1-sol\"}}\n\
+                      openai/gpt-6.1-sol-fast\n{\"name\": \"GPT-6.1 Sol Fast\", \"api\": {\"id\": \"gpt-6.1-sol\"}}\n\
+                      openai/gpt-5.5\n{\"name\": \"GPT-5.5\", \"api\": {\"id\": \"gpt-5.5\"}}\n\
+                      opencode/big-pickle\n{\"name\": \"Big Pickle\", \"cost\": {\"input\": 0, \"output\": 0}}\n";
+        let ids = |catalog: Catalog| catalog.models.into_iter().map(|m| m.id).collect::<Vec<_>>();
+        let codex = ["gpt-6.1-sol".to_owned(), "gpt-6-astra".to_owned()];
+        assert_eq!(
+            ids(opencode_catalog(
+                listed,
+                &[],
+                "Free models",
+                None,
+                Some(&codex)
+            )),
+            [
+                "openai/gpt-6.1-sol",
+                "openai/gpt-6.1-sol-fast",
+                "opencode/big-pickle"
+            ]
+        );
+        // An API key, or no Codex to ask: all of them.
+        assert_eq!(
+            ids(opencode_catalog(listed, &[], "Free models", None, None)).len(),
+            4
+        );
+    }
+
+    #[test]
+    fn offers_each_agy_model_once_at_medium() {
+        let listed = "gemini-4-argon-medium\tGemini 4 Argon (Medium)\n\
+                      gemini-4-argon-high\tGemini 4 Argon (High)\n\
+                      gemini-4-argon-low\tGemini 4 Argon (Low)\n\
+                      claude-opus-5-5-low\tClaude Opus 5.5 (Low)\n\
+                      claude-opus-5-5-medium\tClaude Opus 5.5 (Medium)\n\
+                      claude-opus-5-5-high\tClaude Opus 5.5 (High)\n\
+                      gpt-oss-120b-medium\tGPT-OSS 120B (Medium)\n";
+        let catalog = agy_catalog(listed);
+        assert_eq!(
+            ids_and_names(&catalog),
+            [
+                ("gemini-4-argon-medium", "Gemini 4 Argon"),
+                ("claude-opus-5-5-medium", "Claude Opus 5.5"),
+                ("gpt-oss-120b-medium", "GPT-OSS 120B")
+            ]
+        );
+        assert_eq!(
+            (catalog.default.as_str(), catalog.default_name.as_str()),
+            ("gemini-4-argon-medium", "Gemini 4 Argon")
+        );
+        // A pick from before, at another effort: its medium.
+        assert_eq!(agy_medium("gemini-4-argon-high"), "gemini-4-argon-medium");
+        assert_eq!(agy_medium("claude-opus-5-5-low"), "claude-opus-5-5-medium");
+        assert_eq!(agy_medium("claude-sonnet-4-6"), "claude-sonnet-4-6");
     }
 
     #[test]
@@ -1099,7 +1262,7 @@ mod tests {
         .iter()
         .map(|id| format!("openai/{id}\n{{\n  \"name\": \"{id}\"\n}}\n"))
         .collect();
-        let names: Vec<String> = opencode_catalog(&listed, &[], "Free models", None)
+        let names: Vec<String> = opencode_catalog(&listed, &[], "Free models", None, None)
             .models
             .into_iter()
             .map(|m| m.name)
@@ -1135,7 +1298,7 @@ mod tests {
             "anthropic/claude-sonnet-5".to_owned(),
             "opencode/mimo-free".to_owned(),
         ];
-        let catalog = opencode_catalog(&listed, &preferred, "OpenCode Go", None);
+        let catalog = opencode_catalog(&listed, &preferred, "OpenCode Go", None, None);
         assert_eq!(
             ids_and_names(&catalog),
             [
@@ -1155,17 +1318,17 @@ mod tests {
         );
         assert_eq!(catalog.plan, "OpenCode Go");
         assert_eq!(
-            opencode_catalog(&listed, &[], "Free models", None).default,
+            opencode_catalog(&listed, &[], "Free models", None, None).default,
             ""
         );
         // Nothing listed, nothing offered: never a made-up model.
         assert!(
-            opencode_catalog("", &preferred, "Free models", None)
+            opencode_catalog("", &preferred, "Free models", None, None)
                 .models
                 .is_empty()
         );
         let names = |plan, go| -> Vec<String> {
-            let catalog = opencode_catalog(&listed, &[], plan, go);
+            let catalog = opencode_catalog(&listed, &[], plan, go, None);
             catalog.models.into_iter().map(|m| m.name).collect()
         };
         // Go's own list now: a model it dropped goes, though opencode still lists it.

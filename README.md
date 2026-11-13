@@ -30,7 +30,7 @@ appear in the same place instead of in the middle of the screen.
 
 ## Contents
 
-- [Features](#features)
+- [Preview](#preview)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Usage](#usage)
@@ -47,105 +47,38 @@ appear in the same place instead of in the middle of the screen.
 - [Support](#support)
 - [License](#license)
 
-## Features
+## Preview
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/images/music.png" alt="Music page" width="100%"><br>
-<b>Music.</b> Spotify, YouTube in your browser, or any MPRIS player: cover art with the playing app's icon, a scrubber and controls. Volume and output switching are one click away.
-</td>
-<td width="50%" valign="top">
-<img src="docs/images/lyrics.png" alt="Synced lyrics" width="100%"><br>
-<b>Synced lyrics</b> from <a href="https://lrclib.net">LRCLIB</a>: the line being sung large and bright, pauses as breathing dots. The island widens and takes the cover's colour; click a line to jump to it.
-</td>
+<td width="50%" align="center"><img src="docs/images/music.webp" alt="The Music page in glass: cover art, the song, a scrubber and controls" width="100%"><br><sub>Music</sub></td>
+<td width="50%" align="center"><img src="docs/images/lyrics.webp" alt="Synced lyrics, the glass tinted in the cover's colour" width="100%"><br><sub>Lyrics</sub></td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/images/call.png" alt="A Google Meet call in the island: its length, mute and open" width="100%"><br>
-<b>Calls</b> in WhatsApp, Telegram, Discord, Zoom, Meet and other call apps or call pages in a browser: the closed island shows a green phone beside the time, and the Call page how long the call has lasted. Open it to see the call live (you and whoever you call) while you work in other windows, mute your microphone, or jump back to the call.
-</td>
-<td width="50%" valign="top">
-<img src="docs/images/focus.png" alt="Timer page: the timer's ring, the work and break lengths, and Start" width="100%"><br>
-<b>Timer.</b> A Pomodoro timer with breaks and Do Not Disturb while you focus: a ring with the time left, the work and break lengths to type or change with − and + (they hold still from Start until Reset), and Start. Its time left stays in the closed island; beside a song or a call, it shows as a small ring on the other side of the clock.
-</td>
+<td width="50%" align="center"><img src="docs/images/assistant.webp" alt="The assistant's card for sudo apt install -y vlc, with Deny and Run" width="100%"><br><sub>Assistant</sub></td>
+<td width="50%" align="center"><img src="docs/images/usage.webp" alt="AI plan usage: a bar for the session and one for the week, with when each resets" width="100%"><br><sub>AI usage</sub></td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/images/reminders.png" alt="Reminders page: four reminders, one of them long" width="100%"><br>
-<b>Reminders</b>, a plain list: add, rename in place, tick one off and it is struck through, then goes. A long one wraps over as many lines as it needs.
-</td>
-<td width="50%" valign="top">
-<img src="docs/images/clipboard.png" alt="Clipboard history" width="100%"><br>
-<b>Shelf.</b> A clipboard history of text, links, images and files (search, filter, pin; paste from the keyboard with Super+V given to it), and a files tray: drop files on the island, then drag them into any app or click one to copy it, ready to paste into a chat. Press <b>Phone</b> and scan the QR code to save the Shelf's files on your phone, or send photos and files from it to the Shelf, in the phone's browser: same Wi-Fi, no app, nothing through the internet. ↓ on a file the phone sent saves it into Downloads.
-</td>
+<td width="50%" align="center"><img src="docs/images/notifications.webp" alt="The Notifications page: two messages, with Clear and Do Not Disturb" width="100%"><br><sub>Notifications</sub></td>
+<td width="50%" align="center"><img src="docs/images/calendar.webp" alt="The Calendar: the month beside the day's events, and world clocks under them" width="100%"><br><sub>Calendar</sub></td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/images/files.png" alt="The files tray with three pictures and a PDF" width="100%"><br>
-<b>Files tray.</b> Files dropped on the island wait here, with their thumbnails, until you drag them into an app or click one to copy it.
-</td>
-<td width="50%" valign="top">
-<img src="docs/images/calendar.png" alt="Calendar: the month beside the day's two events, and the time in New York, London and Tokyo under them" width="100%"><br>
-<b>Calendar.</b> The month beside the chosen day's events. Shows your desktop calendars (Google and others through Online Accounts) and events you add in a line: "Dinner 8:00 pm". Five minutes before an event, the island reminds you, with <b>Join</b> when it has a Google Meet, Zoom, Teams or Webex link. Under them, the time in other cities: GNOME's world clocks.
-</td>
+<td width="50%" align="center"><img src="docs/images/timer.webp" alt="The focus timer: its ring at 24:58, the work and break lengths, and Pause" width="100%"><br><sub>Timer</sub></td>
+<td width="50%" align="center"><img src="docs/images/reminders.webp" alt="The Reminders page: three reminders and a line for a new one" width="100%"><br><sub>Reminders</sub></td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/images/notifications.png" alt="The notifications page" width="100%"><br>
-<b>Notifications.</b> GNOME's notifications collect here as a plain list, newest first, with their buttons ("Reply", "Mark as read") under the pointer, Clear, and Do Not Disturb a click away.
-</td>
-<td width="50%" valign="top">
-<img src="docs/images/voice.png" alt="The voice assistant at work: what it heard, and the step it is on, finding jazz on Spotify" width="100%"><br>
-<b>Voice assistant.</b> Press Super+I and ask, in English or Indonesian: play a song, find a file, put windows side by side, add a reminder, explain why the laptop is slow. It works as an agent: a request with several steps is done one after another, each step checked, with the AI you already use (Claude Code, Codex, Grok, opencode or Antigravity).
-</td>
+<td width="50%" align="center"><img src="docs/images/clipboard.webp" alt="The clipboard history: a note, a command and a link" width="100%"><br><sub>Clipboard</sub></td>
+<td width="50%" align="center"><img src="docs/images/files.webp" alt="The files tray: two pictures and a document, and Phone" width="100%"><br><sub>Files</sub></td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/images/command.png" alt="The assistant's card for sudo apt install -y vlc: Needs your password, Deny and Run; then running, with its last lines and Stop" width="100%"><br>
-<b>Installs and fixes things.</b> "Install LibreOffice", "pasang codex": it checks what your Linux has, searches the web when unsure, and shows the one command it wants to run, with what to know (your password, a script from the web, removing files). Press <b>Run</b> or <b>Deny</b>. It runs in the background while you carry on, and the assistant checks it worked before saying so.
-</td>
-<td width="50%" valign="top">
-<img src="docs/images/conversation.png" alt="The conversation: install vlc, the command that ran with its time, and the answer" width="100%"><br>
-<b>Speak or type, and talk it through.</b> It listens as soon as it opens; start typing to type instead. Scroll up for the conversation so far; select text to copy it, + for a new one. The bot turns to the pointer, blinks, bounces with your voice and changes expression as it thinks and answers, and the light round the edge rises as you speak. Close the island and it carries on in the background.
-</td>
+<td width="50%" align="center"><img src="docs/images/devices.webp" alt="The Devices page: headphones, a mouse and a keyboard with their batteries" width="100%"><br><sub>Devices</sub></td>
+<td width="50%" align="center"><img src="docs/images/apps.webp" alt="App usage today: four apps with a bar and their time each" width="100%"><br><sub>Screen time</sub></td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/images/bot-looks.png" alt="The bot in eight shapes and several colours, with matching glows" width="100%"><br>
-<b>A bot of your own.</b> Eight shapes, from a circle to a cloud or a ghost, eleven colours or your own, softly shaded, and a glow round the island that matches it.
-</td>
-<td width="50%" valign="top">
-<img src="docs/images/usage.png" alt="Claude plan usage: a bar for the 5-hour limit and one for the week" width="100%"><br>
-<b>AI usage.</b> How much of your Claude and ChatGPT plans' limits is used: one plan at a time with its logo, a bar per limit it has (5 hours, the week) and when each resets; scroll up or down, or click the dots, to switch. A warning comes as one nears its end. Only the ones you are signed in to show.
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<img src="docs/images/alerts.png" alt="The closed island with a song and the focus timer, then alerts for a meeting with Join, Claude Code asking to run a command, a notification with Reply, and charging" width="100%"><br>
-<b>Alerts</b> for volume, brightness, Caps Lock, charging, low battery, Bluetooth devices with their battery (and, if you like, as theirs runs low), going offline, reminders, meetings about to start, AI plan limits and GNOME notifications with their buttons, in the same place instead of the middle of the screen. Hold the pointer on one to keep it, with a × on its icon to put it away (or swipe up). Isle's own icons move once as they appear: the bolt pulses, the bell sways, rings sweep and count up.
-</td>
-<td width="50%" valign="top">
-<img src="docs/images/approvals.png" alt="Claude Code asking to run npm run build, with Deny, Allow and Always; then Allowed" width="100%"><br>
-<b>AI agents.</b> When Claude Code or Codex asks permission to run something, answer from the island: <b>Deny</b>, <b>Allow</b> or, for Claude Code, <b>Always</b>. When one is done, the island says what it did. Nothing shows while you are in its window, and answering in its terminal works as before.
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<img src="docs/images/apps.png" alt="Apps page: Brave Web Browser, Visual Studio Code, Ghostty and Discord with their times today" width="100%"><br>
-<b>App usage.</b> Where your time goes: the application in front today, over the last seven days, or the last 30, with its icon, a bar and its time. Off until you turn it on, it times the app in front even when you are not typing or clicking; five idle minutes pause it unless a video holds the session awake, and locking the screen stops it. Kept on this computer for 30 days.
-</td>
-<td width="50%" valign="top">
-<img src="docs/images/glass.png" alt="The music page in the glass island, the wallpaper behind it showing through, blurred" width="100%"><br>
-<b>Glass.</b> The island in clear glass instead of black, if you prefer: what is behind it shows through, blurred, as you work. Choose it in Settings → Island → Appearance.
-</td>
+<td width="50%" align="center"><img src="docs/images/pill-notification.webp" alt="The closed pill as a message arrives" width="100%"><br><sub>Alerts</sub></td>
+<td width="50%" align="center"><img src="docs/images/pill-charging.webp" alt="The closed pill as the charger is plugged in: 57%" width="100%"><br><sub>Charging</sub></td>
 </tr>
 </table>
-
-Also: a Devices page with each connected Bluetooth device's battery (off
-until you turn it on), privacy dots while the camera, microphone or screen
-sharing is in use, a recording timer with a stop button, and a slim glass top
-bar that leaves your windows uncovered.
 
 ## Requirements
 
@@ -668,7 +601,10 @@ Thanks to everyone who has made Isle better:
 - [@jvspier](https://github.com/jvspier): the island on every display, and a
   top bar moved to the bottom by another extension.
 - [@AlphaBeast97](https://github.com/AlphaBeast97): opencode 2 in the voice
-  assistant.
+  assistant, with your own opencode sign-ins; the arrow keys in the
+  Clipboard.
+- [@Hazem-Samir](https://github.com/Hazem-Samir): the brightness in the island
+  with more than one display.
 
 ## Support
 

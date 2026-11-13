@@ -56,6 +56,15 @@ const POLL_MEASURE: Duration = Duration::from_millis(500);
 const POLL_FAILED: Duration = Duration::from_secs(10);
 /// Polls in a row at 0 after which a player is taken to answer polls with 0: read every [`POLL`] again.
 const ZERO_POLLS: u8 = 3;
+/// The player's properties isled never reads (see [`snapshot`]).
+const UNREAD: &[&str] = &[
+    "Volume",
+    "LoopStatus",
+    "Shuffle",
+    "MinimumRate",
+    "MaximumRate",
+    "CanControl",
+];
 
 /// The MPRIS player controls Isle uses.
 #[proxy(
@@ -439,10 +448,20 @@ impl Watcher {
             .unwrap_or_default();
         let browser = is_browser(&[name.as_str(), &identity, &desktop_entry]);
 
-        // Only the player's own properties: Identity and the like are read once, above.
+        // Only the player's own properties: Identity and the like are read once, above. A change to none that
+        // isled reads (a volume slider dragged in the player) reads nothing again.
         let mut changed = properties
             .receive_properties_changed_with_args(&[(0, PLAYER_INTERFACE)])
-            .await?;
+            .await?
+            .filter(|signal| {
+                let read = signal.args().map_or(true, |args| {
+                    worth_reading(
+                        args.changed_properties().keys().copied(),
+                        !args.invalidated_properties().is_empty(),
+                    )
+                });
+                std::future::ready(read)
+            });
         let mut seeked = player.receive_seeked().await?;
         let events = self.events.clone();
         let listener = tokio::spawn(async move {
@@ -1078,6 +1097,13 @@ fn snapshot(all: &HashMap<String, OwnedValue>) -> Snapshot {
     }
 }
 
+/// Whether a player's `PropertiesChanged` may change what isled shows: unless it names only properties in
+/// [`UNREAD`]. One that names none, or drops some from its cache (`invalidated`), is read to be sure.
+fn worth_reading<'a>(changed: impl IntoIterator<Item = &'a str>, invalidated: bool) -> bool {
+    let mut changed = changed.into_iter().peekable();
+    invalidated || changed.peek().is_none() || changed.any(|name| !UNREAD.contains(&name))
+}
+
 /// The value inside any number of nested variants.
 fn unwrap_variant<'a>(value: &'a Value<'a>) -> &'a Value<'a> {
     match value {
@@ -1501,7 +1527,22 @@ mod tests {
 
     use super::{
         LyricsStep, REST_AFTER, Snapshot, TrackQuery, file_title, lyrics_step, pick, rests,
+        worth_reading,
     };
+
+    #[test]
+    fn only_a_change_isled_may_show_is_read_again() {
+        // A volume slider dragged in the player, or its shuffle and repeat: nothing to read.
+        assert!(!worth_reading(["Volume"], false));
+        assert!(!worth_reading(["LoopStatus", "Shuffle"], false));
+        // Anything else, or with them, is.
+        assert!(worth_reading(["Volume", "Metadata"], false));
+        assert!(worth_reading(["PlaybackStatus"], false));
+        assert!(worth_reading(["SomethingNew"], false));
+        // Named nothing, or dropped from the cache: read to be sure.
+        assert!(worth_reading([], false));
+        assert!(worth_reading(["Volume"], true));
+    }
 
     #[test]
     fn a_browsers_media_rests_once_over_a_music_apps_never() {

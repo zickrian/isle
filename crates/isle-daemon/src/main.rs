@@ -289,6 +289,7 @@ async fn doctor() {
             "not running (systemctl --user restart isled)"
         }
     );
+    assistant::prepare_report().await;
     println!("Voice assistant:\n{}", assistant::report());
     println!("AI alerts:\n{}", agents::report());
 }
