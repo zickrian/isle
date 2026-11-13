@@ -6,6 +6,8 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-11-13
+
 The voice assistant hears you again on newer PipeWire, the arrow keys choose in the clipboard, opencode 2 shows
 your own models, GNOME's calendar no longer gets stuck open, and the assistant's glow is smoother. To update:
 click Update on the new-version alert (or Settings → About → Update), then log out and back in.
@@ -1804,7 +1806,8 @@ The first release.
   dark, vivid ones bright.
 - Text is at least 12 px throughout.
 
-[Unreleased]: https://github.com/zickrian/isle/compare/v1.7.1...HEAD
+[Unreleased]: https://github.com/zickrian/isle/compare/v1.7.2...HEAD
+[1.7.2]: https://github.com/zickrian/isle/compare/v1.7.1...v1.7.2
 [1.7.1]: https://github.com/zickrian/isle/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/zickrian/isle/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/zickrian/isle/compare/v1.5.3...v1.6.0
