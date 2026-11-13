@@ -357,7 +357,8 @@ mod tests {
 
     #[test]
     fn either_versions_sign_in_counts() {
-        let home = std::env::temp_dir().join(format!("isle-agy-login-{}", std::process::id()));
+        // Its own folder: the tests run at once, and another removes its own when done.
+        let home = std::env::temp_dir().join(format!("isle-agy-signed-in-{}", std::process::id()));
         std::fs::create_dir_all(home.join(".gemini/antigravity-cli")).unwrap();
         assert!(!signed_in_at(&home));
         // agy 1.4 and later.
@@ -373,7 +374,8 @@ mod tests {
 
     #[test]
     fn prunes_whole_conversations_last_used_before_today() {
-        let store = std::env::temp_dir().join(format!("isle-prune-{}", std::process::id()));
+        // Not store.rs's folder of the same kind: the tests run at once.
+        let store = std::env::temp_dir().join(format!("isle-agy-prune-{}", std::process::id()));
         let today = Local::now().date_naive();
         let touch = |path: &str, days_ago: u64| {
             let path = store.join(path);

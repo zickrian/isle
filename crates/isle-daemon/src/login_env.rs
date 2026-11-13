@@ -231,12 +231,20 @@ mod tests {
         std::fs::write(&shell, "#!/bin/sh\nsleep 30 &\nexec /bin/sh -c \"$4\"\n").unwrap();
         std::fs::set_permissions(&shell, std::os::unix::fs::PermissionsExt::from_mode(0o755))
             .unwrap();
-        let started = Instant::now();
-        // Other tests start programs meanwhile: a script just written can be "busy" for a moment.
-        let env = (0..3)
-            .find_map(|_| ask(&shell, Duration::from_millis(1500)))
+        // Other tests start programs meanwhile: a script just written can be "busy" for a moment (a forked child
+        // still holds it open for writing), so it is tried again after a pause. Each try that answers must not
+        // have waited for the job.
+        let env = (0..8)
+            .find_map(|attempt| {
+                if attempt > 0 {
+                    std::thread::sleep(Duration::from_millis(250));
+                }
+                let started = Instant::now();
+                let env = ask(&shell, Duration::from_millis(1500))?;
+                assert!(started.elapsed() < Duration::from_secs(5));
+                Some(env)
+            })
             .unwrap();
-        assert!(started.elapsed() < Duration::from_secs(5));
         assert!(env.iter().any(|(name, _)| name == "PATH"));
         // A shell that never answers is left behind.
         std::fs::write(&shell, "#!/bin/sh\nexec sleep 30\n").unwrap();
