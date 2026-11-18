@@ -6,6 +6,13 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.7.3] - 2026-11-18
+
+Put the tabs in your own order, Pi in the voice assistant, the clock where you want it, lyrics you can pin
+open, and a top bar whose colour you can leave to another extension. The lyrics no longer stutter the first
+time they show. To update: click Update on the new-version alert (or Settings → About → Update), then log out
+and back in.
+
 ### Added
 
 - **Put the tabs in your own order.** Settings → Island → Pages has arrows on each page to move its tab left
@@ -1875,7 +1882,8 @@ The first release.
   dark, vivid ones bright.
 - Text is at least 12 px throughout.
 
-[Unreleased]: https://github.com/zickrian/isle/compare/v1.7.2...HEAD
+[Unreleased]: https://github.com/zickrian/isle/compare/v1.7.3...HEAD
+[1.7.3]: https://github.com/zickrian/isle/compare/v1.7.2...v1.7.3
 [1.7.2]: https://github.com/zickrian/isle/compare/v1.7.1...v1.7.2
 [1.7.1]: https://github.com/zickrian/isle/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/zickrian/isle/compare/v1.6.0...v1.7.0
