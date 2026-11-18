@@ -34,6 +34,7 @@ const CODEX_TIMEOUT: Duration = Duration::from_secs(30);
 const AGY_TIMEOUT: Duration = Duration::from_secs(20);
 const GROK_TIMEOUT: Duration = Duration::from_secs(30);
 const OPENCODE_TIMEOUT: Duration = Duration::from_secs(30);
+const PI_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// One AI's plan and the models it allows.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -349,7 +350,7 @@ fn due(
             let old = catalog.is_none_or(|c| {
                 matches!(
                     provider,
-                    Provider::Agy | Provider::Grok | Provider::Opencode
+                    Provider::Agy | Provider::Grok | Provider::Opencode | Provider::Pi
                 ) && now - c.checked_ms >= i64::try_from(WARM_EVERY.as_millis()).unwrap_or(0)
             });
             old && waited(WARM_EVERY)
@@ -458,6 +459,24 @@ async fn read(provider: Provider) -> Found {
                     &super::opencode::preferred(),
                     plan,
                     go.as_deref(),
+                    codex.as_deref(),
+                )
+            })
+        }
+        Provider::Pi => {
+            let listed = tokio::time::timeout(PI_TIMEOUT, super::pi::models(&program))
+                .await
+                .unwrap_or_else(|_| Err(anyhow::anyhow!("no answer in time")));
+            // Signed in to ChatGPT in Pi (its openai-codex provider), Pi can use only what Codex lists for that
+            // account: the rest it lists are refused ("not supported when using Codex with a ChatGPT account").
+            let codex: Option<Vec<String>> = current()
+                .remove(Provider::Codex.id())
+                .map(|codex| codex.models.into_iter().map(|m| m.id).collect())
+                .filter(|ids: &Vec<String>| !ids.is_empty());
+            listed.map(|listed| {
+                pi_catalog(
+                    &listed,
+                    super::pi::user_model().as_deref(),
                     codex.as_deref(),
                 )
             })
@@ -898,6 +917,45 @@ fn version(id: &str) -> f64 {
         .unwrap_or(0.0)
 }
 
+/// What Pi can answer with: each model of the providers the user can use there (`provider/model`, as Pi takes
+/// it), named with its provider; the user's own Pi's model first and the default, else Pi's own choice. Pi has no
+/// plan of its own. Its ChatGPT sign-in (`openai-codex`) takes only the models Codex lists for that account
+/// (`codex`, when known).
+fn pi_catalog(
+    listed: &[(String, String)],
+    user: Option<&str>,
+    codex: Option<&[String]>,
+) -> Catalog {
+    let mut models: Vec<Model> = listed
+        .iter()
+        .filter(|(provider, model)| {
+            provider != "openai-codex" || codex.is_none_or(|ids| ids.contains(model))
+        })
+        .map(|(provider, model)| Model {
+            id: format!("{provider}/{model}"),
+            name: format!("{} · {model}", provider_name(provider)),
+        })
+        .collect();
+    // As Pi itself matches a model, whatever its case.
+    let default = user
+        .and_then(|user| models.iter().position(|m| m.id.eq_ignore_ascii_case(user)))
+        .map(|at| models.remove(at));
+    let (default, default_name) = match default {
+        Some(model) => {
+            let named = (model.id.clone(), model.name.clone());
+            models.insert(0, model);
+            named
+        }
+        None => Default::default(),
+    };
+    Catalog {
+        default,
+        default_name,
+        models,
+        ..Catalog::default()
+    }
+}
+
 /// An opencode provider id as people write it: "openai" as "OpenAI", "my-proxy" as "My Proxy".
 fn provider_name(id: &str) -> String {
     match id {
@@ -912,6 +970,7 @@ fn provider_name(id: &str) -> String {
         "groq" => "Groq".into(),
         "amazon-bedrock" => "Amazon Bedrock".into(),
         "azure" => "Azure".into(),
+        "openai-codex" => "ChatGPT".into(),
         _ => title_case(&id.replace('-', " ")),
     }
 }
@@ -1364,5 +1423,71 @@ mod tests {
         assert_eq!(names, ["Grok 4.7", "Grok 4.6"]);
         // "Default model: grok-4.7" is not a model line.
         assert!(!catalog.allows("Default"));
+    }
+
+    #[test]
+    fn pi_offers_its_providers_models_the_users_own_first() {
+        let listed = [
+            ("anthropic".to_owned(), "claude-sonnet-4-5".to_owned()),
+            ("openai-codex".to_owned(), "gpt-5.4-mini".to_owned()),
+        ];
+        let catalog = pi_catalog(&listed, Some("openai-codex/gpt-5.4-mini"), None);
+        assert_eq!(catalog.default, "openai-codex/gpt-5.4-mini");
+        assert_eq!(catalog.default_name, "ChatGPT · gpt-5.4-mini");
+        let ids: Vec<&str> = catalog.models.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["openai-codex/gpt-5.4-mini", "anthropic/claude-sonnet-4-5"]
+        );
+        assert_eq!(catalog.models[1].name, "Anthropic · claude-sonnet-4-5");
+        // Its own model in another case, as Pi takes it too.
+        let catalog = pi_catalog(&listed, Some("OpenAI-Codex/GPT-5.4-mini"), None);
+        assert_eq!(catalog.default, "openai-codex/gpt-5.4-mini");
+        // Its own model gone (or none set): Pi chooses.
+        let catalog = pi_catalog(&listed, Some("google/gemini"), None);
+        assert_eq!((catalog.default.as_str(), catalog.models.len()), ("", 2));
+        assert!(catalog.plan.is_empty());
+    }
+
+    #[test]
+    fn pis_chatgpt_sign_in_offers_only_what_codex_lists() {
+        // As Pi 0.85 lists them for a ChatGPT sign-in, and as Codex lists that account's (the rest Pi's ChatGPT
+        // refuses: "not supported when using Codex with a ChatGPT account").
+        let listed: Vec<(String, String)> = [
+            "gpt-5.3-codex-spark",
+            "gpt-5.4",
+            "gpt-5.6-luna",
+            "gpt-5.6-sol",
+            "gpt-6-astra",
+        ]
+        .iter()
+        .map(|m| ("openai-codex".to_owned(), (*m).to_owned()))
+        .chain([("anthropic".to_owned(), "claude-sonnet-4-5".to_owned())])
+        .collect();
+        let codex = [
+            "gpt-5.6-luna".to_owned(),
+            "gpt-5.6-sol".to_owned(),
+            "gpt-6-astra".to_owned(),
+        ];
+        let catalog = pi_catalog(
+            &listed,
+            Some("openai-codex/gpt-5.3-codex-spark"),
+            Some(&codex),
+        );
+        let ids: Vec<&str> = catalog.models.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "openai-codex/gpt-5.6-luna",
+                "openai-codex/gpt-5.6-sol",
+                "openai-codex/gpt-6-astra",
+                "anthropic/claude-sonnet-4-5"
+            ]
+        );
+        // The user's own Pi's model is one ChatGPT refuses: not the default; Isle picks a listed one (see `choice`).
+        assert_eq!(catalog.default, "");
+        assert!(!catalog.allows("openai-codex/gpt-5.3-codex-spark"));
+        // Codex's list unknown (not installed): Pi's own list stands.
+        assert_eq!(pi_catalog(&listed, None, None).models.len(), 6);
     }
 }

@@ -33,6 +33,7 @@ import {refreshClocks} from './wallClock.js';
 import {NotificationCenter} from './notifications.js';
 import {PrivacyMonitor} from './privacy.js';
 import {PeekView} from './peek.js';
+import {pageOrder} from './pageOrder.js';
 import * as Playback from './playback.js';
 import {KeyboardWatcher, OsdHook, REACH_PX, TopBar, windowAtTop} from './shell.js';
 import {ShelfHelper} from './shelfHelper.js';
@@ -421,7 +422,7 @@ export class Controller {
         this._daemon.release();
     }
 
-    /** Makes each page, in tab order. */
+    /** Makes each page, in Isle's own tab order (DEFAULT_ORDER in pageOrder.js); Settings may put them in another. */
     _pageMakers() {
         const size = {height: PAGE_HEIGHT};
         return [
@@ -446,6 +447,9 @@ export class Controller {
             page.connect('cold', () => this._scheduleWarm());
         }
         const expanded = new ExpandedView(this._daemon, this._privacy, this._call, this._settings, pages);
+        expanded.order = this._tabOrder();
+        // Pages are laid out ahead only while the island holds still (see `ExpandedView._openWarmStep`).
+        expanded.islandMoving = () => this._island?.moving ?? false;
         expanded.connect('page-changed', () => {
             // Picked by hand (a tab) while open; not when opening, nor when a page
             // (the call's) goes away by itself.
@@ -456,6 +460,12 @@ export class Controller {
             this._shelfHelper?.sync();
         });
         expanded.connect('page-settled', () => this._shelfHelper?.sync());
+        // Another page shown by itself (Music left out in Settings, say): pinned lyrics no longer hold it open.
+        expanded.connect('page-changed', () => {
+            if (expanded.pageNamed('music')?.pinned && !this._lyricsHeld)
+                this._onLyricsHold();
+        });
+        expanded.pageNamed('music').connect('hold-changed', () => this._onLyricsHold());
         expanded.pageNamed('shelf').connect('helper-area-changed', () => this._shelfHelper?.sync());
         // Lyrics widen the island and wash it with the cover's colour; a page that lists things may be taller.
         for (const signal of ['width-changed', 'height-changed']) {
@@ -582,6 +592,12 @@ export class Controller {
         for (const key of ['hidden-pages', 'world-clocks', 'app-usage', 'devices-page', 'open-size'])
             this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => this._syncPages()));
         this._settingsChanged.push(this._settings.connect('changed::app-usage-clear', () => this._syncAppUsage()));
+        this._settingsChanged.push(this._settings.connect('changed::page-order', () => {
+            this._expanded.order = this._tabOrder();
+            // The open island fits its tabs again, as it would opened anew.
+            if (this._presentation === 'expanded')
+                this._render();
+        }));
         for (const key of ['island-theme', 'glass-tint'])
             this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => this._syncTheme()));
         // Changed: the clocks on show change at once, the rest as they next draw.
@@ -597,6 +613,7 @@ export class Controller {
         }
 
         this._topBar.connect('height-changed', () => this._updateGeometry());
+        this._settingsChanged.push(this._settings.connect('changed::island-clock', () => this._updateGeometry()));
         this._topBar.connect('style-changed', () => this._updateGeometry());
         this._topBar.connect('moved', () => this._updateGeometry());
         this._topBar.connect('calendar-requested', (_bar, page) => this._toggleFromKeyboard(page));
@@ -801,6 +818,10 @@ export class Controller {
         this._expanded.topInset = this._onBar && !this._pill ? this._topBar.height : px(HEADER_WITHOUT_BAR);
         // A copy of the island in the bar keeps the clock away as the island does.
         this._topBar.clockShown = !this._onBar && !this._mirrors.some(mirror => this._isOnBar(mirror.monitor));
+        // Settings → Clock in the island off: the closed island, and its copies, keep their size with no clock (#62).
+        const clockAway = !this._settings.get_boolean('island-clock');
+        for (const compact of [this._compact, ...this._mirrors.map(mirror => mirror.compact)])
+            compact.clockAway = clockAway;
         for (const mirror of this._mirrors) {
             mirror.island.topInset = this._blendsInOn(this._isOnBar(mirror.monitor)) ? this._topBar.height : 0;
             mirror.shown = mirror.monitor !== this._monitor;
@@ -958,14 +979,12 @@ export class Controller {
     _syncFullscreen() {
         this._island.visible = this._settings.get_boolean('alerts-over-fullscreen') ||
             !(global.window_group.visible && this._monitor?.inFullscreen);
+        // Hidden under a full-screen app, pinned lyrics let go: kept open, they would hold the alerts back after it.
+        if (!this._island.visible && this._lyricsHeld)
+            this.collapse();
     }
 
     // Auto-hide
-
-    /** Over a full-screen app with Settings' alerts over it: the island stays there, hidden but for them. */
-    get _overFullscreen() {
-        return this._overFullscreenOn(this._monitor);
-    }
 
     /** Whether `monitor` has a full-screen app that Settings show alerts over. */
     _overFullscreenOn(monitor) {
@@ -1160,6 +1179,11 @@ export class Controller {
     _syncEventAlerts() {
         const minutes = this._settings.get_boolean('event-alerts') ? this._settings.get_int('event-alert-minutes') : 0;
         this._expanded.pageNamed('calendar').alarmLead = minutes;
+    }
+
+    /** The tabs' order (Settings → Island → Pages): the call's first, then as set, else Isle's own order. */
+    _tabOrder() {
+        return ['call', ...pageOrder(this._settings.get_strv('page-order'))];
     }
 
     /** The pages left out in Settings lose their tabs; the Calendar page's world clocks as Settings say. */
@@ -1448,7 +1472,7 @@ export class Controller {
         size.width = 2 * Math.round(size.width / 2);
         view.set_size(size.width, size.height);
         if (this._onBar)
-            this._topBar.reserveWidth(this._compact.preferredWidth);
+            this._topBar.reserveWidth(this._compact.preferredWidth, this._footprint(this._compact));
         this._island.morph(size, view);
         this._expanded.setActive(presentation === 'expanded');
         this._voice.setActive(presentation === 'voice');
@@ -1502,6 +1526,15 @@ export class Controller {
         return size;
     }
 
+    /** How much of the top bar `compact`, closed on it, spans: its body and the shoulders flaring from it (a pill has
+     * none), in stage px. The bar's items must keep clear of it all (see TopBar `_fitBarClock`). */
+    _footprint(compact) {
+        const pill = this._pillGapOn(true) !== null;
+        const inBar = this._settings.get_boolean('island-in-top-bar');
+        const shoulder = pill ? 0 : (inBar ? IN_BAR_SHOULDER : COMPACT_SHOULDER) * uiScale();
+        return compact.preferredWidth + 2 * shoulder;
+    }
+
     /** An alert's size on a display with the top bar (`onBar`) or without, `peek` (showing it) styled for it. */
     _peekShape(peek, onBar) {
         const scale = uiScale();
@@ -1533,7 +1566,7 @@ export class Controller {
         size.width = 2 * Math.round(size.width / 2);
         view.set_size(size.width, size.height);
         if (onBar && mirror.shown)
-            this._topBar.reserveWidth(mirror.compact.preferredWidth);
+            this._topBar.reserveWidth(mirror.compact.preferredWidth, this._footprint(mirror.compact));
         mirror.island.morph(size, view);
         this._tintMirror(mirror);
     }
@@ -1846,14 +1879,36 @@ export class Controller {
         });
     }
 
-    /** Closes, unless the pointer is on the shelf helper's window over the island. */
+    /** Closes, unless the pointer is on the shelf helper's window over the island, or the lyrics are pinned open. */
     _collapseUnlessHeld() {
         // The shelf helper window covers the island; the pointer may be on it.
         if (this._shelfHelper.containsPointer()) {
             this._later('collapse', COLLAPSE_DELAY_MS, () => this._collapseUnlessHeld());
             return;
         }
+        // Pinned: it stays until unpinned, Esc or a click elsewhere while it holds the keyboard, or an alert. One that
+        // came while the pointer was on it waits only until the pointer leaves, never as long as the pin lasts.
+        if (this._lyricsHeld && !this._queue.some(alert => !alert.transient))
+            return;
         this.collapse();
+    }
+
+    /** Whether the open island stays open on the pinned lyrics (#62), the pointer away or not. */
+    get _lyricsHeld() {
+        return this._expandWanted && !this._voiceOpen && this._expanded.page?.name === 'music' &&
+            this._expanded.page.holdsOpen;
+    }
+
+    /** The lyrics pinned or let go: pinned, the keyboard is let go (the windows below are worked in meanwhile); let
+     * go with the pointer away, it closes as the pointer leaving would have. */
+    _onLyricsHold() {
+        if (this._lyricsHeld) {
+            if (this._keyboardGrab)
+                this._setKeyboard(false);
+            return;
+        }
+        if (this._expandWanted && !this._voiceOpen && !this._keyboardGrab && !this._island.hovered)
+            this._later('collapse', COLLAPSE_DELAY_MS, () => this._collapseUnlessHeld());
     }
 
     /** What a click on the closed island does: an alert's own action, or else the island opens. */
@@ -2047,6 +2102,10 @@ export class Controller {
         if (!this._expandWanted)
             return;
         this._expandWanted = false;
+        // Closed, the lyrics' pin is let go: it holds them open only until then.
+        const music = this._expanded.pageNamed('music');
+        if (music)
+            music.pinned = false;
         this._nextAlert();
     }
 
@@ -2192,6 +2251,10 @@ export class Controller {
             this._showAlert(alert, {inPlace: true});
             return;
         }
+        // The lyrics pinned open with no one at them: an alert must not wait behind them for as long as the pin may
+        // last. They close (unpinned) and the alert shows; volume and the like are let pass, as when open.
+        if (!alert.transient && this._lyricsHeld && !this._island.hovered && !this._keyboardGrab)
+            this.collapse();
         if (this._expandWanted || this._voiceOpen) {
             // Volume and the like are stale by the time the island closes.
             if (!alert.transient)

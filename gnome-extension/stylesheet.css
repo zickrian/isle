@@ -143,6 +143,9 @@
 #panel.isle-panel .panel-button.screen-sharing-indicator:active:hover,
 #panel.isle-panel .panel-button.screen-sharing-indicator:checked:hover { box-shadow: inset 0 0 0 100px #ff9638; }
 
+/* Isle's own clock in the bar (Settings → Clock in the top bar): figures that keep their width as minutes turn. */
+#panel .isle-bar-clock-label { font-feature-settings: "tnum"; }
+
 /* The glass bar has no colour, so its text and icons carry a soft shadow to
  * stay readable on a light wallpaper. */
 #panel.isle-glass-bar .panel-button {
@@ -528,12 +531,18 @@
 /* Lyrics: the player in a column beside the words. */
 
 .isle-lyrics-layout { spacing: 26px; }
-.isle-lyrics-side { width: 232px; spacing: 8px; }
+/* 248 wide: a title of the usual length fits beside the lyrics' pin (see .isle-lyrics-pin). */
+.isle-lyrics-side { width: 248px; spacing: 8px; }
 .isle-lyrics-side .isle-player-top { spacing: 12px; }
 .isle-lyrics-side .isle-player-progress { padding-top: 2px; }
 .isle-lyrics-controls { spacing: 4px; }
 .isle-lyrics-controls .isle-transport { spacing: 14px; }
 .isle-lyrics-controls .isle-mode-toggle { color: rgba(255, 255, 255, 0.75); }
+/* The lyrics' pin (keeps the island open on them), right of the title and quiet until pressed: small, so the title
+ * keeps most of the line and the line stays its height. */
+.isle-lyrics-title-line { spacing: 4px; }
+.isle-lyrics-pin { color: rgba(255, 255, 255, 0.55); padding: 2px; }
+.isle-lyrics-pin:hover, .isle-lyrics-pin.on { color: #ffffff; }
 .isle-side-title { font-size: 15px; font-weight: 700; letter-spacing: -0.2px; }
 .isle-side-artist { font-size: 12px; color: rgba(255, 255, 255, 0.6); }
 .isle-side-bars { padding-top: 5px; }

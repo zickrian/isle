@@ -1,0 +1,267 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 608" width="880" height="608" role="img" aria-label="Isle 1.7.3 against 1.7.2: every benchmark run as a share of 1.7.2's median, lower is lighter">
+<style>
+svg{--bg:#ffffff;--fg:#1f2328;--muted:#656d76;--grid:#e6e8eb;--old:#8c959f;--new:#2f6fd0;--ok:#1a7f37;--bad:#cf222e}
+text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;fill:var(--fg)}
+.m{font-size:13px}.t{font-size:11px;fill:var(--muted)}.c{font-size:12px;font-variant-numeric:tabular-nums}
+.h{font-size:15px;font-weight:600}.g{stroke:var(--grid)}.ref{stroke:var(--muted);stroke-dasharray:3 3}
+.o{fill:none;stroke:var(--old);stroke-width:1.5}.n{fill:var(--new);fill-opacity:.85}.md{stroke:var(--new);stroke-width:2}
+.ok{fill:var(--ok)}.bad{fill:var(--bad)}.flat{fill:var(--muted)}
+</style>
+<rect width="880" height="608" rx="8" fill="var(--bg)"/>
+<text x="16" y="26" class="h">Every run, as a share of 1.7.2's median (left of 100% is lighter)</text>
+<circle cx="356" cy="592" r="4.5" class="o"/><text x="366" y="596" class="t">1.7.2 runs</text>
+<circle cx="446" cy="592" r="4.5" class="n"/><text x="456" y="596" class="t">1.7.3 runs</text>
+<line x1="536" x2="536" y1="586" y2="598" class="md"/><text x="544" y="596" class="t">1.7.3 median</text>
+<line x1="350.0" x2="350.0" y1="50" y2="568" class="g"/>
+<text x="350.0" y="44" text-anchor="middle" class="t">0%</text>
+<line x1="407.5" x2="407.5" y1="50" y2="568" class="g"/>
+<line x1="465.0" x2="465.0" y1="50" y2="568" class="g"/>
+<text x="465.0" y="44" text-anchor="middle" class="t">50%</text>
+<line x1="522.5" x2="522.5" y1="50" y2="568" class="g"/>
+<line x1="580.0" x2="580.0" y1="50" y2="568" class="g"/>
+<text x="580.0" y="44" text-anchor="middle" class="t">100%</text>
+<line x1="637.5" x2="637.5" y1="50" y2="568" class="g"/>
+<line x1="695.0" x2="695.0" y1="50" y2="568" class="g"/>
+<text x="695.0" y="44" text-anchor="middle" class="t">150%</text>
+<line x1="752.5" x2="752.5" y1="50" y2="568" class="g"/>
+<line x1="810.0" x2="810.0" y1="50" y2="568" class="g"/>
+<text x="810.0" y="44" text-anchor="middle" class="t">200%</text>
+<line x1="580.0" x2="580.0" y1="50" y2="568" class="ref"/>
+<text x="336" y="77.0" text-anchor="end" class="m">GNOME Shell CPU, closed island, per minute</text>
+<circle cx="612.0" cy="69.0" r="4.5" class="o"/>
+<circle cx="541.2" cy="69.0" r="4.5" class="o"/>
+<circle cx="585.8" cy="69.0" r="4.5" class="o"/>
+<circle cx="497.5" cy="69.0" r="4.5" class="o"/>
+<circle cx="630.5" cy="69.0" r="4.5" class="o"/>
+<circle cx="574.2" cy="69.0" r="4.5" class="o"/>
+<circle cx="572.2" cy="78.0" r="4.5" class="n"/>
+<circle cx="517.9" cy="78.0" r="4.5" class="n"/>
+<circle cx="515.0" cy="78.0" r="4.5" class="n"/>
+<circle cx="633.4" cy="78.0" r="4.5" class="n"/>
+<circle cx="499.5" cy="78.0" r="4.5" class="n"/>
+<circle cx="532.4" cy="78.0" r="4.5" class="n"/>
+<line x1="524.7" x2="524.7" y1="71.0" y2="85.0" class="md"/>
+<text x="868" y="77.0" text-anchor="end" class="c flat">−24.1%</text>
+<text x="336" y="107.0" text-anchor="end" class="m">Frames drawn per minute</text>
+<circle cx="810.0" cy="99.0" r="4.5" class="o"/>
+<circle cx="415.7" cy="99.0" r="4.5" class="o"/>
+<circle cx="547.1" cy="99.0" r="4.5" class="o"/>
+<circle cx="415.7" cy="99.0" r="4.5" class="o"/>
+<circle cx="810.0" cy="99.0" r="4.5" class="o"/>
+<circle cx="612.9" cy="99.0" r="4.5" class="o"/>
+<circle cx="547.1" cy="108.0" r="4.5" class="n"/>
+<circle cx="415.7" cy="108.0" r="4.5" class="n"/>
+<circle cx="415.7" cy="108.0" r="4.5" class="n"/>
+<circle cx="744.3" cy="108.0" r="4.5" class="n"/>
+<circle cx="547.1" cy="108.0" r="4.5" class="n"/>
+<circle cx="810.0" cy="108.0" r="4.5" class="n"/>
+<line x1="547.1" x2="547.1" y1="101.0" y2="115.0" class="md"/>
+<text x="868" y="107.0" text-anchor="end" class="c flat">−14.3%</text>
+<text x="336" y="137.0" text-anchor="end" class="m">isled wakeups per minute</text>
+<circle cx="580.0" cy="129.0" r="4.5" class="o"/>
+<circle cx="580.0" cy="129.0" r="4.5" class="o"/>
+<circle cx="580.0" cy="129.0" r="4.5" class="o"/>
+<circle cx="810.0" cy="129.0" r="4.5" class="o"/>
+<circle cx="618.3" cy="129.0" r="4.5" class="o"/>
+<circle cx="541.7" cy="129.0" r="4.5" class="o"/>
+<circle cx="503.3" cy="138.0" r="4.5" class="n"/>
+<circle cx="503.3" cy="138.0" r="4.5" class="n"/>
+<circle cx="541.7" cy="138.0" r="4.5" class="n"/>
+<circle cx="541.7" cy="138.0" r="4.5" class="n"/>
+<circle cx="771.7" cy="138.0" r="4.5" class="n"/>
+<circle cx="503.3" cy="138.0" r="4.5" class="n"/>
+<line x1="522.5" x2="522.5" y1="131.0" y2="145.0" class="md"/>
+<text x="868" y="137.0" text-anchor="end" class="c flat">−25.0%</text>
+<text x="336" y="167.0" text-anchor="end" class="m">isled memory</text>
+<circle cx="571.2" cy="159.0" r="4.5" class="o"/>
+<circle cx="579.0" cy="159.0" r="4.5" class="o"/>
+<circle cx="581.0" cy="159.0" r="4.5" class="o"/>
+<circle cx="581.0" cy="159.0" r="4.5" class="o"/>
+<circle cx="569.2" cy="159.0" r="4.5" class="o"/>
+<circle cx="581.0" cy="159.0" r="4.5" class="o"/>
+<circle cx="581.0" cy="168.0" r="4.5" class="n"/>
+<circle cx="581.0" cy="168.0" r="4.5" class="n"/>
+<circle cx="581.0" cy="168.0" r="4.5" class="n"/>
+<circle cx="582.9" cy="168.0" r="4.5" class="n"/>
+<circle cx="581.0" cy="168.0" r="4.5" class="n"/>
+<circle cx="581.0" cy="168.0" r="4.5" class="n"/>
+<line x1="581.0" x2="581.0" y1="161.0" y2="175.0" class="md"/>
+<text x="868" y="167.0" text-anchor="end" class="c flat">+0.4%</text>
+<text x="336" y="197.0" text-anchor="end" class="m">Opening the island: CPU</text>
+<circle cx="568.0" cy="189.0" r="4.5" class="o"/>
+<circle cx="558.5" cy="189.0" r="4.5" class="o"/>
+<circle cx="574.0" cy="189.0" r="4.5" class="o"/>
+<circle cx="591.2" cy="189.0" r="4.5" class="o"/>
+<circle cx="621.2" cy="189.0" r="4.5" class="o"/>
+<circle cx="585.1" cy="189.0" r="4.5" class="o"/>
+<circle cx="562.8" cy="198.0" r="4.5" class="n"/>
+<circle cx="558.5" cy="198.0" r="4.5" class="n"/>
+<circle cx="561.1" cy="198.0" r="4.5" class="n"/>
+<circle cx="592.9" cy="198.0" r="4.5" class="n"/>
+<circle cx="569.7" cy="198.0" r="4.5" class="n"/>
+<circle cx="566.3" cy="198.0" r="4.5" class="n"/>
+<line x1="564.6" x2="564.6" y1="191.0" y2="205.0" class="md"/>
+<text x="868" y="197.0" text-anchor="end" class="c flat">−6.7%</text>
+<text x="336" y="227.0" text-anchor="end" class="m">Opening the island: slowest frame</text>
+<circle cx="582.9" cy="219.0" r="4.5" class="o"/>
+<circle cx="554.0" cy="219.0" r="4.5" class="o"/>
+<circle cx="562.3" cy="219.0" r="4.5" class="o"/>
+<circle cx="599.0" cy="219.0" r="4.5" class="o"/>
+<circle cx="613.0" cy="219.0" r="4.5" class="o"/>
+<circle cx="577.5" cy="219.0" r="4.5" class="o"/>
+<circle cx="570.5" cy="228.0" r="4.5" class="n"/>
+<circle cx="547.8" cy="228.0" r="4.5" class="n"/>
+<circle cx="562.3" cy="228.0" r="4.5" class="n"/>
+<circle cx="593.6" cy="228.0" r="4.5" class="n"/>
+<circle cx="563.9" cy="228.0" r="4.5" class="n"/>
+<circle cx="551.1" cy="228.0" r="4.5" class="n"/>
+<line x1="563.1" x2="563.1" y1="221.0" y2="235.0" class="md"/>
+<text x="868" y="227.0" text-anchor="end" class="c flat">−7.3%</text>
+<text x="336" y="257.0" text-anchor="end" class="m">Closing the island: CPU</text>
+<circle cx="581.2" cy="249.0" r="4.5" class="o"/>
+<circle cx="576.3" cy="249.0" r="4.5" class="o"/>
+<circle cx="567.6" cy="249.0" r="4.5" class="o"/>
+<circle cx="582.5" cy="249.0" r="4.5" class="o"/>
+<circle cx="618.5" cy="249.0" r="4.5" class="o"/>
+<circle cx="578.8" cy="249.0" r="4.5" class="o"/>
+<circle cx="582.5" cy="258.0" r="4.5" class="n"/>
+<circle cx="580.0" cy="258.0" r="4.5" class="n"/>
+<circle cx="570.1" cy="258.0" r="4.5" class="n"/>
+<circle cx="588.7" cy="258.0" r="4.5" class="n"/>
+<circle cx="586.2" cy="258.0" r="4.5" class="n"/>
+<circle cx="571.3" cy="258.0" r="4.5" class="n"/>
+<line x1="581.2" x2="581.2" y1="251.0" y2="265.0" class="md"/>
+<text x="868" y="257.0" text-anchor="end" class="c flat">+0.5%</text>
+<text x="336" y="287.0" text-anchor="end" class="m">Closing the island: slowest frame</text>
+<circle cx="581.1" cy="279.0" r="4.5" class="o"/>
+<circle cx="579.4" cy="279.0" r="4.5" class="o"/>
+<circle cx="565.0" cy="279.0" r="4.5" class="o"/>
+<circle cx="618.3" cy="279.0" r="4.5" class="o"/>
+<circle cx="665.6" cy="279.0" r="4.5" class="o"/>
+<circle cx="566.1" cy="279.0" r="4.5" class="o"/>
+<circle cx="570.0" cy="288.0" r="4.5" class="n"/>
+<circle cx="558.9" cy="288.0" r="4.5" class="n"/>
+<circle cx="567.2" cy="288.0" r="4.5" class="n"/>
+<circle cx="574.4" cy="288.0" r="4.5" class="n"/>
+<circle cx="572.2" cy="288.0" r="4.5" class="n"/>
+<circle cx="563.3" cy="288.0" r="4.5" class="n"/>
+<line x1="568.9" x2="568.9" y1="281.0" y2="295.0" class="md"/>
+<text x="868" y="287.0" text-anchor="end" class="c flat">−4.8%</text>
+<text x="336" y="317.0" text-anchor="end" class="m">Switching pages: CPU</text>
+<circle cx="581.7" cy="309.0" r="4.5" class="o"/>
+<circle cx="563.2" cy="309.0" r="4.5" class="o"/>
+<circle cx="569.9" cy="309.0" r="4.5" class="o"/>
+<circle cx="596.8" cy="309.0" r="4.5" class="o"/>
+<circle cx="645.5" cy="309.0" r="4.5" class="o"/>
+<circle cx="578.3" cy="309.0" r="4.5" class="o"/>
+<circle cx="571.6" cy="318.0" r="4.5" class="n"/>
+<circle cx="566.6" cy="318.0" r="4.5" class="n"/>
+<circle cx="575.0" cy="318.0" r="4.5" class="n"/>
+<circle cx="591.8" cy="318.0" r="4.5" class="n"/>
+<circle cx="575.0" cy="318.0" r="4.5" class="n"/>
+<circle cx="569.9" cy="318.0" r="4.5" class="n"/>
+<line x1="573.3" x2="573.3" y1="311.0" y2="325.0" class="md"/>
+<text x="868" y="317.0" text-anchor="end" class="c flat">−2.9%</text>
+<text x="336" y="347.0" text-anchor="end" class="m">Switching pages: slowest frame</text>
+<circle cx="586.2" cy="339.0" r="4.5" class="o"/>
+<circle cx="568.0" cy="339.0" r="4.5" class="o"/>
+<circle cx="573.8" cy="339.0" r="4.5" class="o"/>
+<circle cx="621.5" cy="339.0" r="4.5" class="o"/>
+<circle cx="646.9" cy="339.0" r="4.5" class="o"/>
+<circle cx="573.5" cy="339.0" r="4.5" class="o"/>
+<circle cx="579.0" cy="348.0" r="4.5" class="n"/>
+<circle cx="565.6" cy="348.0" r="4.5" class="n"/>
+<circle cx="576.6" cy="348.0" r="4.5" class="n"/>
+<circle cx="616.7" cy="348.0" r="4.5" class="n"/>
+<circle cx="579.3" cy="348.0" r="4.5" class="n"/>
+<circle cx="576.9" cy="348.0" r="4.5" class="n"/>
+<line x1="577.9" x2="577.9" y1="341.0" y2="355.0" class="md"/>
+<text x="868" y="347.0" text-anchor="end" class="c flat">−0.9%</text>
+<text x="336" y="377.0" text-anchor="end" class="m">Widening to the lyrics: CPU</text>
+<circle cx="582.2" cy="369.0" r="4.5" class="o"/>
+<circle cx="578.5" cy="369.0" r="4.5" class="o"/>
+<circle cx="575.6" cy="369.0" r="4.5" class="o"/>
+<circle cx="566.0" cy="369.0" r="4.5" class="o"/>
+<circle cx="604.3" cy="369.0" r="4.5" class="o"/>
+<circle cx="594.0" cy="369.0" r="4.5" class="o"/>
+<circle cx="568.2" cy="378.0" r="4.5" class="n"/>
+<circle cx="571.9" cy="378.0" r="4.5" class="n"/>
+<circle cx="582.2" cy="378.0" r="4.5" class="n"/>
+<circle cx="586.6" cy="378.0" r="4.5" class="n"/>
+<circle cx="574.1" cy="378.0" r="4.5" class="n"/>
+<circle cx="556.4" cy="378.0" r="4.5" class="n"/>
+<line x1="572.6" x2="572.6" y1="371.0" y2="385.0" class="md"/>
+<text x="868" y="377.0" text-anchor="end" class="c flat">−3.2%</text>
+<text x="336" y="407.0" text-anchor="end" class="m">Back from the lyrics: CPU</text>
+<circle cx="579.1" cy="399.0" r="4.5" class="o"/>
+<circle cx="570.2" cy="399.0" r="4.5" class="o"/>
+<circle cx="577.3" cy="399.0" r="4.5" class="o"/>
+<circle cx="589.8" cy="399.0" r="4.5" class="o"/>
+<circle cx="589.8" cy="399.0" r="4.5" class="o"/>
+<circle cx="580.9" cy="399.0" r="4.5" class="o"/>
+<circle cx="573.7" cy="408.0" r="4.5" class="n"/>
+<circle cx="565.7" cy="408.0" r="4.5" class="n"/>
+<circle cx="574.6" cy="408.0" r="4.5" class="n"/>
+<circle cx="587.2" cy="408.0" r="4.5" class="n"/>
+<circle cx="583.6" cy="408.0" r="4.5" class="n"/>
+<circle cx="584.5" cy="408.0" r="4.5" class="n"/>
+<line x1="579.1" x2="579.1" y1="401.0" y2="415.0" class="md"/>
+<text x="868" y="407.0" text-anchor="end" class="c flat">−0.4%</text>
+<text x="336" y="437.0" text-anchor="end" class="m">Lyrics playing, 10 seconds: CPU</text>
+<circle cx="568.0" cy="429.0" r="4.5" class="o"/>
+<circle cx="574.4" cy="429.0" r="4.5" class="o"/>
+<circle cx="581.0" cy="429.0" r="4.5" class="o"/>
+<circle cx="581.4" cy="429.0" r="4.5" class="o"/>
+<circle cx="584.0" cy="429.0" r="4.5" class="o"/>
+<circle cx="579.0" cy="429.0" r="4.5" class="o"/>
+<circle cx="574.2" cy="438.0" r="4.5" class="n"/>
+<circle cx="572.8" cy="438.0" r="4.5" class="n"/>
+<circle cx="578.8" cy="438.0" r="4.5" class="n"/>
+<circle cx="581.6" cy="438.0" r="4.5" class="n"/>
+<circle cx="579.9" cy="438.0" r="4.5" class="n"/>
+<circle cx="580.8" cy="438.0" r="4.5" class="n"/>
+<line x1="579.4" x2="579.4" y1="431.0" y2="445.0" class="md"/>
+<text x="868" y="437.0" text-anchor="end" class="c flat">−0.3%</text>
+<text x="336" y="467.0" text-anchor="end" class="m">First lyrics after a new song: CPU</text>
+<circle cx="500.0" cy="459.0" r="4.5" class="o"/>
+<circle cx="586.9" cy="459.0" r="4.5" class="o"/>
+<circle cx="580.0" cy="459.0" r="4.5" class="o"/>
+<circle cx="527.2" cy="468.0" r="4.5" class="n"/>
+<circle cx="520.8" cy="468.0" r="4.5" class="n"/>
+<circle cx="556.0" cy="468.0" r="4.5" class="n"/>
+<line x1="527.2" x2="527.2" y1="461.0" y2="475.0" class="md"/>
+<text x="868" y="467.0" text-anchor="end" class="c flat">−23.0%</text>
+<text x="336" y="497.0" text-anchor="end" class="m">First lyrics after a new song: slowest frame update</text>
+<circle cx="460.6" cy="489.0" r="4.5" class="o"/>
+<circle cx="583.9" cy="489.0" r="4.5" class="o"/>
+<circle cx="579.7" cy="489.0" r="4.5" class="o"/>
+<circle cx="419.0" cy="498.0" r="4.5" class="n"/>
+<circle cx="419.3" cy="498.0" r="4.5" class="n"/>
+<circle cx="410.8" cy="498.0" r="4.5" class="n"/>
+<line x1="419.0" x2="419.0" y1="491.0" y2="505.0" class="md"/>
+<text x="868" y="497.0" text-anchor="end" class="c ok">−70.0%</text>
+<text x="336" y="527.0" text-anchor="end" class="m">Missed frames, all 66 movements</text>
+<circle cx="513.2" cy="519.0" r="4.5" class="o"/>
+<circle cx="572.6" cy="519.0" r="4.5" class="o"/>
+<circle cx="646.8" cy="519.0" r="4.5" class="o"/>
+<circle cx="646.8" cy="519.0" r="4.5" class="o"/>
+<circle cx="587.4" cy="519.0" r="4.5" class="o"/>
+<circle cx="542.9" cy="519.0" r="4.5" class="o"/>
+<circle cx="602.3" cy="528.0" r="4.5" class="n"/>
+<circle cx="631.9" cy="528.0" r="4.5" class="n"/>
+<circle cx="646.8" cy="528.0" r="4.5" class="n"/>
+<circle cx="691.3" cy="528.0" r="4.5" class="n"/>
+<circle cx="631.9" cy="528.0" r="4.5" class="n"/>
+<circle cx="572.6" cy="528.0" r="4.5" class="n"/>
+<line x1="631.9" x2="631.9" y1="521.0" y2="535.0" class="md"/>
+<text x="868" y="527.0" text-anchor="end" class="c flat">+22.6%</text>
+<text x="336" y="557.0" text-anchor="end" class="m">Missed frames caused by a slow frame</text>
+<circle cx="580.0" cy="549.0" r="4.5" class="o"/>
+<circle cx="580.0" cy="549.0" r="4.5" class="o"/>
+<circle cx="382.9" cy="549.0" r="4.5" class="o"/>
+<circle cx="415.7" cy="558.0" r="4.5" class="n"/>
+<circle cx="382.9" cy="558.0" r="4.5" class="n"/>
+<circle cx="415.7" cy="558.0" r="4.5" class="n"/>
+<line x1="415.7" x2="415.7" y1="551.0" y2="565.0" class="md"/>
+<text x="868" y="557.0" text-anchor="end" class="c flat">−71.4%</text>
+</svg>

@@ -226,9 +226,9 @@ export const ExpandedView = GObject.registerClass({
     /** A tab per page; the open one is lit and says its name. */
     _buildTabs() {
         const tabs = new St.BoxLayout({style_class: 'isle-tabs', x_expand: true, x_align: Clutter.ActorAlign.START, y_align: Clutter.ActorAlign.CENTER});
-        /** The open name's width per tab, measured once (see `_syncTabs`). */
+        /** The open name's width per page name, measured once (see `_syncTabs`); by name, as tabs may move. */
         this._nameWidths = new Map();
-        this._tabs = this._pages.map((page, index) => {
+        this._tabs = this._pages.map(page => {
             const {icon: iconName, label: text} = TABS[page.name];
             const glyph = new St.Widget({layout_manager: new Clutter.BinLayout(), y_align: Clutter.ActorAlign.CENTER});
             const tabIcon = new St.Icon({gicon: icon(iconName), icon_size: 16});
@@ -258,12 +258,14 @@ export const ExpandedView = GObject.registerClass({
                 accessible_name: text,
                 y_align: Clutter.ActorAlign.CENTER,
             });
-            tab.connect('clicked', () => this.showPage(index));
-            // Hovering fades its icon only: nothing else of the tabs changes.
-            tab.connect('notify::hover', () => this._syncTabIcon(this._tabs[index]));
-            tabs.add_child(tab);
             // Drawn in lines; filled while its page is open (`-fill`, see `_syncTabs`).
-            return {tab, icon: tabIcon, name, nameClip, badge, gicons: [icon(iconName), icon(`${iconName}-fill`)]};
+            const entry = {page, tab, icon: tabIcon, name, nameClip, badge, gicons: [icon(iconName), icon(`${iconName}-fill`)]};
+            // Its page wherever it is now: the tabs may be put in another order (`order`).
+            tab.connect('clicked', () => this.showPage(this._pages.indexOf(page)));
+            // Hovering fades its icon only: nothing else of the tabs changes.
+            tab.connect('notify::hover', () => this._syncTabIcon(entry));
+            tabs.add_child(tab);
+            return entry;
         });
         return tabs;
     }
@@ -296,12 +298,13 @@ export const ExpandedView = GObject.registerClass({
             // style and lay the name out in this frame. Until then the open name keeps its width.
             let width = 0;
             if (open) {
-                if (!this._nameWidths.has(index) && this.get_stage()) {
+                const key = this._pages[index].name;
+                if (!this._nameWidths.has(key) && this.get_stage()) {
                     // In the current style: just after a scale change its text would still be the old size.
                     name.ensure_style();
-                    this._nameWidths.set(index, name.get_preferred_width(-1)[1]);
+                    this._nameWidths.set(key, name.get_preferred_width(-1)[1]);
                 }
-                width = this._nameWidths.get(index) ?? nameClip.width;
+                width = this._nameWidths.get(key) ?? nameClip.width;
             }
             // Only a tab that opened, closed or got its name's width changes: touching the others would restyle
             // or measure them in the frame the pages start to slide.
@@ -447,6 +450,27 @@ export const ExpandedView = GObject.registerClass({
     /** The pages, in order. */
     get pages() {
         return this._pages;
+    }
+
+    /** Puts the tabs in the order of `names` (Settings → Island → Pages), at once, the open page kept open; a page not
+     * named keeps its place before those that are (the Call tab, first). */
+    set order(names) {
+        const rank = page => {
+            const at = names.indexOf(page.name);
+            return at < 0 ? -1 : at;
+        };
+        // Sorted stably: the pages not named keep their order among themselves.
+        const pages = this._pages.map((page, at) => ({page, at}))
+            .sort((a, b) => rank(a.page) - rank(b.page) || a.at - b.at)
+            .map(({page}) => page);
+        if (pages.every((page, at) => page === this._pages[at]))
+            return;
+        const open = this.page;
+        this._tabs = pages.map(page => this._tabs.find(entry => entry.page === page));
+        this._pages = pages;
+        this._index = pages.indexOf(open);
+        this._tabs.forEach(({tab}, at) => this._tabsBox.set_child_at_index(tab, at));
+        this._syncTabs();
     }
 
     /** While the view is out of sight (see `Island.warmView`), shows `page` for a frame so it is styled
@@ -849,9 +873,10 @@ export const ExpandedView = GObject.registerClass({
         });
     }
 
-    /** The pages built ahead while open that changed out of sight. */
+    /** The pages built ahead while open that changed out of sight; the open one too, for what it doesn't show (see
+     * `Page.warmsShown`). */
     _openCold() {
-        return this._pages.filter(page => page.cold && page.warmsOpen && !page.hidden && page !== this.page);
+        return this._pages.filter(page => page.cold && !page.hidden && (page === this.page ? page.warmsShown : page.warmsOpen));
     }
 
     /** Builds one cold page while hidden; `_openWarmShow` then lays it out unseen (see `Island.warmView`). */
@@ -860,12 +885,25 @@ export const ExpandedView = GObject.registerClass({
         const page = this._openCold().find(each => now - (each._openWarmedAt ?? -Infinity) >= OPEN_WARM_GAP_MS);
         if (!this._active || !this.mapped)
             return;
-        // Not while a page slides in.
-        if (!page || this.page.get_transition('opacity')) {
+        // Not while a page slides in, nor while the island grows or shrinks: a frame of laying out then is one it drops.
+        if (!page || this.page.get_transition('opacity') || this.islandMoving?.()) {
             this._scheduleOpenWarm();
             return;
         }
         page._openWarmedAt = now;
+        // The open page: its hidden parts, laid out unseen for two steps, then put away (see `_endOpenWarm`).
+        if (page === this.page) {
+            page.warmHidden();
+            page.cold = false;
+            this._openWarm = page;
+            this._openWarmId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, OPEN_WARM_STEP_MS * 2, () => {
+                this._openWarmId = 0;
+                this._endOpenWarm();
+                this._scheduleOpenWarm(OPEN_WARM_STEP_MS);
+                return GLib.SOURCE_REMOVE;
+            });
+            return;
+        }
         // Built while hidden, then styled and laid out a step later: two shorter waits, not one.
         page.warmUp();
         page.cold = false;

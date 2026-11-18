@@ -143,7 +143,10 @@ Type is set in Inter (installed with Isle), semibold for titles, nothing heavier
 tracking on large figures. The island's text fields keep their own look
 when Blur my Shell restyles the shell's.
 
-A slider takes the bar from glass to black; the island keeps its look. All
+A slider takes the bar from glass to black; the island keeps its look. With Settings → Appearance → Colour
+the top bar off (#63), Isle writes no colour of its own into the bar and leaves its colour, transparency and
+text to the theme or another extension (it still sizes the bar round the island); the slider and Black top
+bar beside windows go grey, and the island hangs below the bar as a notch, never blending in. All
 the way to black, bar and island read as one shape: the shoulders then curve
 out of the bar's lower edge instead of the screen's top. The installer sets glass (and the slim
 bar) on every install, turns off Blur my Shell's top bar blur (it darkens
@@ -259,9 +262,22 @@ with the wheel or touchpad and never show a scrollbar.
 - Over a full-screen app the island is GNOME's to hide, and alerts wait until the app leaves full
   screen; with Settings → Alerts → Over full-screen apps on, it stays there hidden instead and shows
   only for alerts (and the open island or assistant asked for), never on pointing.
-- Centre: the clock (24- or 12-hour as Settings → Appearance → Clock says, by default as GNOME's clock; with 12 hours a smaller, dimmer AM or PM beside it), exactly centred; with Settings → Appearance → Show the date, the day before it ("Fri 6", as large, 70% white, 6 px from it), day and time centred together and the island only as much wider as they need, also beside the unseen dot, not beside an activity (music, a call, the timer, the assistant at work: their sides take its room); while the screen records,
+- Centre: the clock (24- or 12-hour as Settings → Appearance → Time format says, by default as GNOME's clock; with 12 hours a smaller, dimmer AM or PM beside it), exactly centred; with Settings → Appearance → Show the date, the day before it ("Fri 6", as large, 70% white, 6 px from it), day and time centred together and the island only as much wider as they need, also beside the unseen dot, not beside an activity (music, a call, the timer, the assistant at work: their sides take its room); while the screen records,
   how long it has been recording in its place. A call keeps the clock (its length is on the open
-  island).
+  island). With Settings → Appearance → Clock in the island off (#62), the closed island (and its copies) keeps
+  its size with the clock's room left empty, and Show the date goes grey; Isle puts no clock of its own
+  anywhere else, so a clock another extension adds to the top bar has it to itself. The open island's header
+  keeps its clock. Settings → Appearance → Clock in the top bar (Off by default; Left or Right) adds Isle's own
+  clock, an item of its own at the end of that side after what is there (it never moves another's), showing
+  the time, the day and time, or the date and time (Top bar clock shows), 12- or 24-hour as the island's; a
+  press opens the Calendar page held open, as Super+V does, and a press again closes it. It is the side's
+  extra: while that side has no room for it beside the other items (GNOME gives each side half the bar beside
+  the centre, and a fuller side spills towards the island), it gives way, and comes back once there is room.
+  It goes while GNOME's clock shows in the island's place (the island on another display).
+- Another extension may move GNOME's clock out of the centre to the bar's left or right: Isle then leaves it
+  shown where that extension put it (its menu included), keeps the island's room in the centre with a spacer
+  of its own, and hides it again once it is back in the centre. A clock moved anywhere else (an extension
+  that remakes the whole bar) stays hidden, as before.
 - One island, one sign on each side of the clock. Left: the first activity that applies, in the order
   screen recording → a call → music (a song playing or paused, until its player closes; a browser's
   video or voice note until it is over, at its end or paused a minute; none with the Music page left out) → the timer (a session or break under way); with none, a white dot while
@@ -310,7 +326,10 @@ first tab's pill, the gear's icon and the pages' contents share the same 20 px e
 tall, 3 px from the band's top and bottom, the open one's name on the clock's line. When the tabs and
 the status together need more than 600, the island grows to fit them, by the same amount on both
 sides so it stays centred. The Call tab, its phone in green, only shows during a call, and the
-Devices tab only while a Bluetooth device is connected. Scrolling or swiping over the header changes
+Devices tab only while a Bluetooth device is connected. The Call tab always comes first; the others are
+in Isle's order (Music, Notifications, Timer, Reminders, Shelf, Calendar, Apps, Devices, Usage) unless
+Settings → Island → Pages moves them: its arrows move a tab left or right, at once, the open page staying
+open, and Reset Order puts Isle's order back. Ctrl+1–9 and Ctrl+Tab follow the order shown. Scrolling or swiping over the header changes
 the page (see §3).
 
 Pages sit 20 px in from the island's sides and from its bottom (cards' 12 px corners concentric with
@@ -376,7 +395,12 @@ the one being sung is white and full size, the others a little smaller,
 those to come dimmed by distance and those sung dimmest; the view glides to
 keep the current line a third of the way down, its edges fading. Pauses in
 the singing (and a long intro) show as three breathing dots. Click a line
-to jump there; scrolling by hand pauses following for 4 s. The island takes
+to jump there; scrolling by hand pauses following for 4 s. A pin right of the title (off until pressed, as the
+open island covers the top of the windows) keeps the island open on the lyrics with the pointer away
+(#62); it lets go as the island closes (Esc, a click elsewhere while it holds the keyboard, a page's
+shortcut), when pressed again, when the lyrics or the song go, under a full-screen app, and when an alert
+comes (a passing one, the volume or Caps Lock, does not), which then shows. Pinned, the island lets go of
+the keyboard. The island takes
 a wash of the cover's main colour (by hue, so a two-colour cover gives one
 of them, not the grey between). States, centred with an icon: "Looking for
 lyrics" (breathing dots), "No lyrics for this song", "Instrumental", "Can't
@@ -817,7 +841,7 @@ After 8 s on one step, "Still working · 0:12" shows under it. While the AI
 writes its answer, the answer shows as it comes (opencode and Antigravity give
 it once written).
 
-**The AIs.** Claude Code, Codex, Grok, opencode or Antigravity, whichever is
+**The AIs.** Claude Code, Codex, Grok, opencode, Pi or Antigravity, whichever is
 picked in Settings → Assistant (Automatic: the first signed in, in that
 order), each with the user's own sign-in and kept to answering. opencode
 answers by default with the model the user's own opencode uses (its config's
@@ -827,7 +851,13 @@ Go's models and differ in limits only, which no API tells) and offers: up to
 8 models used last in opencode ("Recent · …"), OpenCode's free ones ("Free ·
 …", no sign-in needed), Zen's with a Zen key and Go's with a Go sign-in, as
 `opencode.ai/zen/go/v1/models` lists them now ("Go · …"). Only models
-`opencode models` lists are offered. No usage page.
+`opencode models` lists are offered. No usage page. Pi answers with the
+providers signed in to in Pi (`/login`) or an API key, by default with the
+model the user's Pi uses (its settings' default), or one picked in Settings
+from those `pi --list-models` lists; signed in to ChatGPT, only the models
+Codex lists for that account. It runs with no tools, extensions, skills,
+prompt templates or context files, and its sessions are kept apart from the
+user's. No web search, no usage page.
 
 **The command card.** A command the AI wants run shows in the pill as a
 small terminal: its purpose (bold) and a line on it, then `$ command` in

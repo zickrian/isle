@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 zickrian
 
-//! The assistant's "brain": whichever AI CLI the user has and picked (agy, Claude Code, Codex, Grok or
-//! opencode), behind one face. Each runs with the user's own sign-in, kept to answering; isled runs the tools and actions itself.
+//! The assistant's "brain": whichever AI CLI the user has and picked (agy, Claude Code, Codex, Grok, opencode
+//! or Pi), behind one face. Each runs with the user's own sign-in, kept to answering; isled runs the tools and actions itself.
 
 use std::path::{Path, PathBuf};
 
@@ -14,6 +14,7 @@ use super::claude::Claude;
 use super::codex::Codex;
 use super::grok::Grok;
 use super::opencode::Opencode;
+use super::pi::Pi;
 
 /// An AI CLI the assistant can run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +24,7 @@ pub enum Provider {
     Codex,
     Grok,
     Opencode,
+    Pi,
 }
 
 /// Tried in this order when the user picked "auto", signed-in ones first. agy comes last: its terms bar
@@ -31,11 +33,12 @@ pub enum Provider {
 /// its CLI no such choice), it thinks as the model does by default.
 pub const EFFORT: &str = "medium";
 
-const AUTO: [Provider; 5] = [
+const AUTO: [Provider; 6] = [
     Provider::Claude,
     Provider::Codex,
     Provider::Grok,
     Provider::Opencode,
+    Provider::Pi,
     Provider::Agy,
 ];
 
@@ -48,6 +51,7 @@ impl Provider {
             Provider::Codex => "codex",
             Provider::Grok => "grok",
             Provider::Opencode => "opencode",
+            Provider::Pi => "pi",
         }
     }
 
@@ -59,6 +63,7 @@ impl Provider {
             Provider::Codex => "Codex",
             Provider::Grok => "Grok",
             Provider::Opencode => "opencode",
+            Provider::Pi => "Pi",
         }
     }
 
@@ -70,6 +75,7 @@ impl Provider {
             Provider::Codex => "codex",
             Provider::Grok => "grok",
             Provider::Opencode => "opencode",
+            Provider::Pi => "pi",
         }
     }
 
@@ -98,6 +104,7 @@ impl Provider {
             }
             Provider::Grok => super::grok::signed_in(),
             Provider::Opencode => super::opencode::signed_in(),
+            Provider::Pi => super::pi::signed_in(),
         }
     }
 
@@ -109,10 +116,12 @@ impl Provider {
             Provider::Codex => "codex login",
             Provider::Grok => "grok login",
             Provider::Opencode => "opencode auth login",
+            // Its sign-in is a command inside it: `/login`.
+            Provider::Pi => "pi",
         }
     }
 
-    /// The provider with id `id` ("agy", "claude", "codex", "grok", "opencode").
+    /// The provider with id `id` ("agy", "claude", "codex", "grok", "opencode", "pi").
     pub fn from_id(id: &str) -> Option<Provider> {
         AUTO.into_iter().find(|p| p.id() == id)
     }
@@ -124,11 +133,11 @@ impl Provider {
     }
 
     /// Every provider, in "auto" order.
-    pub fn all() -> [Provider; 5] {
+    pub fn all() -> [Provider; 6] {
         AUTO
     }
 
-    /// `wanted` ("agy", "claude", "codex", "grok", "opencode" or "auto"), if installed; for "auto", the first installed and
+    /// `wanted` ("agy", "claude", "codex", "grok", "opencode", "pi" or "auto"), if installed; for "auto", the first installed and
     /// signed in, else the first installed (which then asks to sign in).
     pub fn pick(wanted: &str) -> Option<Provider> {
         let installed = |p: &Provider| p.program().is_some();
@@ -234,6 +243,7 @@ pub enum Brain {
     Codex(Codex),
     Grok(Grok),
     Opencode(Opencode),
+    Pi(Pi),
 }
 
 impl Brain {
@@ -267,6 +277,7 @@ impl Brain {
             Provider::Opencode => Brain::Opencode(
                 Opencode::start(&program, model, resume, workspace, instructions).await?,
             ),
+            Provider::Pi => Brain::Pi(Pi::start(&program, model, resume, workspace, instructions)?),
         })
     }
 
@@ -274,7 +285,11 @@ impl Brain {
     pub async fn warm(&mut self) -> anyhow::Result<()> {
         match self {
             Brain::Codex(codex) => codex.warm().await,
-            Brain::Agy(_) | Brain::Claude(_) | Brain::Grok(_) | Brain::Opencode(_) => Ok(()),
+            Brain::Agy(_)
+            | Brain::Claude(_)
+            | Brain::Grok(_)
+            | Brain::Opencode(_)
+            | Brain::Pi(_) => Ok(()),
         }
     }
 
@@ -286,6 +301,7 @@ impl Brain {
             Brain::Codex(_) => Provider::Codex,
             Brain::Grok(_) => Provider::Grok,
             Brain::Opencode(_) => Provider::Opencode,
+            Brain::Pi(_) => Provider::Pi,
         }
     }
 
@@ -303,6 +319,7 @@ impl Brain {
             Brain::Codex(codex) => codex.ask(prompt, activity, draft).await,
             Brain::Grok(grok) => grok.ask(prompt, activity, draft).await,
             Brain::Opencode(opencode) => opencode.ask(prompt, activity).await,
+            Brain::Pi(pi) => pi.ask(prompt, draft).await,
         }
     }
 
@@ -314,6 +331,7 @@ impl Brain {
             Brain::Codex(codex) => codex.conversation.clone(),
             Brain::Grok(grok) => grok.conversation.clone(),
             Brain::Opencode(opencode) => opencode.conversation.clone(),
+            Brain::Pi(pi) => pi.conversation.clone(),
         }
     }
 
@@ -325,6 +343,7 @@ impl Brain {
             Provider::Codex => super::codex::forget(id),
             Provider::Grok => super::grok::forget(id),
             Provider::Opencode => super::opencode::forget(id),
+            Provider::Pi => super::pi::forget(id),
         }
     }
 
@@ -335,6 +354,7 @@ impl Brain {
         super::codex::prune(today);
         super::grok::prune(today);
         super::opencode::prune(today);
+        super::pi::prune(today);
     }
 }
 
@@ -451,7 +471,12 @@ pub fn explain(provider: Provider, error: &str) -> Failure {
     ]) {
         return Failure {
             error: format!("Sign in to {name}"),
-            hint: "Sign in, then ask again.".into(),
+            // Pi signs in from inside: its sign-in button opens it, where `/login` does the rest.
+            hint: if provider == Provider::Pi {
+                "Sign in with /login in Pi, then ask again.".into()
+            } else {
+                "Sign in, then ask again.".into()
+            },
             sign_in: true,
             set_up: false,
             model: String::new(),
@@ -479,10 +504,21 @@ pub fn explain(provider: Provider, error: &str) -> Failure {
         "not available in your",
         "limit reached",
         "overloaded",
+        // A plan's credits used up (Grok: "402 Payment Required … run out of credits").
+        "402",
+        "payment required",
+        "out of credits",
     ]) {
         return Failure::from((
             &*format!("{name} isn’t available"),
             "Its limit may be used up for now; try again later, or pick another in Settings.",
+        ));
+    }
+    // Pi says only this when its provider is out of reach: offline, or a local model's server not running.
+    if provider == Provider::Pi && says(&["connection error"]) {
+        return Failure::from((
+            "Pi can’t reach its provider",
+            "Check the connection, or that the model’s server is running, then ask again.",
         ));
     }
     if says(&[
@@ -520,6 +556,22 @@ pub const UNKNOWN: &str = "Something went wrong";
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn credits_used_up_is_a_limit_not_a_mystery() {
+        // As Grok 1.0.77 said it, on stderr before its result event, for a Free plan out of credits.
+        let grok = "Error: Internal error: {\n  \"message\": \"API error (status 402 Payment Required): \
+                    personal-team-blocked:spending-limit: You have run out of credits or need a Grok subscription. \
+                    Add credits at https://grok.com/?_s=usage or upgrade at https://grok.com/supergrok.\",\n  \
+                    \"http_status\": 402\n}: {\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true}";
+        let failure = explain(Provider::Grok, grok);
+        assert_eq!(failure.error, "Grok isn’t available");
+        assert!(!failure.sign_in);
+        assert_eq!(
+            explain(Provider::Pi, "402 Payment Required").error,
+            "Pi isn’t available"
+        );
+    }
 
     #[test]
     fn explains_each_providers_failures() {

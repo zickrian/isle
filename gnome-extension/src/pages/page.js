@@ -151,6 +151,16 @@ export const Page = GObject.registerClass({
         return false;
     }
 
+    /** Whether, open, the parts it doesn't show (the lyrics behind the player) are laid out ahead too, in a quiet
+     * moment (see `warmHidden`): their first showing would lay them out in the frames it animates. */
+    get warmsShown() {
+        return false;
+    }
+
+    /** Open, shows the parts it doesn't show, unseen below it and out of reach, to be laid out; `coolDown` puts them
+     * away. */
+    warmHidden() {}
+
     /** Notes a change made out of sight: its next showing would style and lay it out in the frames it animates.
      * `force` for a change in a part of it not shown (lyrics behind the player), though the page is. */
     markCold({force = false} = {}) {

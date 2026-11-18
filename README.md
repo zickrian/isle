@@ -88,7 +88,7 @@ appear in the same place instead of in the middle of the screen.
 - `curl`, which most systems have (if not: `sudo apt install curl`). Install
   Isle as yourself, not with `sudo`.
 - For the voice assistant (optional): a microphone and
-  one of Claude Code, Codex, Grok, opencode or Antigravity signed in (Codex and the npm
+  one of Claude Code, Codex, Grok, opencode, Pi or Antigravity signed in (Codex, Pi and the npm
   install of Claude Code need Node.js 18 or newer); see
   [Voice assistant](#voice-assistant).
 
@@ -314,6 +314,7 @@ after 10 minutes, and a command is stopped after 30.
    | [Codex](https://github.com/openai/codex) (ChatGPT) | `npm i -g @openai/codex` | `codex login` | How Isle uses ChatGPT: your ChatGPT plan (Free works too, with lower limits), with the model your Codex uses |
    | [Grok](https://x.ai/build) | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok login` | Uses your Grok plan (Free works too); Isle runs it in its own folder, kept to answering |
    | [opencode](https://opencode.ai) | `curl -fsSL https://opencode.ai/install \| bash` | `opencode auth login` | Uses the providers you signed in to in opencode (your own API keys or subscriptions), with the model your opencode uses; Isle runs it in its own folders with every tool but web search turned off. No usage page: the providers bill you directly |
+   | [Pi](https://pi.dev) | `npm i -g @earendil-works/pi-coding-agent` | run `pi`, then `/login` (or an API key such as `ANTHROPIC_API_KEY`) | Uses the providers you signed in to in Pi, with the model your Pi uses; Isle runs it with no tools, extensions, skills or context files of yours, its conversations in a folder of its own. It does not search the web. Signed in to ChatGPT in Pi, only the models that account can use are offered (as Codex lists them). No usage page: the providers bill you directly |
    | [Antigravity](https://antigravity.google) | its installer | run `agy` | Its terms bar third-party tools from the service; Isle only runs the official `agy`, at your own risk |
 
    Settings → Assistant lists only the models your plan includes, by their full names, with your plan's
@@ -343,7 +344,7 @@ after 10 minutes, and a command is stopped after 30.
    `isle-setup-voice --remove-old`.
 3. Pick the AI in **Settings → Assistant**, or leave it on Automatic, which
    uses the first one you are signed in to: Claude Code, then Codex, then
-   Grok, then opencode, then Antigravity. An AI installed later is found by itself.
+   Grok, then opencode, then Pi, then Antigravity. An AI installed later is found by itself.
 4. Check with `~/.local/bin/isled --doctor` (`isled --doctor` with a
    package): it lists speech recognition (the models
    downloaded, and the GPU or processor it runs on) and each AI, where it is

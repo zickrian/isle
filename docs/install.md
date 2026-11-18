@@ -60,7 +60,7 @@ Rest the pointer on it to open it.
 Everything else works without it. To ask the island things out loud with
 Super+I:
 
-1. Install and sign in to one of Claude Code, Codex, Grok, opencode or Antigravity (the
+1. Install and sign in to one of Claude Code, Codex, Grok, opencode, Pi or Antigravity (the
    [README](../README.md#voice-assistant) says how; each uses your own plan).
 2. Set up speech recognition once, in a terminal. It downloads the speech
    model picked in Settings → Assistant (`small`, 265 MB, by default; or name

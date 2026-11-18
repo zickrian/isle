@@ -4,15 +4,20 @@
 // Integration with GNOME Shell itself: the top bar, the volume/brightness
 // OSD and keyboard state. Everything here is undone in `destroy()`.
 
+import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
+import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as Signals from 'resource:///org/gnome/shell/misc/signals.js';
 
 import {clutterBackend, uiScale} from './compat.js';
+import * as Format from './format.js';
 import {normalized, restyle} from './panelStyle.js';
 import {sendSuperV, watchRecorder} from './shortcutRecorder.js';
+import {watchClock} from './wallClock.js';
 
 // The bar's colour (glass 0% to black 100%) is a declaration in its inline style, which other extensions write
 // too: Isle edits only its own (panelStyle.js) and puts it back if another extension takes it out.
@@ -35,6 +40,10 @@ const PILL_BAR_CLASS = 'isle-pill-bar';
 const GAP_PX = 4;
 /** The primary (usually left) mouse button, as Clutter numbers it. */
 const PRIMARY_BUTTON = 1;
+/** Isle's own clock in the bar (Settings → Clock in the top bar): its role among the bar's items, Isle's alone. */
+const BAR_CLOCK_ROLE = 'isle-clock';
+/** What the bar's clock shows (Settings → Top bar clock shows), before the time: nothing, the day, or the date. */
+const BAR_CLOCK_DAY = {time: null, day: '%a', date: '%a %-d %b'};
 /** A window whose top is this close below the bar (in px) reaches it: maximized, tiled or moved up there. */
 export const REACH_PX = 5;
 /** Looked again once a window's animation is over (minimizing, closing), as some signals come as it starts. */
@@ -55,12 +64,17 @@ export class TopBar extends Signals.EventEmitter {
         this._clockFocus = this._dateMenu.can_focus;
         this._clockShown = false;
         this._closeLater = 0;
-        this._dateMenu.opacity = 0;
-        this._dateMenu.reactive = false;
-        this._syncClockMenu();
+        /** The width kept clear for the island in the bar's centre (see `reserveWidth`), in stage px. */
+        this._reserved = -1;
+        this._spacer = null;
+        this._movedAway = this._clockMovedAway();
+        this._syncDateMenu();
+        // Another extension may move GNOME's clock to the bar's left or right (#62): it is then that extension's,
+        // shown where it put it, and the island's room in the centre is kept by a spacer of Isle's instead.
+        this._clockParentSet = this._dateMenu.container.connect('parent-set', () => this._onClockMoved());
 
         this._settingsChanged = [
-            ...['top-bar-style', 'top-bar-opacity', 'island-theme'].map(key => settings.connect(`changed::${key}`, () => {
+            ...['top-bar-style', 'top-bar-opacity', 'top-bar-color', 'island-theme'].map(key => settings.connect(`changed::${key}`, () => {
                 this._yielded = false;
                 const blended = this._blended;
                 this._syncWindowWatch(false);
@@ -70,6 +84,9 @@ export class TopBar extends Signals.EventEmitter {
                     this.emit('style-changed');
             })),
             settings.connect('changed::compact-top-bar', () => this._applyStyle()),
+            settings.connect('changed::top-bar-clock', () => this._syncBarClock({again: true})),
+            // The 12/24-hour setting reaches it as every clock of Isle's (`refreshClocks`).
+            settings.connect('changed::top-bar-clock-shows', () => this._tickBarClock()),
             settings.connect('changed::top-bar-black-with-windows', () => this._syncWindowWatch()),
             settings.connect('changed::island-in-top-bar', () => this._applyStyle()),
             settings.connect('changed::island-shape', () => this._applyStyle()),
@@ -103,17 +120,19 @@ export class TopBar extends Signals.EventEmitter {
         // it used to fall to GNOME's menu, which never opened for the hidden clock (#50). No shortcut of Isle's own,
         // nothing in GNOME's settings. The hidden clock's menu is closed again should anything else open it.
         this._takeToggle();
+        this._barClock = null;
+        this._syncBarClock();
         // While Settings waits for a shortcut, Super+V goes to it (GNOME's grab keeps it from the window itself).
         this._recording = false;
         this._unwatchRecorder = watchRecorder(waiting => (this._recording = waiting));
         // Closed before the next frame, not at once: GNOME 51 tells of the opening before it shows the menu, which
         // a menu closed then still did, for good (#61).
         this._menuChanged = this._dateMenu.menu.connect('open-state-changed', (menu, open) => {
-            if (!open || this._clockShown || this._closeLater)
+            if (!open || this._dateMenuShown || this._closeLater)
                 return;
             this._closeLater = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
                 this._closeLater = 0;
-                if (!this._clockShown) {
+                if (!this._dateMenuShown) {
                     menu.close();
                     // Given back to the bar's menus meanwhile (GNOME laying the bar out again): taken again.
                     this._syncClockMenu();
@@ -128,7 +147,7 @@ export class TopBar extends Signals.EventEmitter {
      * keyboard. Both given back with the clock. */
     _syncClockMenu() {
         const manager = Main.panel.menuManager;
-        const shown = this._clockShown;
+        const shown = this._dateMenuShown;
         this._dateMenu.can_focus = shown ? this._clockFocus : false;
         if (shown)
             manager.addMenu(this._dateMenu.menu);
@@ -227,7 +246,7 @@ export class TopBar extends Signals.EventEmitter {
     /** Follows the windows while Settings turn the bar black beside them (a see-through or grey bar), else
      * nothing; then shows the bar as they are, unless `show` is false. */
     _syncWindowWatch(show = true) {
-        const wanted = this._settings.get_boolean('top-bar-black-with-windows') && this.opacity < 100;
+        const wanted = this.colors && this._settings.get_boolean('top-bar-black-with-windows') && this.opacity < 100;
         if (wanted && !this._windowWatch.length) {
             const sync = () => this._onWindowsChanged();
             this._windowWatch = [
@@ -276,26 +295,185 @@ export class TopBar extends Signals.EventEmitter {
     }
 
     /** Whether the bar is as black as the island; otherwise the island hangs from the screen's top edge.
-     * A glass island never is. */
+     * A glass island never is, nor one by a bar Isle doesn't colour (its colour isn't known). */
     get blendsIn() {
-        return this.opacity >= 100 && this._settings.get_string('island-theme') === 'black';
+        return this.colors && this.opacity >= 100 && this._settings.get_string('island-theme') === 'black';
     }
 
-    /** Keeps the top bar's centre clear for the island. */
-    reserveWidth(width) {
-        this._dateMenu.set_width(Math.ceil(width));
+    /** Keeps the top bar's centre clear for the island: GNOME's clock there takes its width, or Isle's spacer once
+     * another extension moved the clock away. */
+    reserveWidth(width, footprint = width) {
+        this._reserved = Math.ceil(width);
+        (this._spacer ?? this._dateMenu).set_width(this._reserved);
+        // Its shoulders reach past the centre GNOME keeps for it: Isle's clock keeps clear of them too.
+        const span = Math.ceil(footprint);
+        if (span !== this._footprint) {
+            this._footprint = span;
+            this._fitLater();
+        }
     }
 
     /** Shows GNOME's own clock in the top bar while the island is on another display. */
     set clockShown(shown) {
         this._clockShown = shown;
+        this._syncDateMenu();
+        // One clock in the bar: GNOME's, while it shows in the island's place.
+        this._syncBarClock();
+    }
+
+    /** Whether GNOME's clock shows: while the island is on another display, or where another extension moved it. */
+    get _dateMenuShown() {
+        return this._clockShown || this._movedAway;
+    }
+
+    /** Whether another extension moved GNOME's clock from the centre to the bar's left or right box. Anywhere else
+     * (a panel extension that remakes the whole bar), it is left hidden, as before. */
+    _clockMovedAway() {
+        const parent = this._dateMenu.container.get_parent();
+        return parent === Main.panel._leftBox || parent === Main.panel._rightBox;
+    }
+
+    /** GNOME's clock moved: shown, or hidden again, once the move is over (not while the bar is being changed). */
+    _onClockMoved() {
+        if (this._movedLater)
+            return;
+        this._movedLater = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
+            this._movedLater = 0;
+            const moved = this._clockMovedAway();
+            if (moved !== this._movedAway) {
+                this._movedAway = moved;
+                this._syncDateMenu();
+            }
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    /** GNOME's clock shown or hidden as `_dateMenuShown` says; the island's room kept by it in the centre, or by a
+     * spacer of Isle's while another extension has the clock elsewhere. */
+    _syncDateMenu() {
+        const shown = this._dateMenuShown;
         this._dateMenu.opacity = shown ? 255 : 0;
         this._dateMenu.reactive = shown;
         this._syncClockMenu();
+        if (!shown)
+            this._dateMenu.menu.close();
+        if (this._movedAway && !this._spacer) {
+            this._spacer = new St.Widget({name: 'isleCentreSpacer', reactive: false});
+            Main.panel._centerBox.insert_child_at_index(this._spacer, 0);
+        } else if (!this._movedAway && this._spacer) {
+            this._spacer.destroy();
+            this._spacer = null;
+        }
+        // Its own width where another extension has it, or while the island is elsewhere.
         if (shown)
             this._dateMenu.set_width(-1);
-        else
-            this._dateMenu.menu.close();
+        if (this._reserved >= 0 && !this._clockShown)
+            (this._spacer ?? this._dateMenu).set_width(this._reserved);
+        // The island on another display: no room to keep in this bar's centre.
+        else if (this._clockShown)
+            this._spacer?.set_width(0);
+    }
+
+    /** Isle's own clock in the bar where Settings put it (#62), left or right, after what is there already: an item
+     * of Isle's own, never another's moved. None while GNOME's own clock shows in the island's place. `again`: made
+     * anew, in its new place. */
+    _syncBarClock({again = false} = {}) {
+        const side = this._settings.get_string('top-bar-clock');
+        const wanted = side !== 'off' && !this._clockShown;
+        if (this._barClock && (!wanted || again)) {
+            this._barClock.destroy();
+            this._barClock = null;
+        }
+        if (!wanted || this._barClock)
+            return;
+        const button = new PanelMenu.Button(0.5, 'Isle clock', true);
+        button.add_style_class_name('isle-bar-clock');
+        button.accessible_name = 'Calendar';
+        this._barClockLabel = new St.Label({style_class: 'isle-bar-clock-label', y_align: Clutter.ActorAlign.CENTER});
+        button.add_child(this._barClockLabel);
+        // On the press: with the island open and holding the keyboard, the press goes to it and closes it (see the
+        // controller's `_setKeyboard`), so a click here closes it rather than opening it again on the release.
+        button.connect('button-press-event', (_actor, event) => {
+            if (event.get_button() !== PRIMARY_BUTTON)
+                return Clutter.EVENT_PROPAGATE;
+            this._openCalendar();
+            return Clutter.EVENT_STOP;
+        });
+        button.connect('touch-event', (_actor, event) => {
+            if (event.type() !== Clutter.EventType.TOUCH_BEGIN)
+                return Clutter.EVENT_PROPAGATE;
+            this._openCalendar();
+            return Clutter.EVENT_STOP;
+        });
+        const stop = watchClock(() => this._tickBarClock());
+        // At the end of its side: right of the system menu, or of the left side's items.
+        const box = side === 'left' ? Main.panel._leftBox : Main.panel._rightBox;
+        // Its side's items laid out anew (one added, gone, wider): whether it still fits is looked at again.
+        const fit = () => this._fitLater();
+        const watched = [box.connect('notify::allocation', fit), Main.panel.connect('notify::width', fit)];
+        button.connect('destroy', () => {
+            stop();
+            box.disconnect(watched[0]);
+            Main.panel.disconnect(watched[1]);
+            if (this._barClock === button)
+                this._barClock = null;
+        });
+        this._barClock = button;
+        Main.panel.addToStatusArea(BAR_CLOCK_ROLE, button, box.get_n_children(), side);
+        this._tickBarClock();
+        this._fitLater();
+    }
+
+    /** Looks at whether the bar's clock fits once the bar is laid out (not while it is being laid out). On idle,
+     * not before the next frame: a hidden clock's new text draws none, and the screen may have nothing else to draw. */
+    _fitLater() {
+        if (this._fitting)
+            return;
+        this._fitting = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._fitting = 0;
+            this._fitBarClock();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    /** Isle's clock is the extra on its side: it shows only while that side has room for it beside what the other
+     * items need, never pushing them (or itself) over the island. GNOME gives each side half the bar beside the
+     * centre, and a side wider than that spills towards it. Judged on the others' width alone, so it never flickers. */
+    _fitBarClock() {
+        const clock = this._barClock?.container;
+        const box = clock?.get_parent();
+        if (!box)
+            return;
+        const [, centre] = Main.panel._centerBox.get_preferred_width(-1);
+        // GNOME's half beside the centre, or what the island leaves beside it, centred on the display, whichever is less.
+        const room = Math.max(0, Math.min(Main.panel.width - centre, Main.panel.width - (this._footprint ?? 0)) / 2);
+        const [, all] = box.get_preferred_width(-1);
+        const [, own] = clock.get_preferred_width(-1);
+        const others = all - (clock.visible ? own : 0);
+        const fits = others + own <= room;
+        if (clock.visible !== fits)
+            clock.visible = fits;
+    }
+
+    /** The bar's clock as Settings say: "14:05", "Wed 14:05" or "Wed 18 Nov 14:05", 12-hour as the island's. */
+    _tickBarClock() {
+        if (!this._barClock)
+            return;
+        const now = GLib.DateTime.new_now_local();
+        const {time, meridiem} = Format.clockParts(now);
+        const day = BAR_CLOCK_DAY[this._settings.get_string('top-bar-clock-shows')];
+        const text = [day && now.format(day), time + (meridiem ? ` ${meridiem}` : '')].filter(Boolean).join('  ');
+        if (text === this._barClockLabel.text)
+            return;
+        this._barClockLabel.text = text;
+        // Hidden for want of room, its side isn't laid out again as its text changes: looked at here instead.
+        this._fitLater();
+    }
+
+    /** The island's Calendar page, as Super+V opens it; its usual page with the Calendar left out. */
+    _openCalendar() {
+        const hidden = this._settings.get_strv('hidden-pages').includes('calendar');
+        this.emit('calendar-requested', hidden ? null : 'calendar');
     }
 
     /** Colour and style classes from the settings; remembers `blendsIn` to spot a change. Off the top, none:
@@ -308,23 +486,36 @@ export class TopBar extends Signals.EventEmitter {
         this._gap = inBar && this._settings.get_boolean('notch-gap') ? GAP_PX : 0;
         const styled = this._atTop;
         // The bar's height changes with these; `height-changed` re-lays out the island.
+        // Its colour left to the theme or another extension (#63): nor its text's white and shadow, which go with
+        // Isle's colours. Its height is still Isle's, round the island.
+        const colored = styled && this.colors;
         setStyleClasses(Main.panel, {
-            [BAR_CLASS]: styled,
+            [BAR_CLASS]: colored,
             [COMPACT_BAR_CLASS]: styled && this._settings.get_boolean('compact-top-bar'),
             [NOTCH_BAR_CLASS]: styled && inBar,
             [PILL_BAR_CLASS]: styled && inBar && this._settings.get_string('island-shape') === 'pill',
-            [GLASS_BAR_CLASS]: styled && this.opacity < SHADOW_BELOW,
+            [GLASS_BAR_CLASS]: colored && this.opacity < SHADOW_BELOW,
         });
     }
 
-    /** The bar's opacity in % as Isle colours it; null off the top, where Isle leaves it the theme's. */
+    /** Whether Isle colours the bar (Settings), from glass to black; off, it keeps the colour the theme or another
+     * extension gives it. */
+    get colors() {
+        return this._settings.get_boolean('top-bar-color');
+    }
+
+    /** The bar's opacity in % as Isle colours it; null off the top, or with its colour left to others (`colors`). */
     get _color() {
-        return this._atTop ? this._shownOpacity : null;
+        return this._atTop && this.colors ? this._shownOpacity : null;
     }
 
     // Another extension that sets the bar's style too would undo Isle's rule each time Isle set it, in a
     // loop that keeps the shell busy: past a few times a second, Isle gives way until the setting changes.
     _onPanelStyle() {
+        // No colour of Isle's now (left to others, or the bar off the top): what another extension writes is its own,
+        // even a declaration spelt as one Isle wrote before.
+        if (this._color === null)
+            return;
         // Isle's own write, or one that kept Isle's colour (however spelt or ordered): no fight.
         if (this._yielded || this._writing || this._wantedStyle() === Main.panel.get_style())
             return;
@@ -383,9 +574,20 @@ export class TopBar extends Signals.EventEmitter {
         if (this._dragButtonWas === 0 && this._dragGesture.required_button === PRIMARY_BUTTON)
             this._dragGesture.required_button = 0;
         this._dateMenu.menu.disconnect(this._menuChanged);
+        this._dateMenu.container.disconnect(this._clockParentSet);
         if (this._closeLater)
             global.compositor.get_laters().remove(this._closeLater);
         this._closeLater = 0;
+        if (this._movedLater)
+            global.compositor.get_laters().remove(this._movedLater);
+        this._movedLater = 0;
+        if (this._fitting)
+            GLib.source_remove(this._fitting);
+        this._fitting = 0;
+        this._barClock?.destroy();
+        this._barClock = null;
+        this._spacer?.destroy();
+        this._spacer = null;
         this._clockShown = true;
         this._syncClockMenu();
         this._restoreToggle();

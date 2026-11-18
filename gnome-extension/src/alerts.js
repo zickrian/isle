@@ -688,7 +688,7 @@ export function agentConnected(provider, look, settings) {
 
 /** The model picked for the assistant isn't on `provider`'s plan now (it lapsed, say): `used` answers instead. */
 export function modelSwitched(provider, plan, picked, used) {
-    const name = {claude: 'Claude', codex: 'ChatGPT', grok: 'Grok', agy: 'Antigravity', opencode: 'opencode'}[provider] ??
+    const name = {claude: 'Claude', codex: 'ChatGPT', grok: 'Grok', agy: 'Antigravity', opencode: 'opencode', pi: 'Pi'}[provider] ??
         'Your AI';
     return {
         key: `model-switched:${provider}`,

@@ -49,7 +49,7 @@ connects to the network only for these:
 | Claude plan usage | `api.anthropic.com/api/oauth/usage` | Claude Code's own sign-in token, read from Claude Code's credentials; Isle never signs in or refreshes it. Off when AI usage, or Claude in it, is turned off |
 | ChatGPT plan usage | `chatgpt.com/backend-api/wham/usage` | Codex's own sign-in token and account id, read from Codex's `auth.json`; Isle never signs in or refreshes it. Off when AI usage, or ChatGPT in it, is turned off |
 | Grok plan usage | Grok's own billing (`cli-chat-proxy.grok.com/v1`, or the address set in Grok's own config; https only) | Grok's own sign-in token and user id, read from Grok's sign-in; Isle never signs in or refreshes it. Off when AI usage, or Grok in it, is turned off |
-| Voice assistant | The AI command-line app you picked (Claude Code, Codex, Antigravity, Grok or opencode), which sends it to its own service under your plan (opencode: to the provider of the model picked, under your own key or subscription) | The text of your request (speech is turned into text on this computer), the context it needs (time, open apps and windows, reminders and events, which Linux and package managers this is), the output of the checks and commands it runs for you (with keys, tokens and passwords blanked), the conversation so far and, only if you allow it, the selected text or your notifications |
+| Voice assistant | The AI command-line app you picked (Claude Code, Codex, Antigravity, Grok, opencode or Pi), which sends it to its own service under your plan (opencode and Pi: to the provider of the model picked, under your own key or subscription) | The text of your request (speech is turned into text on this computer), the context it needs (time, open apps and windows, reminders and events, which Linux and package managers this is), the output of the checks and commands it runs for you (with keys, tokens and passwords blanked), the conversation so far and, only if you allow it, the selected text or your notifications |
 | Web search by the assistant | Whatever the AI's own web search and page reading reach; opencode searches with [Exa](https://exa.ai) (`mcp.exa.ai`), as opencode does for its own models, and reads no pages itself | Search words and page addresses the AI chooses for your request |
 | Package checks by the assistant | Your package managers' own servers (npm's registry, Snap and Flatpak stores, dnf's mirrors) | Package names it looks up, when a check like `npm view codex` or `snap find vlc` asks them |
 | Song check | `open.spotify.com/oembed` | A Spotify link the AI suggested, to check it exists before playing it |
@@ -71,7 +71,8 @@ Codex's own logs on this computer, with no network at all.
   copy of it, at midnight at the latest (or after 30 minutes or 2 hours
   quiet, as set in Settings), on **+**, and on **Clear the conversation
   now**. opencode keeps Isle's copy in `~/.local/share/isle/opencode`, apart
-  from your own opencode's, and its models list in `~/.cache/isle/opencode`.
+  from your own opencode's, and its models list in `~/.cache/isle/opencode`;
+  Pi keeps Isle's in `~/.local/share/isle/pi/sessions`, apart from your own.
 - Logs of the commands the assistant ran for you, in
   `~/.cache/isle/runs` (readable by you only), deleted once Isle has
   followed each to its end.
@@ -248,6 +249,13 @@ tcp`), until a phone gets through. Isle never changes the firewall itself.
   own database goes from Isle's too; one only Isle has stays. To avoid
   starting opencode for every check, Isle keeps the sign-ins it exported in
   memory for up to 30 seconds; they are not written to another file.
+  Pi, which has no web search, is started with no tools at all (`--no-tools`)
+  and none of your extensions, skills, prompt templates, themes or context
+  files (`AGENTS.md`), ignoring project files, in Isle's own workspace; the
+  request goes to it on its standard input, never on the command line. Its
+  update checks and telemetry are off for these runs (`PI_OFFLINE`). Your
+  sign-ins stay in Pi's own `~/.pi/agent`, which Pi reads and renews itself;
+  Isle only reads whether there are any, and your settings' model.
 - Files: Isle searches by name for it, within your home folder and removable
   drives, and reads only small plain-text files you ask about. It skips
   hidden folders, never searches those that hold keys or passwords (`.ssh`,

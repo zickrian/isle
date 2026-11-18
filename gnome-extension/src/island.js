@@ -266,6 +266,11 @@ export const Island = GObject.registerClass({
         this.connect('destroy', () => this._onDestroy());
     }
 
+    /** Whether it is still growing or shrinking to its size. */
+    get moving() {
+        return this._driver?.running ?? false;
+    }
+
     /** Whether a pointer rests on it. */
     get hovered() {
         return this._hovered;

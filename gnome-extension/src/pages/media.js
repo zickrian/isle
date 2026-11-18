@@ -51,8 +51,12 @@ class LyricsWidthLayout extends Clutter.LayoutManager {
 });
 
 /** The music page: the player, with lyrics or volume and outputs as its other modes. */
-export const MediaPage = GObject.registerClass(
-class MediaPage extends Page {
+export const MediaPage = GObject.registerClass({
+    Signals: {
+        // `holdsOpen` changed.
+        'hold-changed': {},
+    },
+}, class MediaPage extends Page {
     /** Builds all three layouts up front; only the mode's is shown. */
     _init(daemon, audio, {height}) {
         super._init(daemon, {
@@ -64,6 +68,9 @@ class MediaPage extends Page {
         this._audio = audio;
         /** 'player', 'lyrics' or 'audio' (volume and outputs). */
         this._mode = 'player';
+        /** The lyrics' pin (#62): the island stays open on them with the pointer away; see `holdsOpen`. */
+        this._pinned = false;
+        this._holding = false;
         this._tint = null;
         this._tintPath = null;
         // Each layout has its own copy of these; they update together.
@@ -287,6 +294,19 @@ class MediaPage extends Page {
         this._lyricsBars.x_align = Clutter.ActorAlign.START;
         this._lyricsBars.add_style_class_name('isle-side-bars');
         texts.add_child(this._lyricsBars);
+        // The lyrics' pin, right of the title, small so the title keeps most of the line (it is cut short only just
+        // before it). Off until pressed: the open island covers the top of the windows below it, so it never stays
+        // by itself.
+        this._pin = iconButton('isle-pin', 'isle-button-flat isle-mode-toggle isle-lyrics-pin', () => (this.pinned = !this._pinned),
+            {size: 13, accessibleName: 'Keep the lyrics open'});
+        this._pin.set({x_expand: false, y_align: Clutter.ActorAlign.CENTER});
+        const title = this._titles[this._titles.length - 1];
+        texts.remove_child(title);
+        title.x_expand = true;
+        const titleLine = new St.BoxLayout({style_class: 'isle-lyrics-title-line'});
+        titleLine.add_child(title);
+        titleLine.add_child(this._pin);
+        texts.insert_child_at_index(titleLine, 0);
         top.add_child(texts);
         side.add_child(top);
         side.add_child(this._progress());
@@ -361,11 +381,52 @@ class MediaPage extends Page {
         this._lyricsPane.opacity = Math.round(255 * Math.min(1, Math.max(0, 1 - covered / px(UNCOVER_FADE))));
     }
 
+    /** Whether the lyrics are pinned open (the island's to keep so; it unpins them as it closes). */
+    get pinned() {
+        return this._pinned;
+    }
+
+    set pinned(pinned) {
+        if (pinned === this._pinned)
+            return;
+        this._pinned = pinned;
+        setButtonIcon(this._pin, pinned ? 'isle-pin-fill' : 'isle-pin');
+        if (pinned)
+            this._pin.add_style_class_name('on');
+        else
+            this._pin.remove_style_class_name('on');
+        this._pin.accessible_name = pinned ? 'Let the lyrics close' : 'Keep the lyrics open';
+        this._syncHold();
+    }
+
+    /** Whether the island stays open with the pointer away: the lyrics pinned, and showing. */
+    get holdsOpen() {
+        return this._pinned && this._shown('lyrics');
+    }
+
+    /** Tells the island when `holdsOpen` changed: pinned, unpinned, or the lyrics gone (no song, another mode). */
+    _syncHold() {
+        const holding = this.holdsOpen;
+        if (holding === this._holding)
+            return;
+        this._holding = holding;
+        this.emit('hold-changed');
+    }
+
     /** Opens `mode`, or goes back to the player if it is open already. */
     _toggleMode(mode) {
         this._mode = this._mode === mode ? 'player' : mode;
+        // The pin is the lyrics': leaving them lets go of it.
+        if (this._mode !== 'lyrics')
+            this.pinned = false;
         this._syncWatching();
-        this._update();
+        // Only what a mode changes: the song's words, covers and buttons are the same in each layout, kept so by
+        // `_update`; setting them all again cost the frame the island starts to widen in.
+        if (!this.hidden && this._syncMode()) {
+            this._lyricsPane.update();
+            this._syncBars();
+            this._tickProgress();
+        }
         this.emit('width-changed');
         this.emit('tint-changed');
     }
@@ -383,13 +444,38 @@ class MediaPage extends Page {
         this._syncMode();
     }
 
+    /** Lyrics built while the player shows (the next song, the island open on it): laid out ahead too. */
+    get warmsShown() {
+        return true;
+    }
+
+    /** The lyrics and the outputs, if not shown, below the page (which clips them) and clear: unseen, out of reach,
+     * and laid out, so opening them costs no frames. Any change of mode puts them back (see `_syncMode`). */
+    warmHidden() {
+        if (!Playback.hasTrack(this.daemon.state.nowPlaying))
+            return;
+        const below = Math.ceil(this.height) + 1;
+        for (const layout of [this._lyricsLayout, this._audioLayout]) {
+            if (layout.visible)
+                continue;
+            layout.set({opacity: 0, translation_y: below});
+            layout.show();
+        }
+    }
+
     /** Shows the layout for the mode; returns whether there is a song. */
     _syncMode() {
         const hasTrack = Playback.hasTrack(this.daemon.state.nowPlaying);
+        // Back from a warm-up below the page (see `warmHidden`), whatever it was.
+        for (const layout of [this._lyricsLayout, this._audioLayout]) {
+            if (layout.translation_y !== 0)
+                layout.set({opacity: 255, translation_y: 0});
+        }
         this._empty.visible = !hasTrack;
         this._player.visible = hasTrack && this._mode === 'player';
         this._lyricsLayout.visible = this._shown('lyrics');
         this._audioLayout.visible = this._shown('audio');
+        this._syncHold();
         return hasTrack;
     }
 

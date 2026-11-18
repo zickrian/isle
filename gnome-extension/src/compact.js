@@ -227,6 +227,23 @@ export const CompactView = GObject.registerClass({
         this._refresh();
     }
 
+    /** The time (and day) kept clear, its room kept, with Settings' Clock in the island off (#62): the island as wide
+     * as ever, with nothing in it but what comes and goes. */
+    set clockAway(away) {
+        if (away === Boolean(this._clockAway))
+            return;
+        this._clockAway = away;
+        const opacity = away ? 0 : 255;
+        const animate = this.mapped && St.Settings.get().enable_animations;
+        for (const time of [this._clockDate, this._clockTime, this._meridiem]) {
+            time.remove_transition('opacity');
+            if (animate)
+                time.ease({opacity, duration: 200, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+            else
+                time.opacity = opacity;
+        }
+    }
+
     /** Its clock stays where it is as the island widens or narrows (see island.js `_onViewWidth`). */
     get keepsMiddle() {
         return true;

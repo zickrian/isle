@@ -229,6 +229,25 @@ export function revealClose(button, shown) {
 /** The music bars move about this often (ms), whatever the display. A timer, not a timeline: a running
  * timeline has the shell draw every frame of the display (144 a second on some), six times the CPU. */
 const BARS_STEP_MS = 1000 / 60;
+/** Every set of bars bouncing now (the header's and the lyrics' show together), moved by one timer between them: two
+ * timers of their own ticked apart, each asking for its own redraw. */
+const bouncingBars = new Set();
+let barsTimer = 0;
+
+/** Moves every set of bars that bounces, once a tick; the timer runs only while one does. */
+function syncBarsTimer() {
+    if (bouncingBars.size && !barsTimer) {
+        barsTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Math.round(BARS_STEP_MS), () => {
+            const now = GLib.get_monotonic_time();
+            for (const bars of bouncingBars)
+                bars._step(now);
+            return GLib.SOURCE_CONTINUE;
+        });
+    } else if (!bouncingBars.size && barsTimer) {
+        GLib.source_remove(barsTimer);
+        barsTimer = 0;
+    }
+}
 /** The recording dot's fade steps this often (ms), on a timer for the same reason. */
 const DOT_STEP_MS = 1000 / 30;
 /** Its fade: from full to this opacity and back, each way this long (ms). */
@@ -559,8 +578,8 @@ class Bars extends St.BoxLayout {
             this._bounces.push({on: false, from: 0, to: 0, start: -1, duration: 0});
             this.add_child(bar);
         }
-        // One clock moves every bar: an ease per bounce made garbage many times a second.
-        this._timer = 0;
+        // One clock moves every bar (an ease per bounce made garbage many times a second), shared with every other set
+        // of bars on show (see `bouncingBars`).
         this._now = 0;
         this._last = 0;
         this.connect('destroy', () => this._onDestroy());
@@ -612,22 +631,19 @@ class Bars extends St.BoxLayout {
             bounce.start = -1;
             // Slowed down as ease() is.
             bounce.duration = (180 + Math.random() * 220) * settings.slow_down_factor;
-            if (!this._timer) {
+            if (!bouncingBars.has(this)) {
                 this._now = 0;
                 this._last = GLib.get_monotonic_time();
-                this._timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Math.round(BARS_STEP_MS), () => {
-                    this._step();
-                    return GLib.SOURCE_CONTINUE;
-                });
+                bouncingBars.add(this);
+                syncBarsTimer();
             }
         } else if (!this._bounces.some(other => other.on)) {
             this._stopClock();
         }
     }
 
-    /** One tick of the shared clock: each bouncing bar moves along its curve. */
-    _step() {
-        const now = GLib.get_monotonic_time();
+    /** One tick of the shared clock (at `now`, µs): each bouncing bar moves along its curve. */
+    _step(now = GLib.get_monotonic_time()) {
         this._now += (now - this._last) / 1000;
         this._last = now;
         for (let i = 0; i < this._bounces.length; i++) {
@@ -656,9 +672,8 @@ class Bars extends St.BoxLayout {
     }
 
     _stopClock() {
-        if (this._timer)
-            GLib.source_remove(this._timer);
-        this._timer = 0;
+        if (bouncingBars.delete(this))
+            syncBarsTimer();
     }
 
     /** Leaves no clock running. */

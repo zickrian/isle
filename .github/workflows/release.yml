@@ -71,6 +71,8 @@ jobs:
           files=(dist/*.tar.gz dist/*.deb dist/*.rpm dist/*.sha256)
           # The version's own section of the changelog.
           awk -v v="${tag#v}" 'index($0, "## [" v "]") == 1 {on = 1; next} /^## \[/ {on = 0} on' CHANGELOG.md > notes.md
+          # Its pictures by their place in the repository, which a release page cannot follow: at this tag instead.
+          sed -i -E "s#(src|srcset)=\"docs/images/#\1=\"https://github.com/$GITHUB_REPOSITORY/raw/$tag/docs/images/#g" notes.md
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" "${files[@]}" --clobber
           else

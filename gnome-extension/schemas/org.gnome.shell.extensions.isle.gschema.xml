@@ -33,6 +33,31 @@
       <summary>The day beside the closed island's clock</summary>
       <description>"Fri 6" before the time while the island shows the clock alone.</description>
     </key>
+    <key name="island-clock" type="b">
+      <default>true</default>
+      <summary>The clock in the closed island</summary>
+      <description>Off, the closed island keeps its size with no clock in it, the room left empty; Isle shows no clock of its own elsewhere, so another extension's clock in the top bar has the bar to itself. The open island's header keeps its clock.</description>
+    </key>
+    <key name="top-bar-clock" type="s">
+      <choices>
+        <choice value="off"/>
+        <choice value="left"/>
+        <choice value="right"/>
+      </choices>
+      <default>'off'</default>
+      <summary>Isle's clock in the top bar</summary>
+      <description>"off": none. "left" or "right": Isle's own clock at the end of that side of the top bar, after the items already there (it never moves another extension's); a click opens the island's Calendar page. It goes while GNOME's own clock shows in the island's place (the island on another display).</description>
+    </key>
+    <key name="top-bar-clock-shows" type="s">
+      <choices>
+        <choice value="time"/>
+        <choice value="day"/>
+        <choice value="date"/>
+      </choices>
+      <default>'time'</default>
+      <summary>What Isle's clock in the top bar shows</summary>
+      <description>"time": 20:40. "day": Wed 20:40. "date": Wed 18 Nov 20:40. The time 12- or 24-hour as clock-format says.</description>
+    </key>
     <key name="clock-format" type="s">
       <choices>
         <choice value="system"/>
@@ -54,6 +79,11 @@
       <default>0</default>
       <summary>Top bar opacity</summary>
       <description>How black the top bar beside the island is, in %: 0 is glass, 100 is black and the island blends into it. Unset, top-bar-style decides.</description>
+    </key>
+    <key name="top-bar-color" type="b">
+      <default>true</default>
+      <summary>Isle colours the top bar</summary>
+      <description>On: the bar is as top-bar-opacity says, from glass to black, its text white. Off: Isle leaves its colour, transparency and text to the theme or another extension, and only sizes it round the island; the island then hangs below the bar as a notch.</description>
     </key>
     <key name="top-bar-black-with-windows" type="b">
       <default>false</default>
@@ -209,6 +239,11 @@
       <summary>Pages left out of the island</summary>
       <description>Names of the open island’s pages that have no tab: music, notifications, focus, reminders, shelf, calendar. The Apps and Usage pages have their own switches (app-usage, usage-enabled).</description>
     </key>
+    <key name="page-order" type="as">
+      <default>[]</default>
+      <summary>The order of the open island’s tabs</summary>
+      <description>Page names, left to right: music, notifications, focus, reminders, shelf, calendar, apps, devices, usage. Empty for Isle’s own order (as listed); a page left out goes after the one it follows there. The Call tab always comes first, during a call.</description>
+    </key>
     <key name="app-usage" type="b">
       <default>false</default>
       <summary>The Apps page, timing the application in front</summary>
@@ -300,7 +335,7 @@
     <key name="voice-assistant" type="b">
       <default>true</default>
       <summary>Voice assistant</summary>
-      <description>Listen for requests on the shortcut and the mic button, and answer them with the AI chosen: Claude Code, Codex, Grok, opencode or Antigravity (agy).</description>
+      <description>Listen for requests on the shortcut and the mic button, and answer them with the AI chosen: Claude Code, Codex, Grok, opencode, Pi or Antigravity (agy).</description>
     </key>
     <key name="shortcut-music" type="as">
       <default>[]</default>
@@ -355,7 +390,7 @@
     <key name="voice-provider" type="s">
       <default>'auto'</default>
       <summary>AI the voice assistant asks</summary>
-      <description>“agy” (Antigravity), “claude” (Claude Code), “codex” (Codex), “grok” (Grok) or “opencode” (opencode), each with its own sign-in; “auto” for the first installed and signed in.</description>
+      <description>“agy” (Antigravity), “claude” (Claude Code), “codex” (Codex), “grok” (Grok), “opencode” (opencode) or “pi” (Pi), each with its own sign-in; “auto” for the first installed and signed in.</description>
     </key>
     <key name="voice-claude-model" type="s">
       <default>'sonnet'</default>
@@ -376,6 +411,11 @@
       <default>''</default>
       <summary>Model opencode answers with</summary>
       <description>A model as “opencode models” lists it (provider/model); empty for the one opencode itself uses.</description>
+    </key>
+    <key name="voice-pi-model" type="s">
+      <default>''</default>
+      <summary>Model Pi answers with</summary>
+      <description>A model as “pi --list-models” lists it, as provider/model; empty for the one Pi itself uses.</description>
     </key>
     <key name="voice-agy-model" type="s">
       <default>'gemini-3.8-flash-low'</default>
@@ -434,7 +474,7 @@
     <key name="voice-read-notifications" type="b">
       <default>false</default>
       <summary>Let the voice assistant read notifications</summary>
-      <description>Send the last few notifications with each request, so the AI (Claude Code, Codex, Grok, opencode or Antigravity) can read them out or summarise them.</description>
+      <description>Send the last few notifications with each request, so the AI (Claude Code, Codex, Grok, opencode, Pi or Antigravity) can read them out or summarise them.</description>
     </key>
     <key name="usage-enabled" type="b">
       <default>true</default>

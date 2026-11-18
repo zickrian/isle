@@ -6,6 +6,75 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Put the tabs in your own order.** Settings → Island → Pages has arrows on each page to move its tab left
+  or right; the open island follows at once, and Ctrl+1–9 and Ctrl+Tab go by the new order. Reset Order puts
+  Isle's own order back, which stays the order until you move one. The Call tab still comes first.
+- **Pi in the voice assistant.** [Pi](https://pi.dev) answers with the providers you signed in to in Pi (or
+  an API key), with the model your Pi uses or one picked in Settings → Assistant. Isle runs it with no tools,
+  extensions, skills or context files of yours, and keeps its conversations apart from yours. It has no web
+  search. Signed in to ChatGPT in Pi, it offers only the models that account can use, as Codex lists them. (#64)
+  Thanks to @manuel-rtsch.
+- **The clock where you want it.** Settings → Appearance → Clock in the island, on as before: off, the closed
+  island keeps its size with nothing in it. Clock in the top bar (off by default) adds Isle's own clock at the
+  left or right end of the bar, showing the time, the day and time, or the date and time; a click opens the
+  Calendar. It never moves another extension's items, and gives way while that side of the bar has no room
+  for it. (#62) Thanks to @KYawCharles.
+- **Pin the lyrics open.** A pin beside the song's title in the lyrics keeps the island open on them while
+  you work, the pointer away. Off until you press it; it lets go when the island closes, when you press it
+  again, when the song or the lyrics go, and when an alert comes, so nothing waits behind it. (#62)
+- **Leave the top bar's colour to another extension.** Settings → Appearance → Colour the top bar, on by
+  default. Off, Isle no longer sets the bar's colour, transparency or text colour, so a theme or another
+  extension (Simple Taskbar, say) keeps its own; Isle still sizes the bar round the island. (#63) Thanks to
+  @nitro122.
+
+### Fixed
+
+- **A clock moved by another extension shows again.** With an extension that moves GNOME's clock to the left
+  or right of the top bar, Isle still hid it there and kept it as wide as the island, leaving a wide empty
+  gap. Isle now leaves that clock as the other extension has it, and keeps the island's room itself.
+- **A command's card no longer shows "Running" long after it finished.** Closing the island while the
+  assistant ran a command, then opening it again by typing, kept the card as it was when the island closed
+  ("Running · 0:01"), though the command had ended and the assistant had answered. The card now shows the
+  command as it is.
+- **The assistant hears how a command went in its last step.** When the AI's final answer also ran a
+  command, it was always told "Not all of that worked" afterwards, even when the command succeeded.
+
+### Performance
+
+New features, and no heavier: the lyrics no longer stall the first time they show, and the rest is as light as
+1.7.2 or a little lighter. Measured against 1.7.2 in the same GNOME 50 session, medians of six runs each (each dot
+below is one run; left of 100% is lighter):
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/performance-1.7.3-dark.svg">
+  <img alt="Every benchmark run of 1.7.3 as a share of 1.7.2's median, one row per measure" src="docs/images/performance-1.7.3-light.svg">
+</picture>
+
+| | 1.7.2 | 1.7.3 |
+|---|---|---|
+| At rest: GNOME Shell CPU a minute, isled wakeups a minute | 237 ms, 6 | 180 ms, 4.5 |
+| Opening the island: CPU, slowest frame's work | 268 ms, 5.6 ms | 250 ms, 5.2 ms |
+| Closing the island: CPU | 185 ms | 186 ms |
+| Switching pages: CPU | 137 ms | 133 ms |
+| Widening to the lyrics and back: CPU | 312 ms, 257 ms | 302 ms, 256 ms |
+| Lyrics playing, 10 seconds: CPU | 2127 ms | 2121 ms |
+| The first lyrics after a song changes: slowest frame\* | 140 ms | 42 ms |
+| Frames lost to a slow frame, in 66 openings, closings and page switches\* | 7 | 2 |
+| 50 openings and closings: actors left behind | 0 | 0 |
+| isled memory | 11.8 MB | 11.8 MB |
+
+\* Three runs each: measured from this release on.
+
+- The lyrics no longer stutter the first time they show for a song. The island lays them out ahead, unseen, in a
+  quiet moment while it is open on the player, never while it grows or shrinks; before, the widening to the
+  lyrics did it in the frames it animated.
+- The music bars in the player and beside the lyrics move on one shared timer, not one each, so they ask for
+  one redraw a tick between them.
+- Switching between the player and the lyrics no longer refreshes the whole player, only the parts that change.
+- Every animation still runs at 60 fps. All other differences above are within run-to-run noise.
+
 ## [1.7.2] - 2026-11-13
 
 The voice assistant hears you again on newer PipeWire, the arrow keys choose in the clipboard, opencode 2 shows

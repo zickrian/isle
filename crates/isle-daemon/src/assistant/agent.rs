@@ -364,6 +364,8 @@ pub async fn think(
             activity.send(answer.say.trim().to_owned()).ok();
         }
         let mut results = Vec::new();
+        // Whether everything this step asked for worked: what to tell the AI next depends on it.
+        let mut worked = true;
         for call in calls {
             activity.send(describe(&call)).ok();
             used.push(call["type"].as_str().unwrap_or_default().to_owned());
@@ -381,6 +383,7 @@ pub async fn think(
         actions.retain(|a| a["type"] != "run");
         if !actions.is_empty() {
             let report = act(desk, actions).await;
+            worked &= report.ok;
             if last && report.ok && commands.is_empty() {
                 answer.checked = true;
                 answer.tools = used;
@@ -396,12 +399,18 @@ pub async fn think(
                     "Only one command runs at a time: ask for the next one in your next answer."
                         .into(),
                 );
+                worked = false;
                 break;
             }
+            let before = ran.len();
             results.push(run_command(desk, out, &command, &mut ran).await);
+            // Run to its end with exit 0; not offered, denied, failed or stopped is not.
+            worked &= ran.len() > before && ran.last().is_some_and(|(_, status)| status == "done");
         }
         activity.send(String::new()).ok();
-        let next = if last {
+        // An answer that ran a command with its last words: told the truth of how it went, as any other step (it said
+        // "Not all of that worked" also after a command that did, and the AI wrote its answer on that).
+        let next = if last && !worked {
             "Not all of that worked. Try another way if there is one, or tell the user plainly what \
              was done and what was not (done true)."
         } else {
@@ -976,6 +985,33 @@ mod tests {
         }
         assert_eq!(statuses.first().unwrap(), "waiting");
         assert_eq!(statuses.last().unwrap(), "done");
+    }
+
+    #[tokio::test]
+    async fn a_command_in_the_last_answer_is_told_how_it_went() {
+        for (exit, failed) in [(0, false), (1, true)] {
+            let mut brain = Scripted::new([
+                json!({"say": "Updated.", "done": true, "actions": [{"type": "run",
+                    "command": "sudo apt install -y vlc", "why": "Install VLC"}]}),
+                json!({"say": "VLC is installed.", "actions": []}),
+            ]);
+            let (activity, _steps) = tokio::sync::mpsc::unbounded_channel();
+            let (cards, _shown) = tokio::sync::mpsc::unbounded_channel();
+            let out = Out {
+                activity: &activity,
+                draft: &activity,
+                cards: &cards,
+            };
+            let (desk, _handled) = desk_answering(true, exit);
+            think(&mut brain, "install vlc", &out, &desk).await.unwrap();
+            let told = &brain.prompts[1];
+            assert_eq!(told.contains("Not all of that worked"), failed, "{told}");
+            assert_eq!(
+                told.contains("Go on with the user's request"),
+                !failed,
+                "{told}"
+            );
+        }
     }
 
     #[tokio::test]

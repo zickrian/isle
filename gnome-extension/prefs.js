@@ -17,6 +17,7 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 import {DesktopAppInfo} from './src/appInfo.js';
 import {Bot, COLORS, SHAPES, paletteFor} from './src/bot.js';
 import {paintRim} from './src/glow.js';
+import {movePage, pageOrder, storedOrder} from './src/pageOrder.js';
 import {listenForSuperV} from './src/shortcutRecorder.js';
 import * as WorldClocks from './src/worldClocks.js';
 
@@ -178,7 +179,7 @@ export default class IslePreferences extends ExtensionPreferences {
         // Only the AIs installed here are offered; with none, the assistant says how to get one.
         const provider = choiceRow(settings, 'voice-provider', 'AI', installed.length
             ? 'Answers with your own sign-in; Isle runs its actions'
-            : 'Install Claude Code, Codex, Grok, opencode or Antigravity (agy), and sign in', [
+            : 'Install Claude Code, Codex, Grok, opencode, Pi or Antigravity (agy), and sign in', [
             ['auto', automatic ? `Automatic (${automatic.name})` : 'None installed'],
             ...installed.map(({id, name}) => [id, name]),
         ]);
@@ -303,8 +304,8 @@ export default class IslePreferences extends ExtensionPreferences {
 
         const notes = new Adw.PreferencesGroup({
             title: 'About the AIs',
-            description: 'Claude Code and Codex answer within your Claude or ChatGPT plan\'s limits; opencode with ' +
-                'the providers you signed in to in opencode. Antigravity\'s terms bar third-party tools from its ' +
+            description: 'Claude Code and Codex answer within your Claude or ChatGPT plan\'s limits; opencode and Pi ' +
+                'with the providers you signed in to in them (Pi searches no web). Antigravity\'s terms bar third-party tools from its ' +
                 'service; Isle only runs the official agy app, but use it at your own risk. Each is kept to ' +
                 'answering: commands and file changes go through Isle, which asks you first.',
         });
@@ -369,6 +370,8 @@ export default class IslePreferences extends ExtensionPreferences {
             ['notch', 'Notch'],
             ['pill', 'Pill'],
         ]));
+        look.add(switchRow(settings, 'top-bar-color', 'Colour the top bar',
+            'Turn off to let your theme or another extension style the bar'));
         look.add(topBarRow(settings, window));
         look.add(blackBesideWindowsRow(settings, window));
         look.add(switchRow(settings, 'compact-top-bar', 'Compact top bar', 'Smaller text and spacing in the top bar; slimmer too with the island below it'));
@@ -392,16 +395,28 @@ export default class IslePreferences extends ExtensionPreferences {
             return false;
         });
         byShape();
-        look.add(choiceRow(settings, 'clock-format', 'Clock', 'The time in the island and its pages', [
+        // Every clock row together: the format, then the island's clock, then the top bar's.
+        look.add(choiceRow(settings, 'clock-format', 'Time format', '12- or 24-hour, wherever Isle shows the time', [
             ['system', 'As GNOME'],
             ['24h', '24-hour (20:40)'],
             ['12h', '12-hour (8:40 PM)'],
         ]));
+        look.add(switchRow(settings, 'island-clock', 'Clock in the island',
+            'Turn off for an empty island; the open island still shows the time'));
+        const date = switchRow(settings, 'clock-date', 'Show the date', 'The day beside the time on the closed island, as “Fri 6”');
+        settings.bind('island-clock', date, 'sensitive', Gio.SettingsBindFlags.GET);
+        look.add(date);
+        look.add(choiceRow(settings, 'top-bar-clock', 'Clock in the top bar',
+            'An extra clock at the left or right end of the bar. Click it to open the calendar', [
+                ['off', 'Off'],
+                ['left', 'Left'],
+                ['right', 'Right'],
+            ]));
+        look.add(barClockShowsRow(settings));
         look.add(choiceRow(settings, 'open-size', 'Size', 'The open island, every page', [
             ['standard', 'Standard'],
             ['large', 'Large'],
         ]));
-        look.add(switchRow(settings, 'clock-date', 'Show the date', 'The day beside the time on the closed island, as “Fri 6”'));
         look.add(switchRow(settings, 'privacy-indicators', 'Privacy indicators', 'Dots when the camera, microphone or screen sharing is in use'));
         look.add(choiceRow(settings, 'island-monitor', 'Display', 'With more than one display, where the island is', [
             ['primary', 'Main display'],
@@ -911,13 +926,40 @@ function topBarRow(settings, window) {
             syncing = false;
         }
         describe(current());
+        // Isle's colour only: left to others, the slider has nothing to set.
+        row.sensitive = settings.get_boolean('top-bar-color');
     };
-    const changed = ['top-bar-opacity', 'top-bar-style'].map(key => settings.connect(`changed::${key}`, sync));
+    const changed = ['top-bar-opacity', 'top-bar-style', 'top-bar-color'].map(key => settings.connect(`changed::${key}`, sync));
     window.connect('close-request', () => {
         changed.forEach(id => settings.disconnect(id));
         return false;
     });
     sync();
+    return row;
+}
+
+/** What Isle's clock in the top bar shows, each choice with an example of now in the chosen time format; shown only
+ * while that clock is on. */
+function barClockShowsRow(settings) {
+    const examples = () => {
+        const now = GLib.DateTime.new_now_local();
+        const time = now.format(useTwelveHour(settings) ? '%l:%M %p' : '%H:%M').trim();
+        return [['time', 'Time', time], ['day', 'Day', `${now.format('%a')} ${time}`],
+            ['date', 'Date', `${now.format('%a %-d %b')} ${time}`]];
+    };
+    const row = choiceRow(settings, 'top-bar-clock-shows', 'Top bar clock shows',
+        'It hides by itself while the bar is too full',
+        examples().map(([value, name, example]) => [value, `${name} · ${example}`]));
+    // The examples follow the time format; the choice stays.
+    const relabel = () => {
+        const selected = row.selected;
+        row.model = Gtk.StringList.new(examples().map(([, name, example]) => `${name} · ${example}`));
+        row.selected = selected;
+    };
+    const byClock = () => (row.visible = settings.get_string('top-bar-clock') !== 'off');
+    const changed = [settings.connect('changed::top-bar-clock', byClock), settings.connect('changed::clock-format', relabel)];
+    row.connect('destroy', () => changed.forEach(id => settings.disconnect(id)));
+    byClock();
     return row;
 }
 
@@ -929,9 +971,9 @@ function blackBesideWindowsRow(settings, window) {
     const sync = () => {
         const opacity = settings.get_user_value('top-bar-opacity') ? settings.get_int('top-bar-opacity')
             : settings.get_string('top-bar-style') === 'black' ? 100 : 0;
-        row.sensitive = opacity < 100;
+        row.sensitive = opacity < 100 && settings.get_boolean('top-bar-color');
     };
-    const changed = ['top-bar-opacity', 'top-bar-style'].map(key => settings.connect(`changed::${key}`, sync));
+    const changed = ['top-bar-opacity', 'top-bar-style', 'top-bar-color'].map(key => settings.connect(`changed::${key}`, sync));
     window.connect('close-request', () => {
         changed.forEach(id => settings.disconnect(id));
         return false;
@@ -1043,9 +1085,11 @@ function superVPageRow(settings, name, title) {
     return row;
 }
 
-/** A switch per page; the last one on can't be turned off, so the island always has a page. */
+/** A switch per page, in tab order, with arrows to move each tab; the last one on can't be turned off, so the island
+ * always has a page. */
 function pagesGroup(settings, window) {
-    const group = new Adw.PreferencesGroup({title: 'Pages', description: 'The tabs of the open island. Turn off the ones you don’t use.'});
+    const group = new Adw.PreferencesGroup({title: 'Pages',
+        description: 'The open island’s tabs, top here is left there. Use the arrows to reorder them and the switches to hide the ones you don’t use.'});
     const rows = PAGES.map(([name, title, iconName, subtitle]) => {
         const row = new Adw.SwitchRow({title, subtitle});
         row.add_prefix(new Gtk.Image({icon_name: iconName}));
@@ -1056,45 +1100,95 @@ function pagesGroup(settings, window) {
             if (hidden.join() !== settings.get_strv('hidden-pages').join())
                 settings.set_strv('hidden-pages', hidden);
         });
-        group.add(row);
         return [name, row];
     });
     // The Apps, Devices and Usage pages' own switches, here too, so every tab is in one place.
     const apps = switchRow(settings, 'app-usage', 'Apps', 'Time spent in each app, kept on this computer for 30 days');
     apps.add_prefix(new Gtk.Image({icon_name: 'view-app-grid-symbolic'}));
-    group.add(apps);
     const devices = switchRow(settings, 'devices-page', 'Devices',
         'Connected Bluetooth devices and their battery; its tab shows while one is connected');
     devices.add_prefix(new Gtk.Image({icon_name: 'bluetooth-active-symbolic'}));
-    group.add(devices);
     const usage = switchRow(settings, 'usage-enabled', 'AI Usage', 'Your AI plans’ limits, and warnings as one nears its end');
     usage.add_prefix(new Gtk.Image({icon_name: 'power-profile-performance-symbolic'}));
+    // Only its switch goes grey: its tab can still be moved meanwhile.
     if (!usageProviders().length) {
-        usage.sensitive = false;
+        lockSwitch(usage, true);
         usage.subtitle = 'Sign in to Claude Code, Codex or Grok to see your plan';
     }
-    group.add(usage);
     // Not a page but the ✦ beside the tabs: turning it off is how to use Isle without any AI.
     const assistant = switchRow(settings, 'voice-assistant', 'AI Assistant', 'The ✦ in the open island and its shortcut');
     assistant.add_prefix(new Gtk.Image({icon_name: 'audio-input-microphone-symbolic'}));
-    group.add(assistant);
+
+    // Every page's row by name, each with arrows to move its tab; laid out in the tabs' order, the assistant last.
+    const byName = new Map([...rows, ['apps', apps], ['devices', devices], ['usage', usage]]);
+    const order = () => pageOrder(settings.get_strv('page-order'));
+    const arrows = new Map();
+    for (const [name, row] of byName) {
+        const move = (step, iconName, tooltip) => {
+            const button = new Gtk.Button({icon_name: iconName, css_classes: ['flat', 'circular'], tooltip_text: tooltip,
+                valign: Gtk.Align.CENTER});
+            button.connect('clicked', () => settings.set_strv('page-order', storedOrder(movePage(order(), name, step))));
+            row.add_suffix(button);
+            return button;
+        };
+        const earlier = move(-1, 'go-up-symbolic', 'Move up: the tab goes left');
+        const later = move(1, 'go-down-symbolic', 'Move down: the tab goes right');
+        // The arrows before its switch, which stays last, as in every other row.
+        const toggle = row.activatable_widget;
+        const box = toggle?.get_parent();
+        if (box && box.get_last_child() !== toggle)
+            toggle.insert_after(box, box.get_last_child());
+        arrows.set(name, {earlier, later});
+    }
+    const reset = new Gtk.Button({label: 'Reset Order', css_classes: ['flat'], valign: Gtk.Align.CENTER,
+        tooltip_text: 'Put the tabs back in Isle’s own order'});
+    reset.connect('clicked', () => settings.reset('page-order'));
+    group.header_suffix = reset;
+    const laidOut = [];
+    const layOut = () => {
+        const wanted = [...order().map(name => byName.get(name)), assistant];
+        if (wanted.every((row, at) => laidOut[at] === row))
+            return;
+        laidOut.forEach(row => group.remove(row));
+        wanted.forEach(row => group.add(row));
+        laidOut.splice(0, laidOut.length, ...wanted);
+    };
+    const syncOrder = () => {
+        const current = order();
+        current.forEach((name, at) => {
+            const {earlier, later} = arrows.get(name);
+            earlier.sensitive = at > 0;
+            later.sensitive = at < current.length - 1;
+        });
+        reset.visible = settings.get_strv('page-order').length > 0;
+        layOut();
+    };
+    syncOrder();
+    const orderChanged = settings.connect('changed::page-order', syncOrder);
     const sync = () => {
         const hidden = settings.get_strv('hidden-pages');
         const shown = rows.filter(([name]) => !hidden.includes(name));
         for (const [name, row] of rows) {
             row.active = !hidden.includes(name);
             const last = shown.length === 1 && row.active;
-            row.sensitive = !last;
+            lockSwitch(row, last);
             row.subtitle = last ? 'The island keeps at least one page' : PAGES.find(([page]) => page === name)[3];
         }
     };
     const changed = settings.connect('changed::hidden-pages', sync);
     window.connect('close-request', () => {
         settings.disconnect(changed);
+        settings.disconnect(orderChanged);
         return false;
     });
     sync();
     return group;
+}
+
+/** Greys out `row`'s switch alone (`locked`), so it can't be turned, its arrows still working. */
+function lockSwitch(row, locked) {
+    row.activatable_widget.sensitive = !locked;
+    row.activatable = !locked;
 }
 
 /** What the Apps page keeps, and a way to forget it; its switch is with the other pages. */
@@ -1258,6 +1352,9 @@ const AI_PROVIDERS = [
     // Its plan is named whole ("OpenCode Go", "Free models"); its list: recent, free and plan models.
     {id: 'opencode', name: 'opencode', planName: '', command: 'opencode', modelKey: 'voice-opencode-model',
         about: 'your recent opencode models, your providers’, the free ones and your plan’s', noPlan: true},
+    // Pi (#64) has no plan of its own: the models of the providers signed in to in Pi, or with an API key.
+    {id: 'pi', name: 'Pi', planName: '', command: 'pi', modelKey: 'voice-pi-model',
+        about: 'the models of the providers you signed in to in Pi', noPlan: true},
     {id: 'agy', name: 'Antigravity', planName: 'Antigravity', command: 'agy', modelKey: 'voice-agy-model',
         about: 'what Antigravity answers with'},
 ];
@@ -1389,6 +1486,19 @@ function signedIn(id) {
             const [, bytes] = GLib.file_get_contents(GLib.build_filenamev([GLib.get_user_data_dir(), 'opencode', 'auth.json']));
             const auth = JSON.parse(new TextDecoder().decode(bytes)) ?? {};
             return Object.values(auth).some(entry => ['api', 'oauth'].includes(entry?.type));
+        } catch {
+            return false;
+        }
+    }
+    case 'pi': {
+        // As isled counts it (pi.rs `signed_in`): a sign-in or key it keeps, a provider of your own, an API key.
+        const dir = GLib.getenv('PI_CODING_AGENT_DIR') || GLib.build_filenamev([GLib.get_home_dir(), '.pi', 'agent']);
+        if (exists(dir, 'models.json') || ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY',
+            'XAI_API_KEY', 'GROQ_API_KEY', 'DEEPSEEK_API_KEY', 'MISTRAL_API_KEY', 'CEREBRAS_API_KEY', 'OPENCODE_API_KEY'].some(env))
+            return true;
+        try {
+            const [, bytes] = GLib.file_get_contents(GLib.build_filenamev([dir, 'auth.json']));
+            return Object.keys(JSON.parse(new TextDecoder().decode(bytes)) ?? {}).length > 0;
         } catch {
             return false;
         }

@@ -23,6 +23,7 @@ mod mic;
 mod models;
 mod music;
 mod opencode;
+mod pi;
 mod sign_in;
 mod system;
 mod tasks;
@@ -162,7 +163,7 @@ struct State {
 #[serde(default)]
 pub struct Context {
     apps: Vec<String>,
-    /// The AI picked in Settings ("auto", "agy", "claude", "codex", "grok", "opencode"), and the model picked for each
+    /// The AI picked in Settings ("auto", "agy", "claude", "codex", "grok", "opencode", "pi"), and the model picked for each
     /// ("" for its own default).
     provider: String,
     agy_model: String,
@@ -170,6 +171,7 @@ pub struct Context {
     codex_model: String,
     grok_model: String,
     opencode_model: String,
+    pi_model: String,
     whisper_model: String,
     language: String,
     /// How long a quiet conversation is kept ("day", "idle-30m", "idle-2h"; see chat.rs).
@@ -379,7 +381,7 @@ fn context(json: &str) -> fdo::Result<Context> {
 #[interface(name = "io.github.zickrian.isle.Assistant1")]
 impl AssistantService {
     /// Records a request and answers it; `context` is JSON
-    /// `{apps, provider, agy_model, claude_model, codex_model, grok_model, opencode_model, whisper_model, language,
+    /// `{apps, provider, agy_model, claude_model, codex_model, grok_model, opencode_model, pi_model, whisper_model, language,
     /// selection, …}`.
     async fn listen(
         &self,
@@ -571,6 +573,7 @@ impl Session {
             Provider::Codex => &context.codex_model,
             Provider::Grok => &context.grok_model,
             Provider::Opencode => &context.opencode_model,
+            Provider::Pi => &context.pi_model,
         };
         let catalog = self
             .catalogs
@@ -590,6 +593,8 @@ impl Session {
             Provider::Grok => grok::user_model().unwrap_or_default(),
             // opencode's, the model the user's own opencode would use.
             Provider::Opencode => opencode::user_model().unwrap_or_default(),
+            // Pi's, the model the user's own Pi would use.
+            Provider::Pi => pi::user_model().unwrap_or_default(),
             // Its catalog's first model at medium; agy's own default could think at another effort.
             Provider::Agy => catalog.map(|c| c.default.clone()).unwrap_or_default(),
         };
@@ -1669,7 +1674,7 @@ async fn start_brain(
     let provider = picked.ok_or_else(|| {
         Failure::from((
             "No AI is set up",
-            "Install Claude Code, Codex, Grok, opencode or Antigravity (agy) and sign in, then pick it in Settings.",
+            "Install Claude Code, Codex, Grok, opencode, Pi or Antigravity (agy) and sign in, then pick it in Settings.",
         ))
     })?;
     if session.provider != Some(provider) {
