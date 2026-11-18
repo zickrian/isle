@@ -8,7 +8,10 @@ all-features = true
 [advisories]
 # Unmaintained crates are reported for those Isle uses directly, not for everything below them.
 unmaintained = "workspace"
-ignore = []
+ignore = [
+    # chrono: unmaintained, no vulnerability; isled's dates move to jiff in the next release.
+    { id = "RUSTSEC-2026-0543", reason = "unmaintained only; isled moves to jiff in the next release" },
+]
 
 [licenses]
 # All compatible with the GPL version 3 (Apache-2.0 is not with version 2, which Isle does not use).
