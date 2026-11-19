@@ -127,8 +127,10 @@ export const ExpandedView = GObject.registerClass({
 
         for (const page of pages) {
             page.connect('width-changed', () => {
-                if (page === this.page)
-                    this._syncWidth();
+                if (page !== this.page)
+                    return;
+                this._syncWidth();
+                this.syncHeight();
             });
             page.connect('tint-changed', () => {
                 if (page === this.page)
