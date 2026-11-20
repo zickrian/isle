@@ -297,10 +297,10 @@ with the wheel or touchpad and never show a scrollbar.
   | Screen recording | breathing red dot | – |
   | Call | green phone | – (red microphone while muted) |
   | Music | cover art | music bars |
-  | Timer alone | a still timer glyph | its time left, as large as the clock and on its line |
+  | Timer alone | a still alarm clock | its time left, as large as the clock and on its line |
   | Timer with privacy dots | its ring | the dots |
   | Call and music | green phone | the song's cover |
-  | Music and timer | cover art | the timer's ring |
+  | Music and timer | cover art | music bars, with the time left in the centre in place of the clock |
 
   The timer's glyph, ring and time are white while focusing and green on a break, and dim while
   paused. The bars dance only while the song plays and the closed island is on screen, and rest
@@ -312,7 +312,19 @@ with the wheel or touchpad and never show a scrollbar.
   records too. Settings → Appearance → Privacy indicators. While the Shelf is shared with a phone, a
   violet dot joins them (whatever that setting says), so sharing is never forgotten.
 - Do Not Disturb: a small moon before the time (or the recording's length), the time still centred,
-  whatever the sides hold.
+  whatever the sides hold. Settings → Island → Appearance → Do Not Disturb moon (on by default) leaves the moon out;
+  Do Not Disturb itself stays on either way.
+- The song's title (Settings → Island → Appearance → Song title in the island, off by default): while music leads,
+  the title and, after it and quieter, the artist take the clock's place in the centre; with the timer
+  alongside, its time left keeps the centre. The island widens for a long title up to Settings → Island → Appearance →
+  Longest song title (200 px by default, 80 to 600); past that the text scrolls round, waiting 1.8 s at the
+  start of each pass, its two edges fading out softly rather than cut. With animations off in GNOME, it is
+  cut with an ellipsis and never moves. The scrolling stops whenever the closed island is not on screen.
+- A new song while one shows: the cover (and the title, if shown) fade out in 150 ms, the new song is put in
+  and the island starts on its new width, and they fade back in over 300 ms, after 200 ms if the width
+  changed, so that nothing is cut by the island's edge as it moves. With animations off, the change is at once.
+- Settings → Island → Appearance → Cover colour for the bars (off by default): the closed island's music bars take
+  the cover's main colour, brightened to read on the island's black; a grey cover keeps them white.
 
 ## 5. Pages
 
@@ -404,7 +416,33 @@ the keyboard. The island takes
 a wash of the cover's main colour (by hue, so a two-colour cover gives one
 of them, not the grey between). States, centred with an icon: "Looking for
 lyrics" (breathing dots), "No lyrics for this song", "Instrumental", "Can't
-reach the lyrics", "Lyrics are busy right now".
+reach the lyrics", "Lyrics are busy right now". New lines come in with a 320 ms fade.
+
+*Lyrics providers* (Settings → Music player). Lyrics are looked up at the providers switched on, in the order
+listed, and the page goes on to the next whenever one has none or cannot be reached: LRCLIB (looked up by
+`isled`, as always), NetEase Cloud Music, and Musixmatch (which needs its API key, set in Settings → Music
+player → API keys, and is skipped without one). Only LRCLIB is on at first: nothing new goes online until the
+others are switched on. The first synced lyrics win. Plain words found on the way are
+shown at once and replaced if a later provider has them synced; whole plain words beat the part of a song that
+Musixmatch's free plan gives. A song none has shows "No lyrics for this song"; when every provider failed
+(rather than had none) it asks again after 15 s, then 45 s, 2 and 5 minutes while the page is open. With LRCLIB
+the only provider on, `isled`'s own lyrics go to the page untouched. Each lookup sends only the song's
+title, artist, album and length (see SECURITY.md); a found song is cached.
+
+*Cava* (Settings → Music player → Cava, off by default; needs `cava` installed). While the player or the lyrics
+are open, cava's bars rise from the island's floor behind the page, across the island to its sides: heights
+from the music, as high as Height says (percent of the page), as strongly as Sensitivity, shown at Opacity,
+moved by Zoom (about the bottom middle) and the two positions. They take the colour of the cover's wash, a
+step lighter on a dark wash and deeper on a bright one, so they show against it and white text still reads;
+without a cover colour, a muted blue. Cava runs only while its bars are on screen (and stops with them); the
+island's little bars, in the header and beside the lyrics' title, give way while cava's move, and come
+back when they stop, or if cava is not installed or cannot start.
+
+*Previews.* While a setting is changed in Settings (and Settings → Island → Appearance → Preview changes is on), the island opens
+for it, 4.5 s after the last change: on the lyrics for cava's and the lyrics providers' settings, on the page
+a page's own settings are for, on its default page for the island's look; closed again unless the pointer is on
+it, and the music page put back as it was. Not while the island is open already, and not for settings the closed
+island already shows, shortcuts, alerts and the assistant.
 
 Between songs the island stays steady: when a song that was playing gives
 way to nothing (browsers report no title and "Paused" for a moment between
@@ -902,7 +940,8 @@ hovering opens the Notifications page.
   live in `~/.local/share/isle/*.json`,
   written atomically and flushed to disk (file and folder), so they survive
   reboots and power cuts. A corrupt file is set aside, never lost silently.
-- Lyrics and cover art are cached in `~/.cache/isle`.
+- Lyrics and cover art are cached in `~/.cache/isle`; lyrics found by Musixmatch and NetEase, by the extension, in
+  `~/.cache/isle/lyrics-providers` (the newest 400).
 - `isled` restarts on failure (systemd); the extension reconnects on its own.
 
 ## 8. Performance budget

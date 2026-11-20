@@ -32,7 +32,7 @@ const INTRO_MS = 3000;
 /** What the view says when there are no lines to show. */
 const STATES = {
     loading: {dots: true, title: 'Looking for lyrics'},
-    not_found: {icon: 'isle-lyrics', title: 'No lyrics for this song', hint: 'Lyrics come from LRCLIB'},
+    not_found: {icon: 'isle-lyrics', title: 'No lyrics for this song', hint: 'None at any of the providers in Isle’s settings'},
     instrumental: {icon: 'isle-music', title: 'Instrumental', hint: 'Nothing to sing along to'},
     off: {icon: 'isle-lyrics', title: 'Lyrics are off', hint: 'Turn them on in Isle’s settings'},
     error: {icon: 'isle-lyrics', title: 'Can’t reach the lyrics', hint: 'Check your connection · trying again soon'},
@@ -177,9 +177,20 @@ class LyricsPane extends St.Widget {
         if (key !== this._key) {
             this._key = key;
             this._rebuild(showLines ? lyrics : null);
+            // New lines (another song, or the same one's lyrics arriving) come in rather than appear.
+            this._fadeIn(showLines ? this._scroll : this._state);
         }
         this.follow();
         this.syncPlaying();
+    }
+
+    /** Fades `actor` in, if the pane is on screen and animations are on. */
+    _fadeIn(actor) {
+        if (!this.mapped || !St.Settings.get().enable_animations)
+            return;
+        actor.remove_all_transitions();
+        actor.opacity = 0;
+        actor.ease({opacity: 255, duration: 320, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
     }
 
     /** Shows one of STATES, or hides the message for null. */
