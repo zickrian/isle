@@ -154,6 +154,11 @@
       <summary>Colour the closed island's bars from the cover</summary>
       <description>The little bars that dance beside the song take the cover's main colour instead of white.</description>
     </key>
+    <key name="preview-settings" type="b">
+      <default>true</default>
+      <summary>Show the island while changing its settings</summary>
+      <description>When a setting changes in Isle's settings window, the island opens on what it changes (the lyrics for cava's bars, a page for its own settings) for a few seconds, then closes again.</description>
+    </key>
     <key name="clock-format" type="s">
       <choices>
         <choice value="system"/>

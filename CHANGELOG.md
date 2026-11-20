@@ -23,6 +23,8 @@ All notable changes to Isle are listed here. The format follows
 - **The timer beside music**: the cover, the music bars and, in the centre, the time left. Alone, the timer shows an
   alarm clock.
 - **Cover colour for the closed island's bars** and **a switch for the Do Not Disturb moon** (Do Not Disturb stays on).
+- **Previews.** While a setting changes in Settings, the island opens for a few seconds on what it changes (Settings →
+  Appearance → Preview changes turns this off).
 
 ### Changed
 

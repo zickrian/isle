@@ -438,6 +438,12 @@ without a cover colour, a muted blue. Cava runs only while its bars are on scree
 island's little bars, in the header and beside the lyrics' title, give way while cava's move, and come
 back when they stop, or if cava is not installed or cannot start.
 
+*Previews.* While a setting is changed in Settings (and Settings → Island → Appearance → Preview changes is on), the island opens
+for it, 4.5 s after the last change: on the lyrics for cava's and the lyrics providers' settings, on the page
+a page's own settings are for, on its default page for the island's look; closed again unless the pointer is on
+it, and the music page put back as it was. Not while the island is open already, and not for settings the closed
+island already shows, shortcuts, alerts and the assistant.
+
 Between songs the island stays steady: when a song that was playing gives
 way to nothing (browsers report no title and "Paused" for a moment between
 videos), the song is shown playing for up to 1.5 s, so the cover, bars and
