@@ -5,6 +5,9 @@
 // live activity (recording, call, music, timer). Right: a warning, a call's muted microphone, the next activity's
 // sign, or what goes with the first (the song's bars, the timer's time left); then the privacy dots. It is as wide
 // as what it shows: both sides as wide as the wider, each sign as far in from its end as from the top and bottom.
+// Music with the timer: the cover on the left, the song's bars on the right, the time left in the middle. The timer
+// alone: an alarm clock on the left, the time left on the right. Settings can put the song's title and artist in the
+// middle: the island grows for a long one up to a width Settings give, then the text scrolls.
 
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
@@ -14,8 +17,11 @@ import St from 'gi://St';
 
 import {paletteFor} from './bot.js';
 import {BotIcon} from './botIcon.js';
+import {miniBarColor} from './barColors.js';
+import {vividColorOfFile} from './colors.js';
 import {onUiScale, px, uiScale} from './compat.js';
 import * as Format from './format.js';
+import {Marquee} from './marquee.js';
 import * as Palette from './palette.js';
 import * as Playback from './playback.js';
 import * as Theme from './theme.js';
@@ -46,6 +52,11 @@ const MOON_GAP = 6;
 const PAUSED_OPACITY = 110;
 /** How often the focus ring is redrawn; it moves too slowly to need more. */
 const RING_REFRESH_S = 5;
+/** A new song while one shows: the cover and title fade out this long, are swapped, wait for the island to reach its
+ * new width (a spring: about 0.4 s), and fade back in. */
+const SWITCH_OUT_MS = 150;
+const SWITCH_IN_DELAY_MS = 200;
+const SWITCH_IN_MS = 300;
 /** The focus timer's colour: white while focusing, green on a break. */
 export function timerColor(phase) {
     return phase === 'focus' || phase === 'idle' ? Palette.WHITE : Palette.GREEN;
@@ -95,6 +106,13 @@ export const CompactView = GObject.registerClass({
         /** In a pill (Settings → Shape): its ends as round as half its height (see `_fit`). */
         this._pill = false;
         this._timeouts = {};
+        /** What fills the middle (the clock, a recording's length, the timer's time left or the song's title); see `_refresh`. */
+        this._centre = null;
+        /** Whether Do Not Disturb is on; its moon shows only if Settings say so too (see `_syncMoon`). */
+        this._dnd = false;
+        /** The song that is shown (its title and artist), and whether the cover and title are changing to a new one. */
+        this._shownSong = '';
+        this._switching = false;
 
         const row = new St.BoxLayout({style_class: 'isle-compact-row', x_expand: true, y_expand: true});
         this._row = row;
@@ -105,9 +123,9 @@ export const CompactView = GObject.registerClass({
         this._left = new St.Bin({style_class: 'isle-compact-slot isle-compact-start', x_expand: false, y_align: Clutter.ActorAlign.CENTER});
         this._lead = new St.Bin({x_expand: true, x_align: Clutter.ActorAlign.START, y_align: Clutter.ActorAlign.CENTER});
         this._left.child = this._lead;
-        // The timer alone: a still timer glyph, its time left on the right (no ring: the time says it). With the
+        // The timer alone: a still alarm clock, its time left on the right (no ring: the time says it). With the
         // privacy dots on the right, its ring instead, so neither side runs long.
-        this._timerIcon = new St.Icon({gicon: icon('isle-timer-symbolic'), icon_size: 15, y_align: Clutter.ActorAlign.CENTER});
+        this._timerIcon = new St.Icon({gicon: icon('isle-alarm-symbolic'), icon_size: 15, y_align: Clutter.ActorAlign.CENTER});
         this._ring = new Ring({size: 20, lineWidth: 3});
         this._art = new Art({size: 24, radius: 6});
         this._dot = new St.Widget({style_class: 'isle-unseen-dot', y_align: Clutter.ActorAlign.CENTER});
@@ -137,13 +155,21 @@ export const CompactView = GObject.registerClass({
         this._clock.add_child(this._meridiem);
         // How long the screen has been recording, in place of the clock. A call keeps the clock.
         this._elapsed = new St.Label({style_class: 'isle-compact-clock', x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER, visible: false});
+        // The timer's time left in the middle, with music beside it (the cover and the bars): as large as the clock, in
+        // the timer's colour.
+        this._timerCentre = new St.Label({style_class: 'isle-compact-clock', x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER, visible: false});
+        // The song's title and artist in the middle (Settings): as wide as they are, up to Settings' limit; past it they scroll.
+        this._songTitle = new Marquee({style_class: 'isle-compact-title', x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER, visible: false});
+        this._sizeTitle();
         // Never "1:0…": the one fading out may be wider than the room left for the one fading in.
-        for (const time of [this._clockDate, this._clockTime, this._meridiem, this._elapsed])
+        for (const time of [this._clockDate, this._clockTime, this._meridiem, this._elapsed, this._timerCentre])
             time.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
         /** The clock alone with its sides (see CLOCK_SIDE), in stage pixels; 0 beside an activity. See `_fit`. */
         this._clockWidth = 0;
         times.add_child(this._clock);
         times.add_child(this._elapsed);
+        times.add_child(this._timerCentre);
+        times.add_child(this._songTitle);
         // Do Not Disturb: a moon before the time (or what takes its place), whatever the sides hold.
         this._moon = new St.Icon({gicon: icon('isle-moon'), icon_size: 14, style_class: 'isle-dnd-moon', y_align: Clutter.ActorAlign.CENTER, visible: false});
         // As wide as the moon after the time, so the time itself is centred and the moon hangs before it.
@@ -199,6 +225,13 @@ export const CompactView = GObject.registerClass({
             this._refit();
         });
         this._pagesChanged = settings.connect('changed::hidden-pages', () => this._refresh());
+        this._titleChanged = settings.connect('changed::compact-song-title', () => this._refresh());
+        this._titleWidthChanged = settings.connect('changed::compact-title-width', () => {
+            this._sizeTitle();
+            this._refit();
+        });
+        this._moonChanged = settings.connect('changed::dnd-icon', () => this._syncMoon());
+        this._barsChanged = settings.connect('changed::mini-bars-cover-color', () => this._syncBarColor());
         this._privacyChanged = privacy.connect('changed', () => this._refresh());
         this._callChanged = call.connect('changed', () => this._refresh());
         // Music bars only dance, and the times and the timer's ring only tick, while this view is on screen.
@@ -312,7 +345,9 @@ export const CompactView = GObject.registerClass({
         if (stage) {
             const labels = [this._clockDate, this._clockTime, this._meridiem].filter(label => label.visible);
             const dayGap = date ? Math.ceil(this._clockDate.get_theme_node().get_margin(St.Side.RIGHT)) : 0;
-            time = this._privacy.recording ? widthOf(this._elapsed)
+            time = this._centre === this._elapsed ? widthOf(this._elapsed)
+                : this._centre === this._timerCentre ? widthOf(this._timerCentre)
+                : this._centre === this._songTitle ? widthOf(this._songTitle)
                 : labels.reduce((sum, label) => sum + widthOf(label), 0) +
                   this._clock.get_theme_node().get_length('spacing') * (labels.length - 1) + dayGap;
             moonRoom = moon ? 2 * (moon + this._centerRow.get_theme_node().get_length('spacing')) : 0;
@@ -361,16 +396,68 @@ export const CompactView = GObject.registerClass({
         this._refresh();
     }
 
-    /** Shows a moon before the time while Do Not Disturb is on. */
+    /** The little bars the cover's colour, if Settings ask; white otherwise (and for a grey cover). */
+    _syncBarColor() {
+        const {nowPlaying} = this._daemon.state;
+        const cover = this._settings.get_boolean('mini-bars-cover-color') && nowPlaying?.art_path
+            ? vividColorOfFile(nowPlaying.art_path) : null;
+        this._bars.color = miniBarColor(cover);
+    }
+
+    /** What changes with the song: the cover on the left and, if it shows, the title in the middle. */
+    _switchActors() {
+        return [this._art, this._centre === this._songTitle ? this._songTitle : null].filter(Boolean);
+    }
+
+    /** The song changed: the cover and title fade out, and `_finishSwitch` follows. */
+    _startSwitch() {
+        this._switching = true;
+        for (const actor of this._switchActors()) {
+            actor.remove_all_transitions();
+            actor.ease({opacity: 0, duration: SWITCH_OUT_MS, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        }
+        this._later('switch', SWITCH_OUT_MS + 20, () => this._finishSwitch());
+    }
+
+    /** With the cover and title out of sight: the new song is applied (and the island starts on its new width), and
+     * they fade back in, after the island has had time to reach that width if it is a new one. */
+    _finishSwitch() {
+        this._switching = false;
+        const {nowPlaying} = this._daemon.state;
+        this._shownSong = Playback.showsClosed(nowPlaying) ? `${nowPlaying.title}\u001f${nowPlaying.artist}` : '';
+        const widthBefore = this.preferredWidth;
+        this._refresh();
+        const delay = this.preferredWidth !== widthBefore ? SWITCH_IN_DELAY_MS : 0;
+        for (const actor of this._switchActors()) {
+            actor.remove_all_transitions();
+            actor.opacity = 0;
+            actor.ease({opacity: 255, delay, duration: SWITCH_IN_MS, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        }
+    }
+
+    /** Tells that Do Not Disturb is on or off: a moon shows before the time while it is on, unless Settings leave it out
+     * (Do Not Disturb stays on either way: this only says whether to show it). */
     set doNotDisturb(on) {
-        if (on === this._moon.visible)
+        this._dnd = Boolean(on);
+        this._syncMoon();
+    }
+
+    /** Shows or hides the moon: Do Not Disturb is on, and Settings show it. */
+    _syncMoon() {
+        const show = this._dnd && this._settings.get_boolean('dnd-icon');
+        if (show === this._moon.visible)
             return;
         // Measured before it shows: the clock alone makes room for it (see `preferredWidth`).
         const widthBefore = this.preferredWidth;
-        this._moon.visible = on;
+        this._moon.visible = show;
         this._fit();
         if (this.preferredWidth !== widthBefore)
             this.emit('width-changed');
+    }
+
+    /** The widest the song's title and artist grow the island (Settings), in stage pixels; past it they scroll. */
+    _sizeTitle() {
+        this._songTitle.limit = px(this._settings.get_int('compact-title-width'));
     }
 
     /** Shows that isled is not running, on the right before anything else. */
@@ -439,6 +526,7 @@ export const CompactView = GObject.registerClass({
         this._assistant.resize(size.art, size.bot);
         this._ring.resize(size.ring);
         this._secondRing.resize(size.ring);
+        this._sizeTitle();
     }
 
     /** Whether the user is away (no input for a while); the bars rest meanwhile, nobody is watching. */
@@ -468,6 +556,27 @@ export const CompactView = GObject.registerClass({
         const activities = [recording && 'recording', onCall && 'call', hasTrack && 'music', timerActive && 'timer']
             .filter(Boolean);
         const [primary, second] = activities;
+        // While the cover and title change to a new song's, nothing else is applied: that is done at once after (see
+        // `_finishSwitch`), with everything of the moment.
+        if (this._switching)
+            return;
+        // A new song while one shows: the cover and title fade out first, and in once the island has its new width,
+        // so that nothing is cut by its edge as it moves (see `_startSwitch`).
+        const song = hasTrack ? `${nowPlaying.title}\u001f${nowPlaying.artist}` : '';
+        if (primary === 'music' && song && this._shownSong && song !== this._shownSong && this.mapped &&
+            St.Settings.get().enable_animations) {
+            this._startSwitch();
+            return;
+        }
+        this._shownSong = song;
+        this._syncBarColor();
+        // Music with the timer: the cover, the bars, and the time left between them. Else, the song's title in
+        // the middle if Settings ask, while the music leads; the clock otherwise.
+        const withTimer = primary === 'music' && second === 'timer';
+        this._centre = recording ? this._elapsed
+            : withTimer ? this._timerCentre
+            : primary === 'music' && this._settings.get_boolean('compact-song-title') ? this._songTitle
+            : this._clock;
         // On a call the green phone already says the microphone is on, unless another app records too.
         const privacy = this._showingPrivacy() ? this._privacy : {};
         const microphone = privacy.microphone && (!onCall || this._call.othersRecording);
@@ -485,7 +594,8 @@ export const CompactView = GObject.registerClass({
         this._lead.visible = Boolean(left);
         // Right, the first that applies: isled down, the assistant at work, a call's muted microphone, the next
         // activity's sign, what goes with the first (the song's bars, the timer's time left).
-        let right = second ? {music: this._secondArt, timer: this._secondRing, call: this._secondPhone}[second]
+        let right = withTimer ? this._bars
+            : second ? {music: this._secondArt, timer: this._secondRing, call: this._secondPhone}[second]
             : {music: this._bars, timer: anyDot ? null : this._timerTime}[primary] ?? null;
         if (onCall && this._call.muted)
             right = this._micOff;
@@ -521,16 +631,18 @@ export const CompactView = GObject.registerClass({
         } else {
             this._cancel('ring');
         }
-        if (hasTrack)
+        if (hasTrack) {
             (primary === 'music' ? this._art : this._secondArt).setPath(nowPlaying.art_path);
-
-        if (recording) {
-            this._crossfade(this._elapsed);
-            this._tickRecording();
-        } else {
-            this._cancel('recording');
-            this._crossfade(this._clock);
+            // One line each: a line break would grow the island's height.
+            const oneLine = text => String(text ?? '').replace(/\s+/g, ' ').trim();
+            this._songTitle.setText(oneLine(nowPlaying.title), oneLine(nowPlaying.artist));
         }
+
+        if (recording)
+            this._tickRecording();
+        else
+            this._cancel('recording');
+        this._crossfade(this._centre);
 
         this._fit();
         if (this.preferredWidth !== widthBefore)
@@ -548,44 +660,52 @@ export const CompactView = GObject.registerClass({
         sign.ease({opacity: 255, duration: 200, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
     }
 
-    /** Fades `actor` in and the other centre actors out. */
+    /** Fades `actor` in and the other centre actors out; the timer's time left, dimmed while the timer is paused (as
+     * its glyph and its time on the right are: see `_refresh`). */
     _crossfade(actor) {
-        for (const other of [this._clock, this._elapsed]) {
+        const paused = !this._daemon.state.pomodoro?.running;
+        for (const other of [this._clock, this._elapsed, this._timerCentre, this._songTitle]) {
             if (other === actor) {
+                const opacity = other === this._timerCentre && paused ? PAUSED_OPACITY : 255;
                 if (!other.visible) {
                     other.opacity = 0;
                     other.show();
                 }
-                if (!restsAt(other, 'opacity', 255))
-                    other.ease({opacity: 255, duration: 200});
+                if (!restsAt(other, 'opacity', opacity))
+                    other.ease({opacity, duration: 200});
             } else if (other.visible) {
                 other.ease({opacity: 0, duration: 150, onComplete: () => other.hide()});
             }
         }
     }
 
-    /** The timer's time left on the right, each second while on screen. */
+    /** The timer's time left, on the right (alone) or in the middle (with music), each second while on screen. */
     _tickSecond() {
-        const time = this._timerTime;
+        const labels = [this._right.child === this._timerTime && this._timerTime, this._centre === this._timerCentre && this._timerCentre]
+            .filter(Boolean);
         // Set off screen too, so its width can be measured; it ticks only on screen.
-        if (this._right.child !== time) {
+        if (!labels.length) {
             this._cancel('second');
             return;
         }
         const {pomodoro} = this._daemon.state;
         if (!pomodoro || pomodoro.phase === 'idle')
             return;
-        const length = time.text.length;
         const remaining = pomodoro.running ? Math.max(0, pomodoro.ends_at_ms - Format.nowMs()) : pomodoro.remaining_ms;
         const [r, g, b] = Theme.semantic(timerColor(pomodoro.phase));
-        time.text = Format.duration(remaining);
         // Restyled only when the phase changes, not each second.
         const style = `color: rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)});`;
-        if (time.style !== style)
-            time.style = style;
+        const text = Format.duration(remaining);
+        let longer = false;
+        for (const time of labels) {
+            longer ||= time.text.length !== text.length;
+            time.text = text;
+            if (time.style !== style)
+                time.style = style;
+        }
         const next = pomodoro.running ? remaining % 1000 || 1000 : 0;
         // Shorter (10:00 to 9:59): the sides are measured again, or the time would be cut.
-        if (time.text.length !== length && this.mapped)
+        if (longer && this.mapped)
             this._refit();
         if (next && this.mapped)
             this._later('second', next + 10, () => this._tickSecond());
@@ -679,6 +799,10 @@ export const CompactView = GObject.registerClass({
         this._settings.disconnect(this._settingsChanged);
         this._settings.disconnect(this._dateChanged);
         this._settings.disconnect(this._pagesChanged);
+        this._settings.disconnect(this._titleChanged);
+        this._settings.disconnect(this._titleWidthChanged);
+        this._settings.disconnect(this._moonChanged);
+        this._settings.disconnect(this._barsChanged);
         for (const id of this._botLookChanged)
             this._settings.disconnect(id);
         this._privacy.disconnect(this._privacyChanged);
