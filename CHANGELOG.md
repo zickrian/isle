@@ -6,6 +6,15 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **More lyrics providers, in an order you choose.** Settings has a new page, Music player. Lyrics come from LRCLIB
+  as before, and now NetEase Cloud Music too and, with your own API key, Musixmatch; each has a switch, arrows
+  move it up or down the list, and the lyrics page goes on to the next provider whenever one has none or cannot
+  be reached. The first synced lyrics win; plain words found on the way show at once and give way to synced ones.
+  Musixmatch's key is entered in a drop-down row under API keys. Both are asked by the extension, not `isled`, are
+  off until you switch them on, and are listed in SECURITY.md.
+
 ## [1.7.3] - 2026-11-18
 
 Put the tabs in your own order, Pi in the voice assistant, the clock where you want it, lyrics you can pin
