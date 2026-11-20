@@ -17,6 +17,7 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 import {DesktopAppInfo} from './src/appInfo.js';
 import {Bot, COLORS, SHAPES, paletteFor} from './src/bot.js';
 import {paintRim} from './src/glow.js';
+import {DEFAULT_ORDER, PROVIDERS} from './src/lyricsProviders.js';
 import {movePage, pageOrder, storedOrder} from './src/pageOrder.js';
 import {listenForSuperV} from './src/shortcutRecorder.js';
 import * as WorldClocks from './src/worldClocks.js';
@@ -37,6 +38,7 @@ export default class IslePreferences extends ExtensionPreferences {
         const settings = this.getSettings();
         window.set_default_size(560, 680);
         window.add(this._islandPage(settings, window));
+        window.add(this._musicPlayerPage(settings, window));
         window.add(this._clipboardPage(settings, window));
         window.add(this._timerPage(settings, window));
         window.add(this._voicePage(settings, window));
@@ -58,6 +60,14 @@ export default class IslePreferences extends ExtensionPreferences {
             return false;
         });
         showAsked();
+    }
+
+    // The music player's own settings: where lyrics come from (and the keys some need), and cava's bars behind them.
+    _musicPlayerPage(settings, window) {
+        const page = new Adw.PreferencesPage({title: 'Music player', name: 'music-player', icon_name: 'audio-x-generic-symbolic'});
+        page.add(lyricsProvidersGroup(settings, window));
+        page.add(apiKeysGroup(settings, window));
+        return page;
     }
 
     // The version, where to get help, a bug report to paste, and a way back to the defaults.
@@ -479,7 +489,7 @@ export default class IslePreferences extends ExtensionPreferences {
         settings.bind('event-alerts', eventMinutes, 'sensitive', Gio.SettingsBindFlags.GET);
         alerts.add(eventMinutes);
         alerts.add(switchRow(settings, 'track-peek', 'New song', 'Briefly show the song when the track changes'));
-        alerts.add(switchRow(settings, 'lyrics-online', 'Lyrics', 'Look up the playing song’s lyrics on LRCLIB'));
+        alerts.add(switchRow(settings, 'lyrics-online', 'Lyrics', 'Look up the playing song’s lyrics online, at the providers chosen under Music player'));
         alerts.add(switchRow(settings, 'chimes', 'Sounds', 'Chime when a focus session or break ends, and for reminders'));
         page.add(alerts);
 
@@ -836,6 +846,135 @@ function switchRow(settings, key, title, subtitle) {
     const row = new Adw.SwitchRow({title, subtitle});
     settings.bind(key, row, 'active', Gio.SettingsBindFlags.DEFAULT);
     return row;
+}
+
+/** The lyrics providers in the order they are asked: a switch each, and arrows to move them up and down. */
+function lyricsProvidersGroup(settings, window) {
+    const group = new Adw.PreferencesGroup({
+        title: 'Lyrics providers',
+        description: 'Asked from the top down: if one has no lyrics for a song, or cannot be reached, the lyrics page goes on to the next.',
+    });
+    const order = () => {
+        const saved = [...new Set(settings.get_strv('lyrics-provider-order'))].filter(id => id in PROVIDERS);
+        return [...saved, ...DEFAULT_ORDER.filter(id => !saved.includes(id))];
+    };
+    const isOff = id => settings.get_strv('lyrics-providers-off').includes(id);
+    const setOff = (id, off) => {
+        const list = settings.get_strv('lyrics-providers-off').filter(each => each !== id);
+        if (off)
+            list.push(id);
+        settings.set_strv('lyrics-providers-off', list);
+    };
+    const hasKey = () => settings.get_string('musixmatch-api-key').trim() !== '';
+    const subtitleOf = id => {
+        const {description, needsKey} = PROVIDERS[id];
+        return needsKey && !hasKey() ? `${description} No key yet, so it is skipped.` : description;
+    };
+
+    /** The rows now in the group, and each provider's switch, rows and arrows. */
+    let rows = [];
+    const parts = new Map();
+    const build = (focus = null) => {
+        rows.forEach(row => group.remove(row));
+        rows = [];
+        parts.clear();
+        const list = order();
+        list.forEach((id, index) => {
+            const row = new Adw.ActionRow({title: PROVIDERS[id].name, subtitle: subtitleOf(id), subtitle_lines: 0});
+            const up = new Gtk.Button({icon_name: 'go-up-symbolic', valign: Gtk.Align.CENTER, css_classes: ['flat'],
+                tooltip_text: 'Ask sooner', sensitive: index > 0});
+            const down = new Gtk.Button({icon_name: 'go-down-symbolic', valign: Gtk.Align.CENTER, css_classes: ['flat'],
+                tooltip_text: 'Ask later', sensitive: index < list.length - 1});
+            const toggle = new Gtk.Switch({valign: Gtk.Align.CENTER, active: !isOff(id)});
+            toggle.connect('notify::active', () => {
+                if (toggle.active === isOff(id))
+                    setOff(id, !toggle.active);
+            });
+            const move = step => {
+                const next = order();
+                const from = next.indexOf(id);
+                const to = from + step;
+                if (to < 0 || to >= next.length)
+                    return;
+                [next[from], next[to]] = [next[to], next[from]];
+                settings.set_strv('lyrics-provider-order', next);
+                build({id, step});
+            };
+            up.connect('clicked', () => move(-1));
+            down.connect('clicked', () => move(1));
+            row.add_prefix(new Gtk.Label({label: `${index + 1}`, css_classes: ['dim-label', 'numeric'], width_chars: 2}));
+            row.add_suffix(up);
+            row.add_suffix(down);
+            row.add_suffix(toggle);
+            row.activatable_widget = toggle;
+            group.add(row);
+            rows.push(row);
+            parts.set(id, {row, toggle, up, down});
+        });
+        // The arrow that was pressed stays under the keyboard, on the row that moved.
+        if (focus) {
+            const {up, down} = parts.get(focus.id);
+            (focus.step < 0 ? up : down).sensitive ? (focus.step < 0 ? up : down).grab_focus() : (focus.step < 0 ? down : up).grab_focus();
+        }
+    };
+    build();
+
+    const changed = [
+        // Switches follow the setting (a change made elsewhere); the rows follow the order.
+        settings.connect('changed::lyrics-providers-off', () => {
+            for (const [id, {toggle}] of parts)
+                toggle.active = !isOff(id);
+        }),
+        settings.connect('changed::lyrics-provider-order', () => {
+            const shown = rows.map(row => row.title).join();
+            if (order().map(id => PROVIDERS[id].name).join() !== shown)
+                build();
+        }),
+        settings.connect('changed::musixmatch-api-key', () => {
+            for (const [id, {row}] of parts)
+                row.subtitle = subtitleOf(id);
+        }),
+    ];
+    window.connect('close-request', () => {
+        changed.forEach(id => settings.disconnect(id));
+        return false;
+    });
+    return group;
+}
+
+/** The API keys of the providers that need one, each in a drop-down row. */
+function apiKeysGroup(settings, window) {
+    const group = new Adw.PreferencesGroup({
+        title: 'API keys',
+        description: 'For the lyrics providers that need one. A key is kept in Isle’s settings on this computer, as plain text.',
+    });
+    const musixmatch = new Adw.ExpanderRow({title: 'Musixmatch'});
+    const describe = () => {
+        musixmatch.subtitle = settings.get_string('musixmatch-api-key').trim() ? 'Key saved' : 'No key yet';
+    };
+    describe();
+    const entry = new Adw.PasswordEntryRow({title: 'API key', show_apply_button: true});
+    entry.text = settings.get_string('musixmatch-api-key');
+    entry.connect('apply', () => settings.set_string('musixmatch-api-key', entry.text.trim()));
+    musixmatch.add_row(entry);
+    const help = new Adw.ActionRow({
+        title: 'Get a key',
+        subtitle: 'At developer.musixmatch.com. The free plan gives part of a song’s words; synced lyrics need a paid plan.',
+        subtitle_lines: 0,
+    });
+    help.add_suffix(new Gtk.LinkButton({uri: 'https://developer.musixmatch.com/', label: 'Open', valign: Gtk.Align.CENTER}));
+    musixmatch.add_row(help);
+    group.add(musixmatch);
+    const none = new Adw.ActionRow({title: 'LRCLIB and NetEase', subtitle: 'Need no key'});
+    none.add_css_class('dim-label');
+    group.add(none);
+
+    const id = settings.connect('changed::musixmatch-api-key', describe);
+    window.connect('close-request', () => {
+        settings.disconnect(id);
+        return false;
+    });
+    return group;
 }
 
 /** How dark the Glass look is, Clear to Dark; shown only while the island is glass. */

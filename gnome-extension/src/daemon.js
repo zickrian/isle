@@ -183,6 +183,9 @@ export class Daemon extends Signals.EventEmitter {
         this.state = {};
         /** The JSON each key last had, to tell a real change from the same value sent again. */
         this._raw = {};
+        /** Set while Isle looks lyrics up with more than LRCLIB (see lyricsEngine.js): called with isled's `lyrics`
+         * in place of showing it; the engine tells what is shown with `publishLyrics`. */
+        this.interceptLyrics = null;
         this._proxies = {};
         /** Calls each proxy awaits; one is disposed only once they are answered (see `destroy`). */
         this._inFlight = new Map();
@@ -310,8 +313,29 @@ export class Daemon extends Signals.EventEmitter {
         } catch (e) {
             console.warn(`Isle: invalid ${key} from isled: ${e.message}`);
         }
+        if (key === 'lyrics' && this.interceptLyrics) {
+            this.interceptLyrics(value);
+            return;
+        }
         this.state[key] = value;
         this.emit('changed', key);
+    }
+
+    /** Shows `lyrics` ({track, status, lines}) as if isled had sent them. */
+    publishLyrics(lyrics) {
+        this.state.lyrics = lyrics;
+        this.emit('changed', 'lyrics');
+    }
+
+    /** Shows what isled last sent, as it does again once nothing stands between it and the page. */
+    republishLyrics() {
+        let value = null;
+        try {
+            value = this._raw.lyrics ? JSON.parse(this._raw.lyrics) : null;
+        } catch (e) {
+            console.warn(`Isle: invalid lyrics from isled: ${e.message}`);
+        }
+        this.publishLyrics(value);
     }
 
     /** Passes a D-Bus signal on under its Isle name. */
