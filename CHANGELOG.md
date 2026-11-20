@@ -25,6 +25,10 @@ All notable changes to Isle are listed here. The format follows
 - **Cover colour for the closed island's bars** and **a switch for the Do Not Disturb moon** (Do Not Disturb stays on).
 - **Previews.** While a setting changes in Settings, the island opens for a few seconds on what it changes (Settings →
   Appearance → Preview changes turns this off).
+- **Keep GNOME's clock.** Settings → Island → Appearance → Keep GNOME's clock (off by default) leaves GNOME's own
+  clock and its calendar menu in the top bar, moved to the right beside the system menu and out from under the island,
+  instead of hidden. A clock another extension has moved is left where that extension put it, and Clock in the top bar
+  (Isle's own) is a separate setting.
 
 ### Changed
 

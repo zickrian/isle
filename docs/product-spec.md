@@ -234,6 +234,12 @@ with the wheel or touchpad and never show a scrollbar.
   bar meanwhile (not on every display: the main one always has an island). So does the main display when
   another extension moves the bar off its top (to the bottom of the screen, say); Isle then leaves the
   bar's colour and height as that extension has them.
+- GNOME's own clock is hidden while the island is on the main bar, its width held clear for the island. Settings →
+  Island → Appearance → Keep GNOME's clock (off by default) keeps it: the clock and its calendar menu stay in the
+  bar, moved to the right, just before the system menu, with a spacer holding the island's room in the middle.
+  The clock goes back to the middle when the setting is turned off, or Isle is. A clock another extension has moved
+  is left where that extension put it. This is GNOME's own clock, apart from Isle's Clock in the top bar, which adds one
+  of Isle's own.
 - On every display, the island itself is on the display of the window in use, as above, and each other
   display shows a copy of it: the closed island, and every alert at the same time and in the same shape.
   Only the island opens. The pointer coming onto a copy (or a press on it) moves the island into the

@@ -61,13 +61,18 @@ export class TopBar extends Signals.EventEmitter {
         this._own = new Set();
         this._toggle = () => this._onToggle();
         this._dateMenu = Main.panel.statusArea.dateMenu;
+        // Settings → Keep GNOME's clock: the clock stays in the bar, moved out from under the island (see `_syncKeptClock`).
+        this._keepClock = settings.get_boolean('keep-gnome-clock');
         this._clockFocus = this._dateMenu.can_focus;
         this._clockShown = false;
         this._closeLater = 0;
         /** The width kept clear for the island in the bar's centre (see `reserveWidth`), in stage px. */
         this._reserved = -1;
         this._spacer = null;
+        /** Where the clock sat before Isle moved it (Keep GNOME's clock): its box and place in it; null while it is there. */
+        this._home = null;
         this._movedAway = this._clockMovedAway();
+        this._syncKeptClock();
         this._syncDateMenu();
         // Another extension may move GNOME's clock to the bar's left or right (#62): it is then that extension's,
         // shown where it put it, and the island's room in the centre is kept by a spacer of Isle's instead.
@@ -83,6 +88,10 @@ export class TopBar extends Signals.EventEmitter {
                 if (this.blendsIn !== blended)
                     this.emit('style-changed');
             })),
+            settings.connect('changed::keep-gnome-clock', () => {
+                this._keepClock = this._settings.get_boolean('keep-gnome-clock');
+                this._syncKeptClock();
+            }),
             settings.connect('changed::compact-top-bar', () => this._applyStyle()),
             settings.connect('changed::top-bar-clock', () => this._syncBarClock({again: true})),
             // The 12/24-hour setting reaches it as every clock of Isle's (`refreshClocks`).
@@ -316,6 +325,7 @@ export class TopBar extends Signals.EventEmitter {
     /** Shows GNOME's own clock in the top bar while the island is on another display. */
     set clockShown(shown) {
         this._clockShown = shown;
+        this._syncKeptClock();
         this._syncDateMenu();
         // One clock in the bar: GNOME's, while it shows in the island's place.
         this._syncBarClock();
@@ -476,6 +486,55 @@ export class TopBar extends Signals.EventEmitter {
         this.emit('calendar-requested', hidden ? null : 'calendar');
     }
 
+    /** Keep GNOME's clock (Settings): Isle moves it itself from the bar's centre to the right box, just before the
+     * system menu, and puts it back when the setting is turned off, or Isle is. The room under the island is then
+     * held by the spacer of `_syncDateMenu`, as for a clock another extension moved. */
+    _syncKeptClock() {
+        if (this._keepClock && !this._clockShown)
+            this._moveAside();
+        else
+            this._moveHome();
+    }
+
+    /** Moves the clock to the right box, before the system menu. Only from GNOME's own place: where another
+     * extension has put the clock is its own business. */
+    _moveAside() {
+        const box = this._dateMenu.container;
+        const right = Main.panel._rightBox;
+        if (this._home || !box || !right)
+            return;
+        const parent = box.get_parent();
+        if (!parent || parent !== Main.panel._centerBox)
+            return;
+        this._home = {parent, index: parent.get_children().indexOf(box)};
+        parent.remove_child(box);
+        const system = Main.panel.statusArea.quickSettings?.container;
+        const before = system?.get_parent() === right ? right.get_children().indexOf(system) : -1;
+        if (before >= 0)
+            right.insert_child_at_index(box, before);
+        else
+            right.add_child(box);
+        this._movedAway = this._clockMovedAway();
+        this._syncDateMenu();
+    }
+
+    /** Puts the clock back in the middle, where GNOME had it, unless another extension has taken it elsewhere. */
+    _moveHome() {
+        if (!this._home)
+            return;
+        const box = this._dateMenu.container;
+        const {parent, index} = this._home;
+        this._home = null;
+        if (!box || box.get_parent() !== Main.panel._rightBox)
+            return;
+        this._spacer?.destroy();
+        this._spacer = null;
+        box.get_parent().remove_child(box);
+        parent.insert_child_at_index(box, Math.min(index, parent.get_n_children()));
+        this._movedAway = this._clockMovedAway();
+        this._syncDateMenu();
+    }
+
     /** Colour and style classes from the settings; remembers `blendsIn` to spot a change. Off the top, none:
      * the bar there is another extension's to style, and Isle's colour and height would set it apart from
      * that extension's bars on the other displays. */
@@ -590,6 +649,7 @@ export class TopBar extends Signals.EventEmitter {
         this._spacer = null;
         this._clockShown = true;
         this._syncClockMenu();
+        this._moveHome();
         this._restoreToggle();
         this._unwatchRecorder();
 

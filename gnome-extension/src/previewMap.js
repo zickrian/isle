@@ -66,6 +66,7 @@ export const PREVIEWS = {
     'compact-title-width': null,
     'dnd-icon': null,
     'mini-bars-cover-color': null,
+    'keep-gnome-clock': null,
     'privacy-indicators': null,
     'call-activity': null,
     'call-preview': null,
