@@ -18,6 +18,8 @@ export const Page = GObject.registerClass({
         'width-changed': {},
         // `tint` changed.
         'tint-changed': {},
+        // The media page's cava bars started or stopped following the music (see `MediaPage.cavaLive`).
+        'cava-changed': {},
         // A 'aura' tint moved: time (s), level (0..1); see `Island.setTintMotion`.
         'tint-motion': {param_types: [GObject.TYPE_DOUBLE, GObject.TYPE_DOUBLE]},
         // The user did something that should close the island.

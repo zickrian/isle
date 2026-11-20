@@ -473,8 +473,10 @@ camera or the microphone itself.
 Isle has no server and no telemetry; your clipboard history, reminders,
 events, timer, app usage and the assistant's chats stay in
 `~/.local/share/isle`, and speech is recognised on this computer. It goes
-online only for synced lyrics ([LRCLIB](https://lrclib.net)) and cover art,
-once per song (lyrics can be turned off in Settings); your Claude plan's
+online only for synced lyrics ([LRCLIB](https://lrclib.net), then NetEase and,
+with your own key, Musixmatch, in the order Settings → Music player gives) and
+cover art, once per song (lyrics, and each provider, can be turned off in
+Settings); your Claude plan's
 usage (`api.anthropic.com`, with
 Claude Code's own sign-in); a look for a newer Isle on GitHub at most once a
 day (also in Settings); the speech model, downloaded once from Hugging Face
@@ -501,8 +503,9 @@ Wayland this is required once). Then check that it is enabled:
 
 **Music or lyrics do not show.** Check that the background service runs:
 `systemctl --user status isled`, and read its log with
-`journalctl --user -u isled -f`. Songs LRCLIB does not know show "No lyrics
-found"; a busy service retries on its own.
+`journalctl --user -u isled -f`. Songs none of the lyrics providers in Settings →
+Music player knows show "No lyrics for this song"; a busy service retries on
+its own.
 
 **Files cannot be dragged in or out.** The release package includes the
 drag-and-drop helper; when building from source, install `libgtk-4-dev`

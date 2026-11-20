@@ -6,6 +6,35 @@ All notable changes to Isle are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **More lyrics providers, in an order you choose.** Settings has a new page, Music player. Lyrics come from LRCLIB
+  as before, and now NetEase Cloud Music too and, with your own API key, Musixmatch; each has a switch, arrows
+  move it up or down the list, and the lyrics page goes on to the next provider whenever one has none or cannot
+  be reached. The first synced lyrics win; plain words found on the way show at once and give way to synced ones.
+  Musixmatch's key is entered in a drop-down row under API keys. Both are asked by the extension, not `isled`, are
+  off until you switch them on, and are listed in SECURITY.md.
+- **Cava behind the music.** With `cava` installed, Settings → Music player → Cava puts its bars behind the player
+  and the lyrics, rising from the island's floor across its whole width, in colours taken from the cover that stay
+  clear of the island's gradient and under the white text. Height, opacity, zoom, position, sensitivity, bars,
+  smoothness and where cava listens are settings (off by default). The island's little bars give way while cava's move.
+- **The song's title and artist in the closed island** (Settings → Island → Appearance → Song title in the island). The island
+  widens for a long one up to Longest song title; past it, the text scrolls, its edges fading softly.
+- **The timer beside music**: the cover, the music bars and, in the centre, the time left. Alone, the timer shows an
+  alarm clock.
+- **Cover colour for the closed island's bars** and **a switch for the Do Not Disturb moon** (Do Not Disturb stays on).
+- **Previews.** While a setting changes in Settings, the island opens for a few seconds on what it changes (Settings →
+  Appearance → Preview changes turns this off).
+- **Keep GNOME's clock.** Settings → Island → Appearance → Keep GNOME's clock (off by default) leaves GNOME's own
+  clock and its calendar menu in the top bar, moved to the right beside the system menu and out from under the island,
+  instead of hidden. A clock another extension has moved is left where that extension put it, and Clock in the top bar
+  (Isle's own) is a separate setting.
+
+### Changed
+
+- A new song while one shows no longer swaps the closed island's cover and title at once: they fade out, the island
+  takes its new width, and they fade back in, so nothing is cut by its edge as it moves. The lyrics fade in as well.
+
 ## [1.7.3] - 2026-11-18
 
 Put the tabs in your own order, Pi in the voice assistant, the clock where you want it, lyrics you can pin
