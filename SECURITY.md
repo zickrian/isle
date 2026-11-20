@@ -45,6 +45,8 @@ connects to the network only for these:
 | What | Where to | What is sent |
 |---|---|---|
 | Synced lyrics | [LRCLIB](https://lrclib.net) (`lrclib.net/api`) | The playing song's title, artist, album and length, once per song (then cached) |
+| Synced lyrics, when LRCLIB has none | [NetEase Cloud Music](https://music.163.com) (`music.163.com/api`), asked by the extension | The song's title and artist (to search), then the id of the song found, once per song (then cached). Off until switched on in Settings → Music player |
+| Synced lyrics, with a key | [Musixmatch](https://developer.musixmatch.com) (`api.musixmatch.com`), asked by the extension | The song's title, artist and length, with your own API key, once per song (then cached). Off until switched on and skipped without a key; the key is kept in Isle's settings on this computer as plain text |
 | Cover art | The address the music player gives for the song's cover | A plain download of that picture, once per song (then cached) |
 | Claude plan usage | `api.anthropic.com/api/oauth/usage` | Claude Code's own sign-in token, read from Claude Code's credentials; Isle never signs in or refreshes it. Off when AI usage, or Claude in it, is turned off |
 | ChatGPT plan usage | `chatgpt.com/backend-api/wham/usage` | Codex's own sign-in token and account id, read from Codex's `auth.json`; Isle never signs in or refreshes it. Off when AI usage, or ChatGPT in it, is turned off |
@@ -58,6 +60,9 @@ connects to the network only for these:
 | Speech model | `huggingface.co` (the official whisper.cpp and Silero files) | A plain download, only when you run `isle-setup-voice` (or press Set up); each file's SHA-256 is checked |
 | Shelf files you share with your phone | Your phone, over the local network, only while sharing (see below) | The names, sizes and contents of the Shelf's files, to a phone you allowed; nothing goes through the internet |
 | Events you add to an account's calendar | That account's server (Google, or another in Online Accounts), through Evolution Data Server, as any calendar app sends it | The event's title, day and time, once, when you add it to that calendar (picked with the chip in the add field). Just before, isled opens a connection to that server and closes it, sending nothing, to see it is in reach; behind a proxy it skips that |
+
+Lyrics providers are asked in the order of Settings → Music player, each only if the one before had none, and
+all stop with Settings → Island → Alerts → Lyrics.
 
 When ChatGPT can't be asked (offline, signed out), its limits are read from
 Codex's own logs on this computer, with no network at all.

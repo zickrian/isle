@@ -406,6 +406,17 @@ of them, not the grey between). States, centred with an icon: "Looking for
 lyrics" (breathing dots), "No lyrics for this song", "Instrumental", "Can't
 reach the lyrics", "Lyrics are busy right now".
 
+*Lyrics providers* (Settings → Music player). Lyrics are looked up at the providers switched on, in the order
+listed, and the page goes on to the next whenever one has none or cannot be reached: LRCLIB (looked up by
+`isled`, as always), NetEase Cloud Music, and Musixmatch (which needs its API key, set in Settings → Music
+player → API keys, and is skipped without one). Only LRCLIB is on at first: nothing new goes online until the
+others are switched on. The first synced lyrics win. Plain words found on the way are
+shown at once and replaced if a later provider has them synced; whole plain words beat the part of a song that
+Musixmatch's free plan gives. A song none has shows "No lyrics for this song"; when every provider failed
+(rather than had none) it asks again after 15 s, then 45 s, 2 and 5 minutes while the page is open. With LRCLIB
+the only provider on, `isled`'s own lyrics go to the page untouched. Each lookup sends only the song's
+title, artist, album and length (see SECURITY.md); a found song is cached.
+
 Between songs the island stays steady: when a song that was playing gives
 way to nothing (browsers report no title and "Paused" for a moment between
 videos), the song is shown playing for up to 1.5 s, so the cover, bars and
@@ -902,7 +913,8 @@ hovering opens the Notifications page.
   live in `~/.local/share/isle/*.json`,
   written atomically and flushed to disk (file and folder), so they survive
   reboots and power cuts. A corrupt file is set aside, never lost silently.
-- Lyrics and cover art are cached in `~/.cache/isle`.
+- Lyrics and cover art are cached in `~/.cache/isle`; lyrics found by Musixmatch and NetEase, by the extension, in
+  `~/.cache/isle/lyrics-providers` (the newest 400).
 - `isled` restarts on failure (systemd); the extension reconnects on its own.
 
 ## 8. Performance budget
