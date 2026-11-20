@@ -62,7 +62,8 @@ connects to the network only for these:
 | Events you add to an account's calendar | That account's server (Google, or another in Online Accounts), through Evolution Data Server, as any calendar app sends it | The event's title, day and time, once, when you add it to that calendar (picked with the chip in the add field). Just before, isled opens a connection to that server and closes it, sending nothing, to see it is in reach; behind a proxy it skips that |
 
 Lyrics providers are asked in the order of Settings → Music player, each only if the one before had none, and
-all stop with Settings → Island → Alerts → Lyrics.
+all stop with Settings → Island → Alerts → Lyrics. Cava, if you turn it on, listens to what this computer plays, in
+its own process and only while its bars are on screen; nothing it hears is kept or sent.
 
 When ChatGPT can't be asked (offline, signed out), its limits are read from
 Codex's own logs on this computer, with no network at all.

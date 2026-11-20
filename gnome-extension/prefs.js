@@ -67,6 +67,7 @@ export default class IslePreferences extends ExtensionPreferences {
         const page = new Adw.PreferencesPage({title: 'Music player', name: 'music-player', icon_name: 'audio-x-generic-symbolic'});
         page.add(lyricsProvidersGroup(settings, window));
         page.add(apiKeysGroup(settings, window));
+        page.add(cavaGroup(settings));
         return page;
     }
 
@@ -950,6 +951,41 @@ function lyricsProvidersGroup(settings, window) {
         changed.forEach(id => settings.disconnect(id));
         return false;
     });
+    return group;
+}
+
+/** Cava's bars under the lyrics: on or off, and how they look. Cava itself must be installed. */
+function cavaGroup(settings) {
+    const installed = GLib.find_program_in_path('cava') !== null;
+    const group = new Adw.PreferencesGroup({
+        title: 'Cava',
+        description: installed ? 'Bars that follow the music, as the background of the player and the lyrics.'
+            : 'Bars that follow the music, as the background of the player and the lyrics. Cava is not installed: install it (the “cava” package) first.',
+    });
+    const enabled = switchRow(settings, 'cava-enabled', 'Bars behind the player and lyrics',
+        'Cava runs only while the player or the lyrics are open. The island’s own little bars give way to them meanwhile.');
+    group.add(enabled);
+    const rows = [
+        spinRow(settings, 'cava-height-pct', 'Height', 'How high the bars may rise, in percent of the page', 10, 100),
+        spinRow(settings, 'cava-opacity', 'Opacity', 'How strongly the bars show behind the player and the lyrics, in percent', 10, 100),
+        spinRow(settings, 'cava-zoom', 'Zoom', 'How large the bars are, in percent: above 100 they grow past the island’s sides', 50, 300),
+        spinRow(settings, 'cava-offset-x', 'Horizontal position', 'Moves the bars right (or left, below 0), in pixels', -300, 300),
+        spinRow(settings, 'cava-offset-y', 'Vertical position', 'Moves the bars up (or down, below 0), in pixels', -300, 300),
+        spinRow(settings, 'cava-sensitivity', 'Sensitivity', 'How strongly the bars answer the music, in percent: above 100 they rise higher', 20, 400),
+        spinRow(settings, 'cava-bars', 'Bars', 'How many bars', 8, 64),
+        spinRow(settings, 'cava-smoothness', 'Smoothness', 'Higher is calmer, lower is quicker and jumpier', 0, 100),
+        choiceRow(settings, 'cava-source', 'Listens to', '“Automatic” tries PipeWire, then PulseAudio', [
+            ['auto', 'Automatic'],
+            ['pipewire', 'PipeWire'],
+            ['pulse', 'PulseAudio'],
+        ]),
+    ];
+    for (const row of rows) {
+        // Their settings matter only while the bars are on.
+        settings.bind('cava-enabled', row, 'sensitive', Gio.SettingsBindFlags.GET);
+        group.add(row);
+    }
+    enabled.sensitive = installed;
     return group;
 }
 

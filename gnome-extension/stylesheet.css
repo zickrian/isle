@@ -74,6 +74,9 @@
 .isle-level-fill { border-radius: 3px; background-color: #ffffff; }
 
 .isle-bars { spacing: 2px; }
+/* Cava's bars behind the player and the lyrics (their colours and heights are set in cava.js). */
+.isle-cava { spacing: 3px; }
+.isle-cava-bar { border-radius: 3px 3px 0 0; background-color: #ffffff; }
 .isle-bar { width: 3px; border-radius: 2px; background-color: #ffffff; }
 
 .isle-empty { spacing: 4px; }

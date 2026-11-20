@@ -429,6 +429,15 @@ Musixmatch's free plan gives. A song none has shows "No lyrics for this song"; w
 the only provider on, `isled`'s own lyrics go to the page untouched. Each lookup sends only the song's
 title, artist, album and length (see SECURITY.md); a found song is cached.
 
+*Cava* (Settings → Music player → Cava, off by default; needs `cava` installed). While the player or the lyrics
+are open, cava's bars rise from the island's floor behind the page, across the island to its sides: heights
+from the music, as high as Height says (percent of the page), as strongly as Sensitivity, shown at Opacity,
+moved by Zoom (about the bottom middle) and the two positions. They take the colour of the cover's wash, a
+step lighter on a dark wash and deeper on a bright one, so they show against it and white text still reads;
+without a cover colour, a muted blue. Cava runs only while its bars are on screen (and stops with them); the
+island's little bars, in the header and beside the lyrics' title, give way while cava's move, and come
+back when they stop, or if cava is not installed or cannot start.
+
 Between songs the island stays steady: when a song that was playing gives
 way to nothing (browsers report no title and "Paused" for a moment between
 videos), the song is shown playing for up to 1.5 s, so the cover, bars and

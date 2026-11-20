@@ -14,6 +14,10 @@ All notable changes to Isle are listed here. The format follows
   be reached. The first synced lyrics win; plain words found on the way show at once and give way to synced ones.
   Musixmatch's key is entered in a drop-down row under API keys. Both are asked by the extension, not `isled`, are
   off until you switch them on, and are listed in SECURITY.md.
+- **Cava behind the music.** With `cava` installed, Settings → Music player → Cava puts its bars behind the player
+  and the lyrics, rising from the island's floor across its whole width, in colours taken from the cover that stay
+  clear of the island's gradient and under the white text. Height, opacity, zoom, position, sensitivity, bars,
+  smoothness and where cava listens are settings (off by default). The island's little bars give way while cava's move.
 - **The song's title and artist in the closed island** (Settings → Island → Appearance → Song title in the island). The island
   widens for a long one up to Longest song title; past it, the text scrolls, its edges fading softly.
 - **The timer beside music**: the cover, the music bars and, in the centre, the time left. Alone, the timer shows an

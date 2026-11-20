@@ -430,7 +430,7 @@ export class Controller {
         const size = {height: PAGE_HEIGHT};
         return [
             () => new CallPage(this._daemon, this._call, this._privacy, this._settings, size),
-            () => new MediaPage(this._daemon, this._audio, size),
+            () => new MediaPage(this._daemon, this._audio, size, this._settings),
             () => new NotificationsPage(this._daemon, this._notifications, size),
             () => new TimerPage(this._daemon, size),
             () => new TasksPage(this._daemon, size),
