@@ -24,6 +24,7 @@ import {HAS_ACCENT, grabsKeyboard, inhibitScanout, isWayland, onUiScale, px, uiS
 import {Daemon} from './daemon.js';
 import {BOTTOM_PADDING, ExpandedView, PAGE_HEIGHT} from './expanded.js';
 import {Island} from './island.js';
+import {PREVIEWED_KEYS, previewTarget} from './previewMap.js';
 import {LyricsEngine} from './lyricsEngine.js';
 import {createLyricsCache} from './lyricsCache.js';
 import {createHttp} from './lyricsHttp.js';
@@ -79,6 +80,10 @@ const MOVE_CHECK_MS = 250;
 const STILL_OUTSIDE_MS = 30000;
 /** Grace period before closing when the pointer leaves. */
 const COLLAPSE_DELAY_MS = 300;
+/** A preview of a setting (see `_previewSetting`) closes this long after the last change, and the music page goes
+ * back to its mode this long after that, once it has closed. */
+const PREVIEW_MS = 4500;
+const PREVIEW_RESTORE_MS = 700;
 /** An alert the pointer rested on stays this long once it leaves, to finish reading. */
 const ALERT_LEAVE_MS = 1500;
 /** Touchpad travel over an alert that puts it away (up) or opens the island (down); a wheel's click is one. */
@@ -204,6 +209,8 @@ export class Controller {
         /** A warm-up the island opened in the middle of, and whether it was of all (see `_warmUp`); else null. */
         this._warmHeld = null;
         this._expandWanted = false;
+        /** While the island is open to preview a setting: what to put back when it closes (see `_previewSetting`). */
+        this._preview = null;
         this._alert = null;
         this._queue = [];
         this._keyboardGrab = null;
@@ -603,6 +610,9 @@ export class Controller {
         }));
         for (const key of ['island-theme', 'glass-tint'])
             this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => this._syncTheme()));
+        // While Settings change something that is seen on the open island, it opens on it (see `_previewSetting`).
+        for (const key of PREVIEWED_KEYS)
+            this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => this._previewSetting(key)));
         // Changed: the clocks on show change at once, the rest as they next draw.
         this._settingsChanged.push(this._settings.connect('changed::clock-format', () => {
             Format.setClockFormat(this._settings.get_string('clock-format'));
@@ -2110,6 +2120,43 @@ export class Controller {
         if (this._voiceOpen)
             this._closeVoice();
         this._render();
+    }
+
+    /** A setting changed in Settings: the island opens on what it changes, for a few seconds after the last change, and
+     * closes again unless the pointer is on it by then (previewMap.js says what opens for which). Not while the island
+     * is open already: what changes shows there at once. */
+    _previewSetting(key) {
+        if (this._destroying || !this._settings.get_boolean('preview-settings'))
+            return;
+        const target = previewTarget(key);
+        if (!target || (this._expandWanted && !this._preview))
+            return;
+        const music = this._expanded.pageNamed('music');
+        // What to put back when it closes: the music page as it was.
+        this._preview ??= {mode: music?.mode ?? null};
+        this._cancel('preview-restore');
+        if (target.mode && music)
+            music.showMode(target.mode);
+        this.expand(target.page);
+        this._cancel('preview');
+        this._later('preview', PREVIEW_MS, () => this._endPreview());
+    }
+
+    /** The preview is over: the island closes, and the music page goes back to its mode once it has. */
+    _endPreview() {
+        const preview = this._preview;
+        if (!preview)
+            return;
+        // The pointer is on it, or the lyrics are pinned open: it is open for the user now, as it is.
+        if (this._island.hovered || this._lyricsHeld) {
+            this._preview = null;
+            return;
+        }
+        this._preview = null;
+        this.collapse();
+        const music = this._expanded.pageNamed('music');
+        if (preview.mode && music && music.mode !== preview.mode)
+            this._later('preview-restore', PREVIEW_RESTORE_MS, () => music.showMode(preview.mode));
     }
 
     /** Closes the open island or the assistant, then shows what waited. */

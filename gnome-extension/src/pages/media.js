@@ -453,7 +453,19 @@ export const MediaPage = GObject.registerClass({
 
     /** Opens `mode`, or goes back to the player if it is open already. */
     _toggleMode(mode) {
-        this._mode = this._mode === mode ? 'player' : mode;
+        this.showMode(this._mode === mode ? 'player' : mode);
+    }
+
+    /** 'player', 'lyrics' or 'audio': what the page shows. */
+    get mode() {
+        return this._mode;
+    }
+
+    /** Shows `mode`, whatever was open (a preview of Settings does: see `Controller._previewSetting`). */
+    showMode(mode) {
+        if (mode === this._mode)
+            return;
+        this._mode = mode;
         // The pin is the lyrics': leaving them lets go of it.
         if (this._mode !== 'lyrics')
             this.pinned = false;
