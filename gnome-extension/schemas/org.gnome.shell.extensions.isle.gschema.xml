@@ -89,6 +89,66 @@
       <summary>Musixmatch API key</summary>
       <description>From developer.musixmatch.com. Kept in plain text, in Isle's settings.</description>
     </key>
+    <key name="cava-enabled" type="b">
+      <default>false</default>
+      <summary>Show cava's bars behind the player and the lyrics</summary>
+      <description>Needs cava to be installed. Cava runs only while the player or the lyrics are on show.</description>
+    </key>
+    <key name="cava-height-pct" type="i">
+      <range min="10" max="100"/>
+      <default>60</default>
+      <summary>How high cava's bars may rise, in percent of the page</summary>
+    </key>
+    <key name="cava-opacity" type="i">
+      <range min="10" max="100"/>
+      <default>50</default>
+      <summary>How strongly cava's bars show behind the player and the lyrics, in percent</summary>
+    </key>
+    <key name="cava-zoom" type="i">
+      <range min="50" max="300"/>
+      <default>95</default>
+      <summary>Zoom of cava's bars, in percent</summary>
+      <description>About the bottom middle of the island: above 100 the bars grow wider and taller, past the island's sides; below it they shrink.</description>
+    </key>
+    <key name="cava-offset-x" type="i">
+      <range min="-300" max="300"/>
+      <default>0</default>
+      <summary>How far cava's bars are moved to the right, in pixels</summary>
+      <description>Negative moves them to the left.</description>
+    </key>
+    <key name="cava-offset-y" type="i">
+      <range min="-300" max="300"/>
+      <default>5</default>
+      <summary>How far cava's bars are moved up, in pixels</summary>
+      <description>Negative moves them down.</description>
+    </key>
+    <key name="cava-sensitivity" type="i">
+      <range min="20" max="400"/>
+      <default>100</default>
+      <summary>How strongly cava's bars answer the music, in percent</summary>
+      <description>Above 100 the bars rise higher for the same sound; below it, lower.</description>
+    </key>
+    <key name="cava-bars" type="i">
+      <range min="8" max="64"/>
+      <default>64</default>
+      <summary>How many bars cava draws</summary>
+    </key>
+    <key name="cava-smoothness" type="i">
+      <range min="0" max="100"/>
+      <default>70</default>
+      <summary>How smoothly cava's bars move</summary>
+      <description>Cava's noise reduction: higher is calmer, lower is quicker and jumpier.</description>
+    </key>
+    <key name="cava-source" type="s">
+      <choices>
+        <choice value="auto"/>
+        <choice value="pipewire"/>
+        <choice value="pulse"/>
+      </choices>
+      <default>'auto'</default>
+      <summary>Where cava listens</summary>
+      <description>"auto" tries PipeWire, then PulseAudio.</description>
+    </key>
     <key name="mini-bars-cover-color" type="b">
       <default>false</default>
       <summary>Colour the closed island's bars from the cover</summary>

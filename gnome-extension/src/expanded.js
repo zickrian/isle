@@ -134,6 +134,8 @@ export const ExpandedView = GObject.registerClass({
                 if (page === this.page)
                     this.emit('tint-changed');
             });
+            // Cava's bars on the lyrics page replace the header's little bars while they move.
+            page.connect('cava-changed', () => this._updateHeader());
             page.connect('tint-motion', (_page, time, level) => {
                 if (page === this.page)
                     this.emit('tint-motion', time, level);
@@ -351,6 +353,13 @@ export const ExpandedView = GObject.registerClass({
         }
         fence(this._pager);
         this.page.show();
+        // The music page's cava bars are the background of the island's open pages: under the pager, across the island
+        // to its sides, and down over the room below the pages (see `CavaBars`).
+        const cava = this._pages.find(page => page.name === 'music')?.cava;
+        if (cava) {
+            area.add_child(cava);
+            onUiScale(cava, scale => (cava.bleed = BOTTOM_PADDING * scale));
+        }
         area.add_child(this._pager);
         return area;
     }
@@ -699,7 +708,8 @@ export const ExpandedView = GObject.registerClass({
         const playing = Playback.isPlaying(nowPlaying);
         // There for as long as there is a song, dimmed while paused as on the closed island: play and
         // pause never change the header's width.
-        this._headerBars.visible = Playback.showsClosed(nowPlaying) && !this.pageNamed('music')?.hidden;
+        this._headerBars.visible = Playback.showsClosed(nowPlaying) && !this.pageNamed('music')?.hidden &&
+            !this.pageNamed('music')?.cavaLive;
         this._headerBars.opacity = playing ? 255 : PAUSED_BARS_OPACITY;
         this._headerBars.playing = this._active && playing;
 
