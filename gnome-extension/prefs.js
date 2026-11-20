@@ -413,6 +413,17 @@ export default class IslePreferences extends ExtensionPreferences {
                 ['right', 'Right'],
             ]));
         look.add(barClockShowsRow(settings));
+        look.add(switchRow(settings, 'compact-song-title', 'Song title in the island',
+            'While music plays, the closed island shows the song’s title and artist in place of the clock'));
+        const titleWidth = spinRow(settings, 'compact-title-width', 'Longest song title',
+            'The island widens for a long title and artist up to this width, in pixels; past it they scroll', 80, 600);
+        // Only while the title shows.
+        settings.bind('compact-song-title', titleWidth, 'sensitive', Gio.SettingsBindFlags.GET);
+        look.add(titleWidth);
+        look.add(switchRow(settings, 'mini-bars-cover-color', 'Cover colour for the bars',
+            'The little bars beside the song in the closed island take the cover’s main colour instead of white'));
+        look.add(switchRow(settings, 'dnd-icon', 'Do Not Disturb moon',
+            'A moon in the island while Do Not Disturb is on; Do Not Disturb stays on either way'));
         look.add(choiceRow(settings, 'open-size', 'Size', 'The open island, every page', [
             ['standard', 'Standard'],
             ['large', 'Large'],
