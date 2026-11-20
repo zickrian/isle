@@ -437,6 +437,8 @@ export default class IslePreferences extends ExtensionPreferences {
             'The little bars beside the song in the closed island take the cover’s main colour instead of white'));
         look.add(switchRow(settings, 'dnd-icon', 'Do Not Disturb moon',
             'A moon in the island while Do Not Disturb is on; Do Not Disturb stays on either way'));
+        look.add(switchRow(settings, 'keep-gnome-clock', 'Keep GNOME’s clock',
+            'GNOME’s own clock and its calendar stay in the top bar, to the right, out from under the island'));
         look.add(choiceRow(settings, 'open-size', 'Size', 'The open island, every page', [
             ['standard', 'Standard'],
             ['large', 'Large'],

@@ -159,6 +159,11 @@
       <summary>Show the island while changing its settings</summary>
       <description>When a setting changes in Isle's settings window, the island opens on what it changes (the lyrics for cava's bars, a page for its own settings) for a few seconds, then closes again.</description>
     </key>
+    <key name="keep-gnome-clock" type="b">
+      <default>false</default>
+      <summary>Keep GNOME's own clock in the top bar</summary>
+      <description>Isle hides GNOME's clock, as the island shows the time in its place. When on, GNOME's clock (and its calendar menu) stays in the top bar, moved to the right, beside the system menu, out from under the island.</description>
+    </key>
     <key name="clock-format" type="s">
       <choices>
         <choice value="system"/>
