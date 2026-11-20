@@ -14,6 +14,16 @@ All notable changes to Isle are listed here. The format follows
   be reached. The first synced lyrics win; plain words found on the way show at once and give way to synced ones.
   Musixmatch's key is entered in a drop-down row under API keys. Both are asked by the extension, not `isled`, are
   off until you switch them on, and are listed in SECURITY.md.
+- **The song's title and artist in the closed island** (Settings → Island → Appearance → Song title in the island). The island
+  widens for a long one up to Longest song title; past it, the text scrolls, its edges fading softly.
+- **The timer beside music**: the cover, the music bars and, in the centre, the time left. Alone, the timer shows an
+  alarm clock.
+- **Cover colour for the closed island's bars** and **a switch for the Do Not Disturb moon** (Do Not Disturb stays on).
+
+### Changed
+
+- A new song while one shows no longer swaps the closed island's cover and title at once: they fade out, the island
+  takes its new width, and they fade back in, so nothing is cut by its edge as it moves. The lyrics fade in as well.
 
 ## [1.7.3] - 2026-11-18
 
