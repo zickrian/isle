@@ -74,6 +74,9 @@
 .isle-level-fill { border-radius: 3px; background-color: #ffffff; }
 
 .isle-bars { spacing: 2px; }
+/* Cava's bars behind the player and the lyrics (their colours and heights are set in cava.js). */
+.isle-cava { spacing: 3px; }
+.isle-cava-bar { border-radius: 3px 3px 0 0; background-color: #ffffff; }
 .isle-bar { width: 3px; border-radius: 2px; background-color: #ffffff; }
 
 .isle-empty { spacing: 4px; }
@@ -169,6 +172,8 @@
 .isle-compact-end { padding-left: 30px; }
 
 .isle-compact-clock { font-size: 17px; font-weight: 600; letter-spacing: -0.2px; }
+/* The song's title and artist in the middle (Settings): a little quieter than the clock; marquee.js sizes and scrolls it. */
+.isle-compact-title { font-size: 14px; font-weight: 600; letter-spacing: -0.1px; }
 .isle-compact-clock-box { spacing: 6px; }
 /* AM or PM after the time with a 12-hour clock: 80% of its size, a little dimmer, a space's width from it. */
 .isle-compact-clock-row { spacing: 4px; }
@@ -180,6 +185,7 @@
 .isle-compact-in-bar .isle-compact-start { padding-right: 28px; }
 .isle-compact-in-bar .isle-compact-end { padding-left: 28px; }
 .isle-compact-in-bar .isle-compact-clock { font-size: 15px; letter-spacing: -0.1px; }
+.isle-compact-in-bar .isle-compact-title { font-size: 13px; }
 .isle-compact-in-bar .isle-compact-clock-row { spacing: 3px; }
 .isle-compact-in-bar .isle-compact-meridiem { font-size: 12px; }
 .isle-compact-in-bar .isle-compact-date { font-size: 15px; letter-spacing: -0.1px; }

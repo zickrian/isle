@@ -9,6 +9,7 @@ import GObject from 'gi://GObject';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
+import {CavaBars} from '../cava.js';
 import {vividColorOfFile} from '../colors.js';
 import {VERTICAL, onUiScale, px} from '../compat.js';
 import {EXPANDED_WIDTH, LARGE_WIDTH, PAGE_HEIGHT} from '../expanded.js';
@@ -58,7 +59,7 @@ export const MediaPage = GObject.registerClass({
     },
 }, class MediaPage extends Page {
     /** Builds all three layouts up front; only the mode's is shown. */
-    _init(daemon, audio, {height}) {
+    _init(daemon, audio, {height}, settings) {
         super._init(daemon, {
             style_class: 'isle-page isle-media',
             layout_manager: new Clutter.BinLayout(),
@@ -71,6 +72,7 @@ export const MediaPage = GObject.registerClass({
         /** The lyrics' pin (#62): the island stays open on them with the pointer away; see `holdsOpen`. */
         this._pinned = false;
         this._holding = false;
+        this._settings = settings;
         this._tint = null;
         this._tintPath = null;
         // Each layout has its own copy of these; they update together.
@@ -84,6 +86,14 @@ export const MediaPage = GObject.registerClass({
         this._playButtons = [];
         this._transports = [];
 
+        // Cava's bars (Settings) are the background of the player and the lyrics. The island's pager hosts them, under
+        // the pages, so that they reach the island's sides (see `ExpandedView._buildPager`).
+        this._cava = new CavaBars(this._settings);
+        this._cava.connect('live-changed', () => {
+            // The little bars (the header's, and by the title) give way while cava's move, and return with them gone.
+            this._lyricsBars.visible = !this._cava.live;
+            this.emit('cava-changed');
+        });
         this._player = this._buildPlayer();
         this._lyricsLayout = this._buildLyricsLayout();
         this._audioLayout = this._buildAudioLayout();
@@ -379,6 +389,34 @@ export const MediaPage = GObject.registerClass({
     uncover(past) {
         const covered = past - this.get_theme_node().get_padding(St.Side.RIGHT);
         this._lyricsPane.opacity = Math.round(255 * Math.min(1, Math.max(0, 1 - covered / px(UNCOVER_FADE))));
+        // Cava's bars span the island's width: not cut by its edge either.
+        this._cava.fade = this._lyricsPane.opacity / 255;
+    }
+
+    /** Cava's bars, which the island's pager puts behind its pages. */
+    get cava() {
+        return this._cava;
+    }
+
+    /** Whether cava's bars are on screen and moving behind the player or the lyrics: the island's own bars give way. */
+    get cavaLive() {
+        return Boolean(this._cava?.live) && this._cavaShown() && this.active;
+    }
+
+    /** The player and the lyrics have cava's bars behind them; the volume and outputs, and an empty page, do not. */
+    _cavaShown() {
+        return this._shown('player') || this._shown('lyrics');
+    }
+
+    /** Cava runs only with the player or the lyrics in the island; its bars take the colour of the cover's wash. */
+    _syncCava() {
+        if (!this._cava)
+            return;
+        this._cava.wash = this._tint;
+        // Only the lyrics are covered by the island's edge as it widens (see `uncover`).
+        if (!this._shown('lyrics'))
+            this._cava.fade = 1;
+        this._cava.active = this._cavaShown() && this.active && !this._destroyed;
     }
 
     /** Whether the lyrics are pinned open (the island's to keep so; it unpins them as it closes). */
@@ -476,6 +514,7 @@ export const MediaPage = GObject.registerClass({
         this._lyricsLayout.visible = this._shown('lyrics');
         this._audioLayout.visible = this._shown('audio');
         this._syncHold();
+        this._syncCava();
         return hasTrack;
     }
 
@@ -601,6 +640,8 @@ export const MediaPage = GObject.registerClass({
             if (key !== this._tintPath || this._destroyed)
                 return;
             this._tint = vividColorOfFile(cover ?? path);
+            if (this._cava)
+                this._cava.wash = this._tint;
             if (this._shown('lyrics'))
                 this.emit('tint-changed');
         });
@@ -637,6 +678,7 @@ export const MediaPage = GObject.registerClass({
     /** Starts the bars, the clock and the lyrics' scrolling. */
     onActivate() {
         this._syncWatching();
+        this._syncCava();
         this._syncBars();
         this._tickProgress();
         this._lyricsPane.follow();
@@ -645,6 +687,7 @@ export const MediaPage = GObject.registerClass({
     /** Stops the bars and leaves the audio view. */
     onDeactivate() {
         this._lyricsBars.playing = false;
+        this._syncCava();
         // Reopening the island starts on the player, not a sub-view.
         if (this._mode === 'audio')
             this._toggleMode('audio');

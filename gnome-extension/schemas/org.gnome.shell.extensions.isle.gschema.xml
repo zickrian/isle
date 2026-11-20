@@ -58,6 +58,102 @@
       <summary>What Isle's clock in the top bar shows</summary>
       <description>"time": 20:40. "day": Wed 20:40. "date": Wed 18 Nov 20:40. The time 12- or 24-hour as clock-format says.</description>
     </key>
+    <key name="compact-song-title" type="b">
+      <default>false</default>
+      <summary>Show the song's title and artist in the closed island</summary>
+      <description>While a song plays (or is paused) on the closed island, its title and artist take the clock's place in the middle. A running timer still shows its time left there.</description>
+    </key>
+    <key name="compact-title-width" type="i">
+      <range min="80" max="600"/>
+      <default>200</default>
+      <summary>How wide the song's title and artist may grow the island</summary>
+      <description>In pixels. The island widens for a long title and artist up to this width; past it, they scroll.</description>
+    </key>
+    <key name="dnd-icon" type="b">
+      <default>true</default>
+      <summary>Show a moon in the island while Do Not Disturb is on</summary>
+      <description>Do Not Disturb stays on whether the moon shows or not; this only says whether the closed island shows it.</description>
+    </key>
+    <key name="lyrics-provider-order" type="as">
+      <default>['lrclib', 'musixmatch', 'netease']</default>
+      <summary>The order lyrics providers are asked in</summary>
+      <description>The first is asked first; if it has no lyrics for the song, or cannot be reached, the next is asked. Providers left out of the list are asked last.</description>
+    </key>
+    <key name="lyrics-providers-off" type="as">
+      <default>['musixmatch', 'netease']</default>
+      <summary>Lyrics providers that are turned off</summary>
+      <description>Providers listed here are not asked. Only LRCLIB is on until the others are switched on in Settings; Musixmatch is also left out while it has no API key.</description>
+    </key>
+    <key name="musixmatch-api-key" type="s">
+      <default>''</default>
+      <summary>Musixmatch API key</summary>
+      <description>From developer.musixmatch.com. Kept in plain text, in Isle's settings.</description>
+    </key>
+    <key name="cava-enabled" type="b">
+      <default>false</default>
+      <summary>Show cava's bars behind the player and the lyrics</summary>
+      <description>Needs cava to be installed. Cava runs only while the player or the lyrics are on show.</description>
+    </key>
+    <key name="cava-height-pct" type="i">
+      <range min="10" max="100"/>
+      <default>60</default>
+      <summary>How high cava's bars may rise, in percent of the page</summary>
+    </key>
+    <key name="cava-opacity" type="i">
+      <range min="10" max="100"/>
+      <default>50</default>
+      <summary>How strongly cava's bars show behind the player and the lyrics, in percent</summary>
+    </key>
+    <key name="cava-zoom" type="i">
+      <range min="50" max="300"/>
+      <default>95</default>
+      <summary>Zoom of cava's bars, in percent</summary>
+      <description>About the bottom middle of the island: above 100 the bars grow wider and taller, past the island's sides; below it they shrink.</description>
+    </key>
+    <key name="cava-offset-x" type="i">
+      <range min="-300" max="300"/>
+      <default>0</default>
+      <summary>How far cava's bars are moved to the right, in pixels</summary>
+      <description>Negative moves them to the left.</description>
+    </key>
+    <key name="cava-offset-y" type="i">
+      <range min="-300" max="300"/>
+      <default>5</default>
+      <summary>How far cava's bars are moved up, in pixels</summary>
+      <description>Negative moves them down.</description>
+    </key>
+    <key name="cava-sensitivity" type="i">
+      <range min="20" max="400"/>
+      <default>100</default>
+      <summary>How strongly cava's bars answer the music, in percent</summary>
+      <description>Above 100 the bars rise higher for the same sound; below it, lower.</description>
+    </key>
+    <key name="cava-bars" type="i">
+      <range min="8" max="64"/>
+      <default>64</default>
+      <summary>How many bars cava draws</summary>
+    </key>
+    <key name="cava-smoothness" type="i">
+      <range min="0" max="100"/>
+      <default>70</default>
+      <summary>How smoothly cava's bars move</summary>
+      <description>Cava's noise reduction: higher is calmer, lower is quicker and jumpier.</description>
+    </key>
+    <key name="cava-source" type="s">
+      <choices>
+        <choice value="auto"/>
+        <choice value="pipewire"/>
+        <choice value="pulse"/>
+      </choices>
+      <default>'auto'</default>
+      <summary>Where cava listens</summary>
+      <description>"auto" tries PipeWire, then PulseAudio.</description>
+    </key>
+    <key name="mini-bars-cover-color" type="b">
+      <default>false</default>
+      <summary>Colour the closed island's bars from the cover</summary>
+      <description>The little bars that dance beside the song take the cover's main colour instead of white.</description>
+    </key>
     <key name="clock-format" type="s">
       <choices>
         <choice value="system"/>

@@ -24,6 +24,9 @@ import {HAS_ACCENT, grabsKeyboard, inhibitScanout, isWayland, onUiScale, px, uiS
 import {Daemon} from './daemon.js';
 import {BOTTOM_PADDING, ExpandedView, PAGE_HEIGHT} from './expanded.js';
 import {Island} from './island.js';
+import {LyricsEngine} from './lyricsEngine.js';
+import {createLyricsCache} from './lyricsCache.js';
+import {createHttp} from './lyricsHttp.js';
 import {MirrorIsland} from './mirror.js';
 import {AudioOutputs} from './audio.js';
 import {CallMonitor} from './call.js';
@@ -427,7 +430,7 @@ export class Controller {
         const size = {height: PAGE_HEIGHT};
         return [
             () => new CallPage(this._daemon, this._call, this._privacy, this._settings, size),
-            () => new MediaPage(this._daemon, this._audio, size),
+            () => new MediaPage(this._daemon, this._audio, size, this._settings),
             () => new NotificationsPage(this._daemon, this._notifications, size),
             () => new TimerPage(this._daemon, size),
             () => new TasksPage(this._daemon, size),
@@ -1254,10 +1257,34 @@ export class Controller {
         });
     }
 
-    /** Lyrics are looked up online only for the Music page, and only while it is in the island. */
+    /** Lyrics are looked up online only for the Music page, and only while it is in the island. Which providers are
+     * asked, and in what order, is Settings' (see lyricsEngine.js); with LRCLIB alone, isled's lyrics are the page's. */
     _syncLyrics() {
-        this._daemon.call('media', 'SetLyrics', this._settings.get_boolean('lyrics-online') &&
+        this._lyrics ??= this._startLyrics();
+        this._lyrics.setWanted(this._settings.get_boolean('lyrics-online') &&
             !this._settings.get_strv('hidden-pages').includes('music'));
+    }
+
+    /** The lyrics engine, with a web session, a cache on disk and timers on the main loop. */
+    _startLyrics() {
+        this._lyricsHttp = createHttp();
+        const schedule = (ms, run) => {
+            let live = true;
+            const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+                live = false;
+                run();
+                return GLib.SOURCE_REMOVE;
+            });
+            // Cancelled once it has run: nothing to remove.
+            return () => {
+                if (live) {
+                    live = false;
+                    GLib.source_remove(id);
+                }
+            };
+        };
+        return new LyricsEngine({daemon: this._daemon, settings: this._settings, http: this._lyricsHttp, schedule,
+            cache: createLyricsCache()});
     }
 
     /** An event starts soon: an alert, with Join when the event has a meeting link. Not in Do Not Disturb. */
@@ -3319,6 +3346,8 @@ export class Controller {
         this._audio.destroy();
         this._notifications.destroy();
         this._topBar.destroy();
+        this._lyrics?.destroy();
+        this._lyricsHttp?.destroy();
         this._daemon.destroy();
         this._settings = null;
         Format.release();
