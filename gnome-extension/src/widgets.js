@@ -586,6 +586,15 @@ class Bars extends St.BoxLayout {
         onUiScale(this, () => (this.maxHeight = this._maxHeight));
     }
 
+    /** The bars' colour (a CSS colour), or null for the style's own (white). */
+    set color(color) {
+        const value = color ?? null;
+        if (value === this._color)
+            return;
+        this._color = value;
+        this._bars.forEach(bar => (bar.style = value ? `background-color: ${value};` : ''));
+    }
+
     /** The tallest a bar gets, in CSS pixels. */
     set maxHeight(height) {
         this._maxHeight = height;

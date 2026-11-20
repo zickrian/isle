@@ -58,6 +58,27 @@
       <summary>What Isle's clock in the top bar shows</summary>
       <description>"time": 20:40. "day": Wed 20:40. "date": Wed 18 Nov 20:40. The time 12- or 24-hour as clock-format says.</description>
     </key>
+    <key name="compact-song-title" type="b">
+      <default>false</default>
+      <summary>Show the song's title and artist in the closed island</summary>
+      <description>While a song plays (or is paused) on the closed island, its title and artist take the clock's place in the middle. A running timer still shows its time left there.</description>
+    </key>
+    <key name="compact-title-width" type="i">
+      <range min="80" max="600"/>
+      <default>200</default>
+      <summary>How wide the song's title and artist may grow the island</summary>
+      <description>In pixels. The island widens for a long title and artist up to this width; past it, they scroll.</description>
+    </key>
+    <key name="dnd-icon" type="b">
+      <default>true</default>
+      <summary>Show a moon in the island while Do Not Disturb is on</summary>
+      <description>Do Not Disturb stays on whether the moon shows or not; this only says whether the closed island shows it.</description>
+    </key>
+    <key name="mini-bars-cover-color" type="b">
+      <default>false</default>
+      <summary>Colour the closed island's bars from the cover</summary>
+      <description>The little bars that dance beside the song take the cover's main colour instead of white.</description>
+    </key>
     <key name="clock-format" type="s">
       <choices>
         <choice value="system"/>
