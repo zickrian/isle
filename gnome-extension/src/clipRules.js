@@ -22,3 +22,25 @@ export function thumbSize(width, height, density) {
     // St rounds lengths to whole CSS px: the longer side, so the image keeps its shape best.
     return width >= height ? `${Math.round(width / scale)}px` : `auto ${Math.round(height / scale)}px`;
 }
+
+/** Next selected card index for an arrow step (`dx` for ←/→, `dy` for ↑/↓) in a `columns`-wide grid. */
+export function stepSelection(current, count, {dx = 0, dy = 0} = {}, {vertical = false, columns = 1} = {}) {
+    if (count <= 0)
+        return 0;
+    const clamped = Math.min(count - 1, Math.max(0, current));
+    const cols = vertical ? Math.max(1, columns) : 1;
+    if (cols === 1)
+        return Math.min(count - 1, Math.max(0, clamped + dx + dy));
+    if (dx !== 0)
+        return Math.min(count - 1, Math.max(0, clamped + dx));
+    if (dy < 0)
+        return clamped >= cols ? clamped - cols : clamped;
+    if (dy > 0) {
+        const row = Math.floor(clamped / cols);
+        const lastRow = Math.floor((count - 1) / cols);
+        if (row >= lastRow)
+            return clamped;
+        return Math.min(count - 1, clamped + cols);
+    }
+    return clamped;
+}

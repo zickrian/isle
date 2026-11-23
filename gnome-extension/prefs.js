@@ -340,6 +340,64 @@ export default class IslePreferences extends ExtensionPreferences {
             return false;
         });
         describe();
+        history.add(choiceRow(settings, 'clipboard-layout', 'Layout', 'How copied items are arranged', [
+            ['horizontal', 'Horizontal'],
+            ['vertical', 'Vertical'],
+        ]));
+        const columns = new Adw.ActionRow({
+            title: 'Columns',
+            subtitle: 'Cards per row in vertical layout',
+        });
+        const columnsBox = new Gtk.Box({css_classes: ['linked'], valign: Gtk.Align.CENTER});
+        let firstColumn = null;
+        const columnButtons = [1, 2, 3].map(n => {
+            const button = new Gtk.ToggleButton({
+                label: String(n),
+                ...(firstColumn ? {group: firstColumn} : {}),
+            });
+            firstColumn ??= button;
+            button.connect('toggled', () => {
+                if (button.active && settings.get_int('clipboard-columns') !== n)
+                    settings.set_int('clipboard-columns', n);
+            });
+            columnsBox.append(button);
+            return [n, button];
+        });
+        const syncColumns = () => {
+            const current = settings.get_int('clipboard-columns');
+            for (const [n, button] of columnButtons)
+                button.active = current === n;
+        };
+        syncColumns();
+        const columnsChanged = settings.connect('changed::clipboard-columns', syncColumns);
+        columns.connect('destroy', () => settings.disconnect(columnsChanged));
+        columns.add_suffix(columnsBox);
+        columns.visible = settings.get_string('clipboard-layout') === 'vertical';
+        history.add(columns);
+        const width = Adw.SpinRow.new_with_range(400, 1200, 20);
+        width.title = 'Width';
+        width.subtitle = 'In pixels';
+        settings.bind('clipboard-width', width, 'value', Gio.SettingsBindFlags.DEFAULT);
+        history.add(width);
+        const height = Adw.SpinRow.new_with_range(150, 800, 20);
+        height.title = 'Height';
+        height.subtitle = 'In pixels';
+        settings.bind('clipboard-height', height, 'value', Gio.SettingsBindFlags.DEFAULT);
+        const layoutChanged = settings.connect('changed::clipboard-layout', () => {
+            const vertical = settings.get_string('clipboard-layout') === 'vertical';
+            columns.visible = vertical;
+            const current = settings.get_int('clipboard-height');
+            if (vertical && current === 150)
+                settings.set_int('clipboard-height', 360);
+            else if (!vertical && current === 360)
+                settings.reset('clipboard-height');
+        });
+        height.connect('destroy', () => settings.disconnect(layoutChanged));
+        history.add(height);
+        history.add(switchRow(settings, 'clipboard-paste-keyboard', 'Auto-paste with keyboard',
+            'Pressing Enter pastes into the active window; when off, it only copies'));
+        history.add(switchRow(settings, 'clipboard-paste-mouse', 'Auto-paste on click',
+            'Clicking an item pastes into the active window; when off, it only copies'));
         const clear = new Adw.ActionRow({title: 'Clear history', subtitle: 'Pinned items are kept'});
         const clearButton = new Gtk.Button({label: 'Clear…', valign: Gtk.Align.CENTER});
         clearButton.connect('clicked', () => confirmClear(window));

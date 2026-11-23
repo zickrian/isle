@@ -12,8 +12,8 @@ import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
-import {thumbSize} from '../clipRules.js';
-import {VERTICAL, onUiScale, uiScale} from '../compat.js';
+import {stepSelection, thumbSize} from '../clipRules.js';
+import {VERTICAL, onUiScale, px, uiScale} from '../compat.js';
 import * as Format from '../format.js';
 import {icon, iconButton, label, scrollSideways, wrapLines} from '../widgets.js';
 import {SHELF_CAPACITY} from './files.js';
@@ -24,10 +24,99 @@ const MAX_PINNED = 10;
 /** Cards drawn at once (about a screenful); the rest follow a few per frame so opening never stutters. */
 const FIRST_CARDS = 6;
 const CARDS_PER_IDLE = 6;
+/** Room between cards in CSS pixels (matches `.isle-clips`). */
+const GAP = 8;
 /** How long "Copied" and friends stay on a card. */
 const FEEDBACK_MS = 900;
 /** Looks like code: braces, semicolons at line ends, arrows, tags, indents. */
 const CODE_PATTERN = /[{};]\s*$|=>|<\/?[a-z][\w-]*>|^\s{2,}\S|\b(function|const|def|class|import|return)\b/m;
+
+// Lays out visible clipboard cards in one horizontal row, or in 1–3 equal-width vertical columns on whole pixels.
+const ClipsGrid = GObject.registerClass(
+class ClipsGrid extends Clutter.LayoutManager {
+    _init() {
+        super._init();
+        this._vertical = false;
+        this._columns = 1;
+    }
+
+    set vertical(vertical) {
+        if (vertical === this._vertical)
+            return;
+        this._vertical = vertical;
+        this.layout_changed();
+    }
+
+    set columns(columns) {
+        if (columns === this._columns)
+            return;
+        this._columns = columns;
+        this.layout_changed();
+    }
+
+    _visible(container) {
+        return container.get_children().filter(child => child.visible);
+    }
+
+    _cardHeight(cards, cellWidth) {
+        return cards.length > 0 ? cards[0].get_preferred_height(cellWidth)[1] : 0;
+    }
+
+    vfunc_get_preferred_width(container, forHeight) {
+        if (this._vertical)
+            return [0, 0];
+        const cards = this._visible(container);
+        if (cards.length === 0)
+            return [0, 0];
+        const gap = px(GAP);
+        const [, cardWidth] = cards[0].get_preferred_width(forHeight);
+        return [0, cards.length * cardWidth + (cards.length - 1) * gap];
+    }
+
+    vfunc_get_preferred_height(container, forWidth) {
+        const cards = this._visible(container);
+        if (cards.length === 0)
+            return [0, 0];
+        const gap = px(GAP);
+        if (!this._vertical) {
+            const height = this._cardHeight(cards, -1);
+            return [height, height];
+        }
+        const cols = this._columns;
+        const cellWidth = forWidth >= 0 ? Math.max(0, (forWidth - gap * (cols - 1)) / cols) : -1;
+        const rowHeight = this._cardHeight(cards, cellWidth);
+        const rows = Math.ceil(cards.length / cols);
+        const height = rows * rowHeight + (rows - 1) * gap;
+        return [height, height];
+    }
+
+    vfunc_allocate(container, box) {
+        const cards = this._visible(container);
+        if (cards.length === 0)
+            return;
+        const gap = px(GAP);
+        if (!this._vertical) {
+            const [, cardWidth] = cards[0].get_preferred_width(-1);
+            const cardHeight = this._cardHeight(cards, cardWidth);
+            cards.forEach((card, index) => {
+                const x = box.x1 + index * (cardWidth + gap);
+                card.allocate(Clutter.ActorBox.new(Math.round(x), box.y1, Math.round(x + cardWidth), box.y1 + cardHeight));
+            });
+            return;
+        }
+        const cols = this._columns;
+        const width = box.get_width();
+        const cell = Math.max(0, (width - gap * (cols - 1)) / cols);
+        const rowHeight = this._cardHeight(cards, cell);
+        cards.forEach((card, index) => {
+            const col = index % cols;
+            const row = Math.floor(index / cols);
+            const x = box.x1 + col * (cell + gap);
+            const y = box.y1 + row * (rowHeight + gap);
+            card.allocate(Clutter.ActorBox.new(Math.round(x), Math.round(y), Math.round(x + cell), Math.round(y + rowHeight)));
+        });
+    }
+});
 
 /** The app that an item was copied from, if it is still installed. */
 function appFor(appId) {
@@ -76,6 +165,8 @@ export const ClipsView = GObject.registerClass({
         this._searches = 0;
         this._selected = 0;
         this._keyboard = false;
+        this._vertical = false;
+        this._columns = 1;
         /** Every item, pinned first; the cards of those that match `kind` and `query` show. */
         this._all = [];
         this._shown = [];
@@ -84,7 +175,8 @@ export const ClipsView = GObject.registerClass({
         /** A card's "Copied" (or similar), kept across redraws while it shows. */
         this._flashing = null;
 
-        this._strip = new St.BoxLayout({style_class: 'isle-clips'});
+        this._layout = new ClipsGrid();
+        this._strip = new St.Viewport({style_class: 'isle-clips', layout_manager: this._layout});
         this._scroll = new St.ScrollView({
             style_class: 'isle-clips-scroll',
             hscrollbar_policy: St.PolicyType.EXTERNAL,
@@ -118,6 +210,45 @@ export const ClipsView = GObject.registerClass({
         for (const card of this._cards.values()) {
             const [ageLabel, age] = card._age;
             ageLabel.text = Format.ago(age);
+        }
+    }
+
+    /** Switches between a horizontal row of cards and a vertical stack of cards. */
+    set vertical(vertical) {
+        vertical = Boolean(vertical);
+        if (vertical === this._vertical)
+            return;
+        this._vertical = vertical;
+        this._layout.vertical = vertical;
+        if (vertical) {
+            this._strip.add_style_class_name('isle-clips-vertical');
+            this._scroll.add_style_class_name('isle-clips-scroll-vertical');
+            this._scroll.hscrollbar_policy = St.PolicyType.NEVER;
+            this._scroll.vscrollbar_policy = St.PolicyType.EXTERNAL;
+        } else {
+            this._strip.remove_style_class_name('isle-clips-vertical');
+            this._scroll.remove_style_class_name('isle-clips-scroll-vertical');
+            this._scroll.hscrollbar_policy = St.PolicyType.EXTERNAL;
+            this._scroll.vscrollbar_policy = St.PolicyType.NEVER;
+        }
+        for (const card of this._cards.values())
+            card.destroy();
+        this._cards.clear();
+        this._filter();
+    }
+
+    /** Sets how many columns vertical mode shows (1 to 3). */
+    set columns(columns) {
+        columns = Math.min(3, Math.max(1, Math.trunc(columns) || 1));
+        if (columns === this._columns)
+            return;
+        this._columns = columns;
+        this._layout.columns = columns;
+        if (this._vertical) {
+            for (const card of this._cards.values())
+                card.destroy();
+            this._cards.clear();
+            this._filter();
         }
     }
 
@@ -219,7 +350,8 @@ export const ClipsView = GObject.registerClass({
             card.visible = ids.has(id);
 
         this._cancelPending();
-        this._addCards(FIRST_CARDS, FIRST_CARDS);
+        const first = this._vertical ? FIRST_CARDS * this._columns : FIRST_CARDS;
+        this._addCards(first, first);
         if (this._undrawn()) {
             this._pending = GLib.idle_add(GLib.PRIORITY_LOW, () => {
                 this._addCards(CARDS_PER_IDLE);
@@ -299,24 +431,39 @@ export const ClipsView = GObject.registerClass({
         this._syncSelection();
     }
 
-    /** Moves the keyboard selection by `step` cards. */
+    /** Moves the keyboard selection by `{dx, dy}` (or a flat `step`) across the cards shown. */
     moveSelection(step) {
         if (this._shown.length === 0)
             return;
-        this._selected = Math.min(this._shown.length - 1, Math.max(0, this._selected + step));
+        const delta = typeof step === 'number' ? {dx: step} : step;
+        this._selected = stepSelection(this._selected, this._shown.length, delta, {
+            vertical: this._vertical,
+            columns: this._columns,
+        });
         // Arrowing faster than the cards are drawn.
         this._addCards(Infinity, this._selected + 1);
         // Keep the selected card in view.
-        // Cards just drawn have no position yet; all are the same width.
+        // Cards just drawn have no position yet; all are the same size along the strip.
         const first = this._cards.get(this._shown[0].id);
-        const spacing = this._strip.get_theme_node().get_length('spacing');
-        const width = first.width;
-        const x = this._selected * (width + spacing);
-        const adjustment = this._scroll.hadjustment;
-        if (x < adjustment.value)
-            adjustment.ease(x, {duration: 150, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
-        else if (x + width > adjustment.value + adjustment.page_size)
-            adjustment.ease(x + width - adjustment.page_size, {duration: 150, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        const spacing = px(GAP);
+        if (this._vertical) {
+            const height = first.height;
+            const row = Math.floor(this._selected / this._columns);
+            const y = row * (height + spacing);
+            const adjustment = this._scroll.vadjustment;
+            if (y < adjustment.value)
+                adjustment.ease(y, {duration: 150, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+            else if (y + height > adjustment.value + adjustment.page_size)
+                adjustment.ease(y + height - adjustment.page_size, {duration: 150, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        } else {
+            const width = first.width;
+            const x = this._selected * (width + spacing);
+            const adjustment = this._scroll.hadjustment;
+            if (x < adjustment.value)
+                adjustment.ease(x, {duration: 150, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+            else if (x + width > adjustment.value + adjustment.page_size)
+                adjustment.ease(x + width - adjustment.page_size, {duration: 150, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        }
     }
 
     /** Chooses the selected card, as Enter does. */
@@ -346,6 +493,8 @@ export const ClipsView = GObject.registerClass({
 
     /** Any wheel direction moves the strip sideways, once it overflows. */
     _onScroll(event) {
+        if (this._vertical)
+            return Clutter.EVENT_PROPAGATE;
         return scrollSideways(this._scroll, event);
     }
 
@@ -353,12 +502,15 @@ export const ClipsView = GObject.registerClass({
 
     /** Body, hover actions, header and a feedback layer, stacked. */
     _card(item) {
+        const modeClass = this._vertical
+            ? (this._columns >= 3 ? 'isle-clip-vertical isle-clip-compact' : 'isle-clip-vertical')
+            : 'isle-clip-horizontal';
         const card = new St.Widget({
-            style_class: `isle-clip isle-clip-${item.kind}`,
+            style_class: `isle-clip ${modeClass} isle-clip-${item.kind}`,
             layout_manager: new Clutter.BinLayout(),
             reactive: true,
             track_hover: true,
-            x_expand: false,
+            x_expand: this._vertical,
             y_expand: false,
             // At its own height, from the row's top: a taller page doesn't stretch it.
             y_align: Clutter.ActorAlign.START,
@@ -457,6 +609,39 @@ export const ClipsView = GObject.registerClass({
     _body(item) {
         switch (item.kind) {
         case 'image': {
+            const uri = item.thumb ? `background-image: url("${GLib.filename_to_uri(item.thumb, null).replace(/"/g, '%22')}");` : null;
+            if (this._vertical) {
+                const layers = new St.Widget({layout_manager: new Clutter.BinLayout(), x_expand: true, y_expand: true});
+                const thumb = new St.Widget({
+                    style_class: 'isle-clip-thumb-box',
+                    x_expand: true,
+                    y_expand: true,
+                    x_align: Clutter.ActorAlign.START,
+                    y_align: Clutter.ActorAlign.CENTER,
+                });
+                if (uri)
+                    thumb.style = uri;
+                layers.add_child(thumb);
+                const meta = new St.BoxLayout({
+                    style_class: 'isle-clip-body isle-clip-files-row',
+                    x_expand: true,
+                    y_expand: true,
+                });
+                if (this._columns >= 3 && item.width && item.height) {
+                    const dims = label(`${item.width}×${item.height}`, 'isle-clip-file-name', {y_align: Clutter.ActorAlign.CENTER});
+                    dims.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+                    meta.add_child(dims);
+                } else {
+                    meta.add_child(label('Image', 'isle-clip-file-name', {y_align: Clutter.ActorAlign.CENTER}));
+                    if (item.width && item.height) {
+                        const dims = label(`${item.width} × ${item.height}`, 'isle-clip-subtle', {y_align: Clutter.ActorAlign.CENTER});
+                        dims.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+                        meta.add_child(dims);
+                    }
+                }
+                layers.add_child(meta);
+                return layers;
+            }
             const body = new St.Widget({style_class: 'isle-clip-thumb', x_expand: true, y_expand: true});
             if (item.thumb) {
                 const uri = GLib.filename_to_uri(item.thumb, null).replace(/"/g, '%22');
@@ -483,9 +668,24 @@ export const ClipsView = GObject.registerClass({
             return layers;
         }
         case 'files': {
-            const box = new St.BoxLayout({...VERTICAL, style_class: 'isle-clip-body', x_expand: true, y_expand: true});
             const names = item.preview.split('\n');
             const [type] = Gio.content_type_guess(names[0], null);
+            if (this._vertical) {
+                const box = new St.BoxLayout({style_class: 'isle-clip-body isle-clip-files-row', x_expand: true, y_expand: true});
+                box.add_child(new St.Icon({
+                    gicon: Gio.content_type_get_icon(type),
+                    icon_size: 20,
+                    style_class: 'isle-clip-file-icon',
+                    y_align: Clutter.ActorAlign.CENTER,
+                }));
+                const name = label(names[0], 'isle-clip-file-name', {x_expand: true, y_align: Clutter.ActorAlign.CENTER});
+                name.clutter_text.ellipsize = Pango.EllipsizeMode.MIDDLE;
+                box.add_child(name);
+                if (names.length > 1)
+                    box.add_child(label(`+${names.length - 1} more`, 'isle-clip-subtle', {y_align: Clutter.ActorAlign.CENTER}));
+                return box;
+            }
+            const box = new St.BoxLayout({...VERTICAL, style_class: 'isle-clip-body', x_expand: true, y_expand: true});
             box.add_child(new St.Icon({gicon: Gio.content_type_get_icon(type), icon_size: 28, style_class: 'isle-clip-file-icon', x_align: Clutter.ActorAlign.START}));
             const name = label(names[0], 'isle-clip-file-name');
             name.clutter_text.ellipsize = Pango.EllipsizeMode.MIDDLE;
@@ -511,7 +711,8 @@ export const ClipsView = GObject.registerClass({
             // Leading blank lines and long runs of spaces waste the card.
             const shown = code ? item.preview.replace(/^\s*\n/, '') : item.preview.replace(/\s+/g, ' ').trim();
             // The card's height for its lines: else the text asks for one line and is cut there.
-            const text = label(shown.slice(0, 160), code ? 'isle-clip-text isle-clip-code' : 'isle-clip-text',
+            const limit = this._vertical ? 300 : 160;
+            const text = label(shown.slice(0, limit), code ? 'isle-clip-text isle-clip-code' : 'isle-clip-text',
                 {y_expand: true, y_align: Clutter.ActorAlign.FILL});
             wrapLines(text, Pango.EllipsizeMode.END);
             box.add_child(text);

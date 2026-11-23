@@ -8,7 +8,7 @@ import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 
-import {VERTICAL, onUiScale} from '../compat.js';
+import {VERTICAL, onUiScale, px} from '../compat.js';
 import {isShelfCopy} from '../downloads.js';
 import {DropLight} from '../dropLight.js';
 import {Thumbnails} from '../thumbnails.js';
@@ -42,6 +42,8 @@ const SHARE_ERROR_MS = 5000;
 const COLOR_WAIT_MS = 400;
 /** A dragged file's colour comes from its preview, read within this long or not at all. */
 const COLOR_LATE_MS = 1500;
+/** Default clipboard height in vertical mode when unset in Settings. */
+const VERTICAL_DEFAULT_HEIGHT = 360;
 
 /** The Shelf page; `_clips` and `_files` draw its two tabs. */
 export const ShelfPage = GObject.registerClass({
@@ -92,6 +94,8 @@ export const ShelfPage = GObject.registerClass({
         });
 
         this._clips = new ClipsView(daemon);
+        this._clips.vertical = this._isVertical;
+        this._clips.columns = this._clipboardColumns;
         this._clips.connect('activated', (_view, item, paste) => this._onActivated(item, paste));
         this._thumbnails = new Thumbnails();
         this._files = new FilesView(daemon, this._thumbnails);
@@ -131,13 +135,33 @@ export const ShelfPage = GObject.registerClass({
                 this._syncRefusal();
         });
         this.watch(['share'], () => this._syncShare());
-        this._settingsChanged = settings.connect('changed::clipboard-history', () => this._refresh('clips'));
+        this._settingsIds = [
+            settings.connect('changed::clipboard-history', () => this._refresh('clips')),
+            settings.connect('changed::clipboard-layout', () => {
+                this._clips.vertical = this._isVertical;
+                this._syncSize();
+                this.markCold({force: true});
+            }),
+            settings.connect('changed::clipboard-columns', () => {
+                this._clips.columns = this._clipboardColumns;
+                this.markCold({force: true});
+            }),
+            settings.connect('changed::clipboard-width', () => {
+                this._syncSize();
+                this.markCold({force: true});
+            }),
+            settings.connect('changed::clipboard-height', () => {
+                this._syncSize();
+                this.markCold({force: true});
+            }),
+        ];
         this.connect('destroy', () => {
             this._destroyed = true;
-            settings.disconnect(this._settingsChanged);
+            this._settingsIds.forEach(id => settings.disconnect(id));
             this._thumbnails.destroy();
             this._light.destroy();
         });
+        this._syncSize();
         this._updateClips();
         this._updateFilesHint();
         this._syncShare();
@@ -312,8 +336,50 @@ export const ShelfPage = GObject.registerClass({
             this._search.text = '';
             this._openSearch();
         }
-        if (changed)
+        if (changed) {
+            this._syncSize();
             this.emit('helper-area-changed');
+        }
+    }
+
+    /** Whether the clipboard tab stacks cards vertically. */
+    get _isVertical() {
+        return this._settings.get_string('clipboard-layout') === 'vertical';
+    }
+
+    /** Number of columns in vertical clipboard layout (1 to 3). */
+    get _clipboardColumns() {
+        return this._settings.get_int('clipboard-columns');
+    }
+
+    /** The clipboard tab's height in CSS pixels. */
+    get _clipboardHeight() {
+        if (this._settings.get_user_value('clipboard-height'))
+            return this._settings.get_int('clipboard-height');
+        return this._isVertical ? VERTICAL_DEFAULT_HEIGHT : super.pageHeight;
+    }
+
+    /** Island width while the Clipboard tab is open, or null for the standard width on Files. */
+    get preferredWidth() {
+        return this._tab === 'clipboard' ? px(this._settings.get_int('clipboard-width')) : null;
+    }
+
+    /** Its height in CSS pixels: the Clipboard tab's own (Settings → Clipboard History), else the standard. */
+    get pageHeight() {
+        // Asked from `Page._init` too, before the settings are here.
+        if (!this._settings || this._tab !== 'clipboard')
+            return super.pageHeight;
+        return this._clipboardHeight;
+    }
+
+    set pageHeight(height) {
+        super.pageHeight = height;
+    }
+
+    /** Applies the current tab's size and tells the island, which resizes to it. */
+    _syncSize() {
+        this.height = px(this.pageHeight);
+        this.emit('width-changed');
     }
 
     /** Each tab's controls in the bar, and the phone's code beside the Phone tab. */
@@ -628,15 +694,19 @@ export const ShelfPage = GObject.registerClass({
         // The keypad's arrows too: Num Lock on, they are not the plain ones.
         case Clutter.KEY_Left:
         case Clutter.KEY_KP_Left:
-        case Clutter.KEY_Up:
-        case Clutter.KEY_KP_Up:
-            this._clips.moveSelection(-1);
+            this._clips.moveSelection({dx: -1});
             return Clutter.EVENT_STOP;
         case Clutter.KEY_Right:
         case Clutter.KEY_KP_Right:
+            this._clips.moveSelection({dx: 1});
+            return Clutter.EVENT_STOP;
+        case Clutter.KEY_Up:
+        case Clutter.KEY_KP_Up:
+            this._clips.moveSelection({dy: -1});
+            return Clutter.EVENT_STOP;
         case Clutter.KEY_Down:
         case Clutter.KEY_KP_Down:
-            this._clips.moveSelection(1);
+            this._clips.moveSelection({dy: 1});
             return Clutter.EVENT_STOP;
         case Clutter.KEY_Escape:
             // First Esc clears the search; the next one closes the island.
@@ -649,8 +719,9 @@ export const ShelfPage = GObject.registerClass({
         }
     }
 
-    /** Copies the item back to the clipboard, and with `paste` types it into the window behind. */
-    async _onActivated(item, paste) {
+    /** Copies the item back to the clipboard, and pastes it into the window behind when enabled for that input. */
+    async _onActivated(item, byKeyboard) {
+        const paste = this._settings.get_boolean(byKeyboard ? 'clipboard-paste-keyboard' : 'clipboard-paste-mouse');
         // The extension may have stopped while the item was fetched.
         if (!await this._history.copy(item, {touch: paste}) || this._destroyed)
             return;
