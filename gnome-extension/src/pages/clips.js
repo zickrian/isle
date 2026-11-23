@@ -12,8 +12,8 @@ import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
-import {thumbSize} from '../clipRules.js';
-import {VERTICAL, onUiScale, uiScale} from '../compat.js';
+import {stepSelection, thumbSize} from '../clipRules.js';
+import {VERTICAL, onUiScale, px, uiScale} from '../compat.js';
 import * as Format from '../format.js';
 import {icon, iconButton, label, scrollSideways, wrapLines} from '../widgets.js';
 import {SHELF_CAPACITY} from './files.js';
@@ -24,10 +24,99 @@ const MAX_PINNED = 10;
 /** Cards drawn at once (about a screenful); the rest follow a few per frame so opening never stutters. */
 const FIRST_CARDS = 6;
 const CARDS_PER_IDLE = 6;
+/** Room between cards in CSS pixels (matches `.isle-clips`). */
+const GAP = 8;
 /** How long "Copied" and friends stay on a card. */
 const FEEDBACK_MS = 900;
 /** Looks like code: braces, semicolons at line ends, arrows, tags, indents. */
 const CODE_PATTERN = /[{};]\s*$|=>|<\/?[a-z][\w-]*>|^\s{2,}\S|\b(function|const|def|class|import|return)\b/m;
+
+// Lays out visible clipboard cards in one horizontal row, or in 1–3 equal-width vertical columns on whole pixels.
+const ClipsGrid = GObject.registerClass(
+class ClipsGrid extends Clutter.LayoutManager {
+    _init() {
+        super._init();
+        this._vertical = false;
+        this._columns = 1;
+    }
+
+    set vertical(vertical) {
+        if (vertical === this._vertical)
+            return;
+        this._vertical = vertical;
+        this.layout_changed();
+    }
+
+    set columns(columns) {
+        if (columns === this._columns)
+            return;
+        this._columns = columns;
+        this.layout_changed();
+    }
+
+    _visible(container) {
+        return container.get_children().filter(child => child.visible);
+    }
+
+    _cardHeight(cards, cellWidth) {
+        return cards.length > 0 ? cards[0].get_preferred_height(cellWidth)[1] : 0;
+    }
+
+    vfunc_get_preferred_width(container, forHeight) {
+        if (this._vertical)
+            return [0, 0];
+        const cards = this._visible(container);
+        if (cards.length === 0)
+            return [0, 0];
+        const gap = px(GAP);
+        const [, cardWidth] = cards[0].get_preferred_width(forHeight);
+        return [0, cards.length * cardWidth + (cards.length - 1) * gap];
+    }
+
+    vfunc_get_preferred_height(container, forWidth) {
+        const cards = this._visible(container);
+        if (cards.length === 0)
+            return [0, 0];
+        const gap = px(GAP);
+        if (!this._vertical) {
+            const height = this._cardHeight(cards, -1);
+            return [height, height];
+        }
+        const cols = this._columns;
+        const cellWidth = forWidth >= 0 ? Math.max(0, (forWidth - gap * (cols - 1)) / cols) : -1;
+        const rowHeight = this._cardHeight(cards, cellWidth);
+        const rows = Math.ceil(cards.length / cols);
+        const height = rows * rowHeight + (rows - 1) * gap;
+        return [height, height];
+    }
+
+    vfunc_allocate(container, box) {
+        const cards = this._visible(container);
+        if (cards.length === 0)
+            return;
+        const gap = px(GAP);
+        if (!this._vertical) {
+            const [, cardWidth] = cards[0].get_preferred_width(-1);
+            const cardHeight = this._cardHeight(cards, cardWidth);
+            cards.forEach((card, index) => {
+                const x = box.x1 + index * (cardWidth + gap);
+                card.allocate(Clutter.ActorBox.new(Math.round(x), box.y1, Math.round(x + cardWidth), box.y1 + cardHeight));
+            });
+            return;
+        }
+        const cols = this._columns;
+        const width = box.get_width();
+        const cell = Math.max(0, (width - gap * (cols - 1)) / cols);
+        const rowHeight = this._cardHeight(cards, cell);
+        cards.forEach((card, index) => {
+            const col = index % cols;
+            const row = Math.floor(index / cols);
+            const x = box.x1 + col * (cell + gap);
+            const y = box.y1 + row * (rowHeight + gap);
+            card.allocate(Clutter.ActorBox.new(Math.round(x), Math.round(y), Math.round(x + cell), Math.round(y + rowHeight)));
+        });
+    }
+});
 
 /** The app that an item was copied from, if it is still installed. */
 function appFor(appId) {
@@ -77,6 +166,7 @@ export const ClipsView = GObject.registerClass({
         this._selected = 0;
         this._keyboard = false;
         this._vertical = false;
+        this._columns = 1;
         /** Every item, pinned first; the cards of those that match `kind` and `query` show. */
         this._all = [];
         this._shown = [];
@@ -85,7 +175,8 @@ export const ClipsView = GObject.registerClass({
         /** A card's "Copied" (or similar), kept across redraws while it shows. */
         this._flashing = null;
 
-        this._strip = new St.BoxLayout({style_class: 'isle-clips'});
+        this._layout = new ClipsGrid();
+        this._strip = new St.Viewport({style_class: 'isle-clips', layout_manager: this._layout});
         this._scroll = new St.ScrollView({
             style_class: 'isle-clips-scroll',
             hscrollbar_policy: St.PolicyType.EXTERNAL,
@@ -128,9 +219,7 @@ export const ClipsView = GObject.registerClass({
         if (vertical === this._vertical)
             return;
         this._vertical = vertical;
-        this._strip.layout_manager.orientation = vertical
-            ? Clutter.Orientation.VERTICAL
-            : Clutter.Orientation.HORIZONTAL;
+        this._layout.vertical = vertical;
         if (vertical) {
             this._strip.add_style_class_name('isle-clips-vertical');
             this._scroll.add_style_class_name('isle-clips-scroll-vertical');
@@ -146,6 +235,21 @@ export const ClipsView = GObject.registerClass({
             card.destroy();
         this._cards.clear();
         this._filter();
+    }
+
+    /** Sets how many columns vertical mode shows (1 to 3). */
+    set columns(columns) {
+        columns = Math.min(3, Math.max(1, Math.trunc(columns) || 1));
+        if (columns === this._columns)
+            return;
+        this._columns = columns;
+        this._layout.columns = columns;
+        if (this._vertical) {
+            for (const card of this._cards.values())
+                card.destroy();
+            this._cards.clear();
+            this._filter();
+        }
     }
 
     /** Shows only items of `kind` ('text', 'link', 'image', 'files'), or all. */
@@ -246,7 +350,8 @@ export const ClipsView = GObject.registerClass({
             card.visible = ids.has(id);
 
         this._cancelPending();
-        this._addCards(FIRST_CARDS, FIRST_CARDS);
+        const first = this._vertical ? FIRST_CARDS * this._columns : FIRST_CARDS;
+        this._addCards(first, first);
         if (this._undrawn()) {
             this._pending = GLib.idle_add(GLib.PRIORITY_LOW, () => {
                 this._addCards(CARDS_PER_IDLE);
@@ -326,20 +431,25 @@ export const ClipsView = GObject.registerClass({
         this._syncSelection();
     }
 
-    /** Moves the keyboard selection by `step` cards. */
+    /** Moves the keyboard selection by `{dx, dy}` (or a flat `step`) across the cards shown. */
     moveSelection(step) {
         if (this._shown.length === 0)
             return;
-        this._selected = Math.min(this._shown.length - 1, Math.max(0, this._selected + step));
+        const delta = typeof step === 'number' ? {dx: step} : step;
+        this._selected = stepSelection(this._selected, this._shown.length, delta, {
+            vertical: this._vertical,
+            columns: this._columns,
+        });
         // Arrowing faster than the cards are drawn.
         this._addCards(Infinity, this._selected + 1);
         // Keep the selected card in view.
         // Cards just drawn have no position yet; all are the same size along the strip.
         const first = this._cards.get(this._shown[0].id);
-        const spacing = this._strip.get_theme_node().get_length('spacing');
+        const spacing = px(GAP);
         if (this._vertical) {
             const height = first.height;
-            const y = this._selected * (height + spacing);
+            const row = Math.floor(this._selected / this._columns);
+            const y = row * (height + spacing);
             const adjustment = this._scroll.vadjustment;
             if (y < adjustment.value)
                 adjustment.ease(y, {duration: 150, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
@@ -392,7 +502,9 @@ export const ClipsView = GObject.registerClass({
 
     /** Body, hover actions, header and a feedback layer, stacked. */
     _card(item) {
-        const modeClass = this._vertical ? 'isle-clip-vertical' : 'isle-clip-horizontal';
+        const modeClass = this._vertical
+            ? (this._columns >= 3 ? 'isle-clip-vertical isle-clip-compact' : 'isle-clip-vertical')
+            : 'isle-clip-horizontal';
         const card = new St.Widget({
             style_class: `isle-clip ${modeClass} isle-clip-${item.kind}`,
             layout_manager: new Clutter.BinLayout(),
@@ -515,9 +627,18 @@ export const ClipsView = GObject.registerClass({
                     x_expand: true,
                     y_expand: true,
                 });
-                meta.add_child(label('Image', 'isle-clip-file-name', {y_align: Clutter.ActorAlign.CENTER}));
-                if (item.width && item.height)
-                    meta.add_child(label(`${item.width} × ${item.height}`, 'isle-clip-subtle', {y_align: Clutter.ActorAlign.CENTER}));
+                if (this._columns >= 3 && item.width && item.height) {
+                    const dims = label(`${item.width}×${item.height}`, 'isle-clip-file-name', {y_align: Clutter.ActorAlign.CENTER});
+                    dims.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+                    meta.add_child(dims);
+                } else {
+                    meta.add_child(label('Image', 'isle-clip-file-name', {y_align: Clutter.ActorAlign.CENTER}));
+                    if (item.width && item.height) {
+                        const dims = label(`${item.width} × ${item.height}`, 'isle-clip-subtle', {y_align: Clutter.ActorAlign.CENTER});
+                        dims.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+                        meta.add_child(dims);
+                    }
+                }
                 layers.add_child(meta);
                 return layers;
             }

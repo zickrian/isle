@@ -344,6 +344,36 @@ export default class IslePreferences extends ExtensionPreferences {
             ['horizontal', 'Horizontal'],
             ['vertical', 'Vertical'],
         ]));
+        const columns = new Adw.ActionRow({
+            title: 'Columns',
+            subtitle: 'Cards per row in vertical layout',
+        });
+        const columnsBox = new Gtk.Box({css_classes: ['linked'], valign: Gtk.Align.CENTER});
+        let firstColumn = null;
+        const columnButtons = [1, 2, 3].map(n => {
+            const button = new Gtk.ToggleButton({
+                label: String(n),
+                ...(firstColumn ? {group: firstColumn} : {}),
+            });
+            firstColumn ??= button;
+            button.connect('toggled', () => {
+                if (button.active && settings.get_int('clipboard-columns') !== n)
+                    settings.set_int('clipboard-columns', n);
+            });
+            columnsBox.append(button);
+            return [n, button];
+        });
+        const syncColumns = () => {
+            const current = settings.get_int('clipboard-columns');
+            for (const [n, button] of columnButtons)
+                button.active = current === n;
+        };
+        syncColumns();
+        const columnsChanged = settings.connect('changed::clipboard-columns', syncColumns);
+        columns.connect('destroy', () => settings.disconnect(columnsChanged));
+        columns.add_suffix(columnsBox);
+        columns.visible = settings.get_string('clipboard-layout') === 'vertical';
+        history.add(columns);
         const width = Adw.SpinRow.new_with_range(400, 1200, 20);
         width.title = 'Width';
         width.subtitle = 'In pixels';
@@ -355,6 +385,7 @@ export default class IslePreferences extends ExtensionPreferences {
         settings.bind('clipboard-height', height, 'value', Gio.SettingsBindFlags.DEFAULT);
         const layoutChanged = settings.connect('changed::clipboard-layout', () => {
             const vertical = settings.get_string('clipboard-layout') === 'vertical';
+            columns.visible = vertical;
             const current = settings.get_int('clipboard-height');
             if (vertical && current === 150)
                 settings.set_int('clipboard-height', 360);

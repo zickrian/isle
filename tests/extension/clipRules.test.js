@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
-import {thumbSize} from '../../gnome-extension/src/clipRules.js';
+import {stepSelection, thumbSize} from '../../gnome-extension/src/clipRules.js';
 
 test('a full thumbnail covers the card at 1× and 2×', () => {
     assert.equal(thumbSize(272, 216, 1), 'cover');
@@ -41,4 +41,36 @@ test('a small icon stays its own size', () => {
 test("an older isled's thumbnail covers, as before", () => {
     assert.equal(thumbSize(undefined, undefined, 2), 'cover');
     assert.equal(thumbSize(null, null, 1), 'cover');
+});
+
+test('stepSelection moves linearly in horizontal and 1-column vertical modes', () => {
+    assert.equal(stepSelection(0, 5, {dx: -1}, {vertical: false, columns: 3}), 0);
+    assert.equal(stepSelection(0, 5, {dx: 1}, {vertical: false, columns: 3}), 1);
+    assert.equal(stepSelection(2, 5, {dy: -1}, {vertical: false, columns: 3}), 1);
+    assert.equal(stepSelection(2, 5, {dy: 1}, {vertical: false, columns: 3}), 3);
+    assert.equal(stepSelection(2, 5, {dy: 1}, {vertical: true, columns: 1}), 3);
+    assert.equal(stepSelection(4, 5, {dy: 1}, {vertical: true, columns: 1}), 4);
+    assert.equal(stepSelection(0, 0, {dx: 1}, {vertical: true, columns: 2}), 0);
+});
+
+test('stepSelection navigates 2D grids for 2 and 3 columns', () => {
+    // 7 items in 3 columns: [0, 1, 2], [3, 4, 5], [6]
+    const grid3 = {vertical: true, columns: 3};
+    assert.equal(stepSelection(0, 7, {dx: 1}, grid3), 1);
+    assert.equal(stepSelection(2, 7, {dx: 1}, grid3), 3);
+    assert.equal(stepSelection(3, 7, {dx: -1}, grid3), 2);
+    assert.equal(stepSelection(2, 7, {dy: -1}, grid3), 2);
+    assert.equal(stepSelection(2, 7, {dy: 1}, grid3), 5);
+    assert.equal(stepSelection(5, 7, {dy: 1}, grid3), 6);
+    assert.equal(stepSelection(4, 7, {dy: 1}, grid3), 6);
+    assert.equal(stepSelection(6, 7, {dy: 1}, grid3), 6);
+    assert.equal(stepSelection(6, 7, {dy: -1}, grid3), 3);
+
+    // 5 items in 2 columns: [0, 1], [2, 3], [4]
+    const grid2 = {vertical: true, columns: 2};
+    assert.equal(stepSelection(0, 5, {dy: 1}, grid2), 2);
+    assert.equal(stepSelection(1, 5, {dy: 1}, grid2), 3);
+    assert.equal(stepSelection(3, 5, {dy: 1}, grid2), 4);
+    assert.equal(stepSelection(4, 5, {dy: -1}, grid2), 2);
+    assert.equal(stepSelection(4, 5, {dy: 1}, grid2), 4);
 });

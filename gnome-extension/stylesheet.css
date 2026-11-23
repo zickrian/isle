@@ -1031,6 +1031,13 @@
 .isle-clip-vertical.isle-clip-image .isle-clip-body {
   padding-left: 92px;
 }
+.isle-clip-compact.isle-clip-image .isle-clip-thumb-box {
+  width: 56px;
+}
+.isle-clip-compact.isle-clip-image .isle-clip-header,
+.isle-clip-compact.isle-clip-image .isle-clip-body {
+  padding-left: 70px;
+}
 
 .isle-clip-badge { margin: 5px; padding: 2px 6px; border-radius: 999px; background-color: rgba(0, 0, 0, 0.6); }
 .isle-clip-badge-label { font-size: 11px; font-weight: 600; }

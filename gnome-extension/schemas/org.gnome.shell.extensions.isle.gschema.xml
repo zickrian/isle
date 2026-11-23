@@ -336,6 +336,12 @@
       <summary>Clipboard layout</summary>
       <description>"horizontal": cards side by side in a row. "vertical": cards stacked from top to bottom.</description>
     </key>
+    <key name="clipboard-columns" type="i">
+      <range min="1" max="3"/>
+      <default>1</default>
+      <summary>Clipboard columns</summary>
+      <description>Number of columns (1, 2 or 3) when the clipboard uses the vertical layout.</description>
+    </key>
     <key name="clipboard-width" type="i">
       <range min="400" max="1200"/>
       <default>600</default>

@@ -95,6 +95,7 @@ export const ShelfPage = GObject.registerClass({
 
         this._clips = new ClipsView(daemon);
         this._clips.vertical = this._isVertical;
+        this._clips.columns = this._clipboardColumns;
         this._clips.connect('activated', (_view, item, paste) => this._onActivated(item, paste));
         this._thumbnails = new Thumbnails();
         this._files = new FilesView(daemon, this._thumbnails);
@@ -139,6 +140,10 @@ export const ShelfPage = GObject.registerClass({
             settings.connect('changed::clipboard-layout', () => {
                 this._clips.vertical = this._isVertical;
                 this._syncSize();
+                this.markCold({force: true});
+            }),
+            settings.connect('changed::clipboard-columns', () => {
+                this._clips.columns = this._clipboardColumns;
                 this.markCold({force: true});
             }),
             settings.connect('changed::clipboard-width', () => {
@@ -340,6 +345,11 @@ export const ShelfPage = GObject.registerClass({
     /** Whether the clipboard tab stacks cards vertically. */
     get _isVertical() {
         return this._settings.get_string('clipboard-layout') === 'vertical';
+    }
+
+    /** Number of columns in vertical clipboard layout (1 to 3). */
+    get _clipboardColumns() {
+        return this._settings.get_int('clipboard-columns');
     }
 
     /** The clipboard tab's height in CSS pixels. */
@@ -684,15 +694,19 @@ export const ShelfPage = GObject.registerClass({
         // The keypad's arrows too: Num Lock on, they are not the plain ones.
         case Clutter.KEY_Left:
         case Clutter.KEY_KP_Left:
-        case Clutter.KEY_Up:
-        case Clutter.KEY_KP_Up:
-            this._clips.moveSelection(-1);
+            this._clips.moveSelection({dx: -1});
             return Clutter.EVENT_STOP;
         case Clutter.KEY_Right:
         case Clutter.KEY_KP_Right:
+            this._clips.moveSelection({dx: 1});
+            return Clutter.EVENT_STOP;
+        case Clutter.KEY_Up:
+        case Clutter.KEY_KP_Up:
+            this._clips.moveSelection({dy: -1});
+            return Clutter.EVENT_STOP;
         case Clutter.KEY_Down:
         case Clutter.KEY_KP_Down:
-            this._clips.moveSelection(1);
+            this._clips.moveSelection({dy: 1});
             return Clutter.EVENT_STOP;
         case Clutter.KEY_Escape:
             // First Esc clears the search; the next one closes the island.

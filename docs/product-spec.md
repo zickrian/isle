@@ -469,8 +469,8 @@ segmented control (switching crossfades), and a third, Phone, while sharing
 with a phone.
 
 - **Clipboard**: what was copied, pinned items first, then newest first, as
-  cards in a horizontal row (136 × 96) or a vertical stack (68 px tall;
-  Settings → Clipboard sets the layout, width and height): text
+  cards in a horizontal row (136 × 96) or a vertical stack of 1 to 3 columns (68 px tall;
+  Settings → Clipboard sets the layout, columns, width and height): text
   (three lines; code in a monospace font), links (site and address), images
   (thumbnail with its size) and files (icon, name, "+2 more"). Each card shows
   the app it came from and how long ago. Click a card to copy it ("Copied"
