@@ -14,10 +14,11 @@
       <choices>
         <choice value="black"/>
         <choice value="glass"/>
+        <choice value="clear"/>
       </choices>
       <default>'black'</default>
       <summary>The island's look</summary>
-      <description>black: Isle's own black island. glass: clear glass over what is behind it, blurred, its edge catching the light.</description>
+      <description>black: Isle's own black island. glass: glass over what is behind it, blurred, its edge catching the light, with a tint slider. clear: clear glass letting most of what is behind show through while keeping the blur and light edge.</description>
     </key>
     <key name="open-size" type="s">
       <choices>
