@@ -1226,7 +1226,8 @@ export class Controller {
     _styleIsland(island) {
         const see = Theme.translucent();
         // The controls follow the tint in three steps (CSS can't blend): clear, middle, and dark like GNOME's menus.
-        const tint = see ? this._settings.get_int('glass-tint') : 0;
+        const tint = see && this._settings.get_string('island-theme') === 'glass'
+            ? this._settings.get_int('glass-tint') : 0;
         for (const [name, on] of [['isle-translucent', see], ['isle-accent-system', see && HAS_ACCENT],
             ['isle-glass-mid', see && tint >= 34 && tint < 67], ['isle-glass-dark', see && tint >= 67]]) {
             if (on)

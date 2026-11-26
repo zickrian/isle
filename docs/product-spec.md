@@ -79,12 +79,12 @@ it) and see-through like glass, with no colour of its own. Settings → Appearan
 black while an app's window on the main display reaches it (its top within 5 px
 of the bar: maximized, tiled or moved up there), not in the overview; the bar
 eases between the two as GNOME's does, and the island stays where it is. The island has
-two looks, chosen in Settings → Appearance → Island ("Black, or clear glass
-that shows what is behind it, blurred"); Black is the default:
+three looks, chosen in Settings → Appearance → Island ("Black, glass, or clear
+glass that shows what is behind it, blurred"); Black is the default:
 
 - **Black**: a black notch hanging from the top edge of the screen with
   concave shoulders.
-- **Glass**: clear glass, thick at its edge. What is behind it (windows and
+- **Glass**: frosted glass, thick at its edge. What is behind it (windows and
   wallpaper) is lightly blurred (GNOME Shell's blur, radius 14) and toned in the
   same pass, its shapes and colours still there, a little darkened: a light
   backdrop held deeper from a fifth of the way up, so white text reads at about
@@ -95,8 +95,14 @@ that shows what is behind it, blurred"); Black is the default:
   wide with a soft glow inside it, brightest where the edge faces up and left,
   again (less) down and right. All in the one pass, so it costs no more than
   the blur; nothing is redrawn while it is still.
+- **Clear Glass**: a lighter glass look keeping Isle's blur (radius 14) and
+  hairline edge, under a faint veil of rgba(5, 6, 9) at 7%, letting more of
+  what is behind show through (`lo` 0.02, `span` 0.88) and pulling down only
+  bright highlights (`knee` 0.50, `deep` 0.30), with crisp edge refraction
+  (`lens` 24, `band` 26, `spread` 0.80, `rim` 0.55). It shares Glass's
+  translucent controls and accent styling without the tint slider.
 
-A Glass slider beside it (Settings → Appearance) runs from that clear glass to
+For **Glass**, a Glass slider beside it (Settings → Appearance) runs from that glass to
 dark smoked glass, as GNOME Shell's own blurred menus: what is behind dimmed to
 about two fifths with its colour kept, under a thin dark smoke, no sheen or
 glow, a faint rim. Buttons, rows and fields follow it; on the dark end they

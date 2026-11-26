@@ -361,9 +361,10 @@ export default class IslePreferences extends ExtensionPreferences {
         const page = new Adw.PreferencesPage({title: 'Island', icon_name: 'preferences-desktop-appearance-symbolic'});
 
         const look = new Adw.PreferencesGroup({title: 'Appearance'});
-        look.add(choiceRow(settings, 'island-theme', 'Island', 'Black, or clear glass that shows what is behind it, blurred', [
+        look.add(choiceRow(settings, 'island-theme', 'Island', 'Black, glass, or clear glass that shows what is behind it, blurred', [
             ['black', 'Black'],
             ['glass', 'Glass'],
+            ['clear', 'Clear Glass'],
         ]));
         look.add(glassRow(settings, window));
         look.add(choiceRow(settings, 'island-shape', 'Shape', 'Joined to the top of the screen, or floating free', [

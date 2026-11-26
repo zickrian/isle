@@ -16,6 +16,11 @@ const LOOKS = {
         edge: {color: [1, 1, 1], top: 0.16, bottom: 0.1},
         blur: {radius: 14, brightness: 1, small: 0.95, large: 1.15, lo: 0.03, span: 0.64, gamma: 1, deep: 0.52,
             knee: 0.22, sheen: 0.03, glow: 0.05, lens: 26, band: 24, spread: 0.7, rim: 0.5, rimWidth: 1.1}},
+    // Near-transparent clear glass: keeps Isle's blur and edge refraction while letting bright backdrops through.
+    clear: {fill: [0.02, 0.025, 0.035, 0.07], solid: [0.12, 0.13, 0.15],
+        edge: {color: [1, 1, 1], top: 0.16, bottom: 0.1},
+        blur: {radius: 14, brightness: 1, small: 1.0, large: 1.15, lo: 0.02, span: 0.88, gamma: 1, deep: 0.3,
+            knee: 0.5, sheen: 0.02, glow: 0.05, lens: 24, band: 26, spread: 0.8, rim: 0.55, rimWidth: 1.1}},
 };
 
 // Glass at its darkest (Settings' tint at 100): dark smoked glass, as GNOME's blurred menus look: what is behind
@@ -52,9 +57,9 @@ export function setTheme(name, tint = 0) {
 /** The look in use, glass with its tint. */
 const look = () => current === 'glass' ? tinted : LOOKS[current];
 
-/** Whether the island shows what is behind it (glass), with all on it made to match. */
+/** Whether the island shows what is behind it (glass or clear glass), with all on it made to match. */
 export function translucent() {
-    return current === 'glass';
+    return current === 'glass' || current === 'clear';
 }
 
 /** The island's colour as RGBA in 0..1; glass lets the blur behind show through. */
