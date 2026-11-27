@@ -556,13 +556,15 @@ export class Controller {
         this._settingsChanged.push(this._settings.connect('changed::island-shape', () => this._updateGeometry()));
         for (const key of ['auto-hide', 'auto-hide-delay'])
             this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => this._syncAutoHide(true)));
-        this._settingsChanged.push(this._settings.connect('changed::alerts-over-fullscreen', () => {
-            this._trackIsland();
-            this._syncFullscreen();
-            this._syncAutoHide(true);
-            // On every display, the island no longer needs to leave a full-screen app's display, or now does.
-            this._syncMonitor();
-        }));
+        for (const key of ['alerts-over-fullscreen', 'reveal-in-fullscreen']) {
+            this._settingsChanged.push(this._settings.connect(`changed::${key}`, () => {
+                this._trackIsland();
+                this._syncFullscreen();
+                this._syncAutoHide(true);
+                // On every display, the island no longer needs to leave a full-screen app's display, or now does.
+                this._syncMonitor();
+            }));
+        }
         this._settingsChanged.push(this._settings.connect('changed::island-monitor', () => this._updateGeometry()));
         // Notifications left to GNOME again: those in the island, shown or waiting, go as a fresh start has none.
         this._settingsChanged.push(this._settings.connect('changed::gnome-banners', () => {
@@ -577,7 +579,10 @@ export class Controller {
         // On the display in use, it follows the window in front, once closed.
         this._focusMonitorChanged = global.display.connect('window-entered-monitor', () => this._syncMonitor());
         // On every display, it leaves one a fullscreen window takes (see `_wantedMonitor`).
-        this._fullscreenChanged = global.display.connect('in-fullscreen-changed', () => this._syncMonitor());
+        this._fullscreenChanged = global.display.connect('in-fullscreen-changed', () => {
+            this._syncMonitor();
+            this._syncFullscreen();
+        });
         this._settingsChanged.push(this._settings.connect('changed::voice-assistant', () => {
             this._syncVoiceEnabled();
             this._syncUsage();
@@ -974,21 +979,37 @@ export class Controller {
             rect.y + rect.height >= monitor.y + monitor.height;
     }
 
+    /** Whether the island can stay tracked and visible over a full-screen app (for alerts or top-edge reveal). */
+    _canShowOverFullscreen() {
+        return this._settings.get_boolean('alerts-over-fullscreen') ||
+            this._settings.get_boolean('reveal-in-fullscreen');
+    }
+
+    /** Whether alerts and OSDs can show on the island now: visible, and either not over a full-screen app or
+     * allowed over it. */
+    get _alertsAllowed() {
+        return this._island.visible && (this._settings.get_boolean('alerts-over-fullscreen') ||
+            !(global.window_group.visible && this._monitor?.inFullscreen));
+    }
+
     // GNOME hides the island under a fullscreen window only when fullscreen changes, not when it moves
     // to another display: its rule (layout.js `_updateActorVisibility`), here.
     _syncFullscreen() {
-        this._island.visible = this._settings.get_boolean('alerts-over-fullscreen') ||
+        this._island.visible = this._canShowOverFullscreen() ||
             !(global.window_group.visible && this._monitor?.inFullscreen);
         // Hidden under a full-screen app, pinned lyrics let go: kept open, they would hold the alerts back after it.
         if (!this._island.visible && this._lyricsHeld)
             this.collapse();
+        // Leaving full screen with the island kept visible for edge reveal: queued alerts can show now.
+        if (this._alertsAllowed && !this._alert)
+            this._nextAlert();
     }
 
     // Auto-hide
 
-    /** Whether `monitor` has a full-screen app that Settings show alerts over. */
+    /** Whether `monitor` has a full-screen app that Settings show alerts or edge-reveal over. */
     _overFullscreenOn(monitor) {
-        return this._settings.get_boolean('alerts-over-fullscreen') && global.window_group.visible &&
+        return this._canShowOverFullscreen() && global.window_group.visible &&
             Boolean(monitor?.inFullscreen);
     }
 
@@ -1000,8 +1021,9 @@ export class Controller {
         const monitor = mirror?.monitor ?? this._monitor;
         const mode = this._settings.get_string('auto-hide');
         const fullscreen = this._overFullscreenOn(monitor);
+        const revealInFullscreen = this._settings.get_boolean('reveal-in-fullscreen');
         const when = autoHide({
-            mode, fullscreen,
+            mode, fullscreen, revealInFullscreen,
             // A copy shows the island's alert, or else the closed island.
             presentation: !mirror || this._presentation === 'peek' ? this._presentation : 'compact',
             visible: island.visible,
@@ -1011,7 +1033,7 @@ export class Controller {
         });
         // A bar another extension hid is not there to point at.
         const barHeight = this._isOnBar(monitor) && !this._barHidden(monitor) ? this._topBar.height : 0;
-        const band = revealBand({mode, fullscreen, barHeight, edge: px(REVEAL_EDGE_PX)});
+        const band = revealBand({mode, fullscreen, revealInFullscreen, barHeight, edge: px(REVEAL_EDGE_PX)});
         return {when, band};
     }
 
@@ -1070,7 +1092,7 @@ export class Controller {
     /** As chrome: over a full-screen app only for alerts (Settings). On X11 (GNOME 49 and older) hidden in the bar,
      * out of the input region, so clicks below reach the windows; the band stays in the bar's own. */
     _chromeParams() {
-        const params = {trackFullscreen: !this._settings.get_boolean('alerts-over-fullscreen')};
+        const params = {trackFullscreen: !this._canShowOverFullscreen()};
         if (!isWayland())
             params.affectsInputRegion = !this._autoHidden || !this._onBar;
         return params;
@@ -1116,8 +1138,8 @@ export class Controller {
         const index = global.display.focus_window?.get_monitor() ?? -1;
         const inUse = monitors[index] ?? primaryMonitor;
         // On every display, it shows its alerts on another while a fullscreen window hides it on the one in use
-        // (unless Settings show alerts over full-screen apps: then it stays, as do the copies).
-        if (where === 'all' && inUse.inFullscreen && !this._settings.get_boolean('alerts-over-fullscreen'))
+        // (unless Settings show alerts or edge-reveal over full-screen apps: then it stays, as do the copies).
+        if (where === 'all' && inUse.inFullscreen && !this._canShowOverFullscreen())
             return monitors.find(monitor => !monitor.inFullscreen) ?? inUse;
         return inUse;
     }
@@ -2242,7 +2264,7 @@ export class Controller {
         if (!alert)
             return;
         // Hidden by a fullscreen window: shown once it is gone, but a volume or Caps Lock change is stale by then.
-        if (!this._island.visible) {
+        if (!this._alertsAllowed) {
             if (!alert.transient)
                 this._enqueue(alert);
             return;
@@ -2413,7 +2435,7 @@ export class Controller {
         if (this._destroying)
             return;
         // One shows already (the command asked as the assistant closed): the queue waits behind it.
-        if (this._alert || !this._island.visible || this._expandWanted || this._voiceOpen || !this._queue.length) {
+        if (this._alert || !this._alertsAllowed || this._expandWanted || this._voiceOpen || !this._queue.length) {
             this._render();
             return;
         }
@@ -2434,7 +2456,7 @@ export class Controller {
      * shows it all, false to let GNOME show its own, or the indexes of the displays the island showed it for, GNOME
      * showing it on the others. */
     _showOsd(icon, label, level, maxLevel, displays = null) {
-        if (!this._settings.get_boolean('replace-osd') || !this._island.visible)
+        if (!this._settings.get_boolean('replace-osd') || !this._alertsAllowed)
             return false;
         // While the island is open the OSD would cover it; let GNOME show it.
         if (this._expandWanted || this._voiceOpen)
@@ -3067,7 +3089,7 @@ export class Controller {
         this._askedAt.set(`${request.provider}:${request.session}`, now);
         const pass = () => this._daemon.call('agents', 'Resolve', request.id, '');
         if (!this._alertsOn(request.provider) || this._notifications.dnd ||
-            !this._island.visible)
+            !this._alertsAllowed)
             return pass();
         const window = this._agentWindow(request);
         if (window && window === global.display.focus_window)
