@@ -43,6 +43,14 @@ test('over a full-screen app it hides at once, whatever the mode, and alerts sti
     }
 });
 
+test('in full screen with revealInFullscreen, top-edge hover brings it back and keeps it shown while hovered', () => {
+    for (const mode of ['off', 'always', 'top-bar', 'windows']) {
+        assert.equal(autoHide({...closed, mode, fullscreen: true, revealInFullscreen: true}), 'now');
+        assert.equal(autoHide({...closed, mode, fullscreen: true, revealInFullscreen: true, hovered: true}), false);
+        assert.equal(revealBand({mode, fullscreen: true, revealInFullscreen: true, barHeight: 32, edge: 2}), 2);
+    }
+});
+
 test('the hidden island takes the pointer only where it can come back from', () => {
     assert.equal(revealBand({mode: 'always', fullscreen: false, barHeight: 32, edge: 2}), 32);
     assert.equal(revealBand({mode: 'windows', fullscreen: false, barHeight: 0, edge: 2}), 2);

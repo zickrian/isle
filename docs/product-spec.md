@@ -240,8 +240,8 @@ with the wheel or touchpad and never show a scrollbar.
   copy's place, where it holds an alert or opens as usual; a copy that grew under a still pointer counts
   once the pointer moves, as the island does. Once the pointer leaves and the island is closed, it goes
   back to the display in use. A fullscreen window hides the copy on its display; the island leaves that
-  display for one without, so alerts still show on the others. With Over full-screen apps on, the island
-  and the copies stay instead, hidden but for alerts, as below. Auto-hide hides each copy as it would the
+  display for one without, so alerts still show on the others. With Over full-screen apps or Reveal in full
+  screen on, the island and the copies stay instead, hidden as below. Auto-hide hides each copy as it would the
   island on that display, each with its own wait; pointing at a hidden copy's band brings the island
   there.
 - Auto-hide (Settings → Appearance, off by default): **Always**, after the pointer has been off the
@@ -261,7 +261,10 @@ with the wheel or touchpad and never show a scrollbar.
   input region. Alerts, the open island and the assistant still show.
 - Over a full-screen app the island is GNOME's to hide, and alerts wait until the app leaves full
   screen; with Settings → Alerts → Over full-screen apps on, it stays there hidden instead and shows
-  only for alerts (and the open island or assistant asked for), never on pointing.
+  only for alerts (and the open island or assistant asked for), never on pointing. With Settings →
+  Appearance → Reveal in full screen on (off by default), it stays there hidden too and its top 2 px
+  band takes the pointer to bring it back until the pointer leaves (while alerts still wait unless
+  Over full-screen apps is on).
 - Centre: the clock (24- or 12-hour as Settings → Appearance → Time format says, by default as GNOME's clock; with 12 hours a smaller, dimmer AM or PM beside it), exactly centred; with Settings → Appearance → Show the date, the day before it ("Fri 6", as large, 70% white, 6 px from it), day and time centred together and the island only as much wider as they need, also beside the unseen dot, not beside an activity (music, a call, the timer, the assistant at work: their sides take its room); while the screen records,
   how long it has been recording in its place. A call keeps the clock (its length is on the open
   island). With Settings → Appearance → Clock in the island off (#62), the closed island (and its copies) keeps

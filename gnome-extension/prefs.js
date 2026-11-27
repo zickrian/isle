@@ -449,6 +449,8 @@ export default class IslePreferences extends ExtensionPreferences {
         hideDelay.connect('destroy', () => settings.disconnect(waitsChanged));
         waits();
         look.add(hideDelay);
+        look.add(switchRow(settings, 'reveal-in-fullscreen', 'Reveal in full screen',
+            'Show the island when the pointer reaches the top edge of a full-screen app'));
         page.add(look);
         page.add(pagesGroup(settings, window));
         // "gnome", from before, opens the island's calendar now: shown as that.
